@@ -6,6 +6,7 @@ hours, so a run stores request IDs and collects finished results later.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -132,6 +133,57 @@ def client():
 
     url, key = read_credentials()
     return Client(url=url, key=key, progress=False)
+
+
+_FAILED = {"failed", "rejected", "dismissed"}
+
+
+def _load_state(path: Path) -> dict[str, dict[str, str]]:
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def _save_state(path: Path, state: dict[str, dict[str, str]]) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1, sort_keys=True))
+    os.replace(tmp, path)
+
+
+def fetch_date(c, day: date, raw_dir: Path) -> list[str]:
+    """Advance the downloads for one date by one step, without waiting on the queue.
+
+    For each request: skip it if its file is already there; download it if its queued request
+    has finished; resubmit it if that request failed; submit it if it was never queued. Queued
+    request IDs live in `raw_dir/pending.json`, so a later run picks up where this one left
+    off. Returns the names of requests that are still pending.
+    """
+    specs = build_requests(day)  # raises TypeError for a non-date
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    state_path = raw_dir / "pending.json"
+    state = _load_state(state_path)
+    queued = state.get(day.isoformat(), {})
+    for spec in specs:
+        target = raw_dir / spec.filename
+        if target.exists():
+            queued.pop(spec.name, None)
+            continue
+        rid = queued.get(spec.name)
+        if rid is not None:
+            st = c.get_remote(rid).status
+            if st == "successful":
+                part = target.with_name(target.name + ".part")
+                c.get_remote(rid).download(str(part))
+                os.replace(part, target)
+                queued.pop(spec.name)
+                continue
+            if st not in _FAILED:
+                continue
+        queued[spec.name] = submit(c, spec)
+    if queued:
+        state[day.isoformat()] = queued
+    else:
+        state.pop(day.isoformat(), None)
+    _save_state(state_path, state)
+    return sorted(queued)
 
 
 def submit(c, spec: FetchSpec) -> str:

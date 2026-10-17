@@ -5,10 +5,12 @@ import xarray as xr
 from pipeline.convert import (
     SECONDS_PER_DAY,
     accumulated_to_flux,
+    area_weighted_mean,
     convert_fields,
     precip_mm_per_day,
     precip_to_kg_m2_s,
     regrid_half_degree,
+    tidy_dataset,
     to_lon_180,
 )
 
@@ -123,16 +125,6 @@ def test_longitude_wraps_to_minus_180_179_75():
 # ---- regridding ------------------------------------------------------------------------
 
 
-def area_weighted_mean(da):
-    lat = np.deg2rad(da.latitude.values)
-    step = np.deg2rad(abs(float(da.latitude[1] - da.latitude[0])))
-    # exact band areas: sin(upper) - sin(lower), clipped at the poles
-    hi = np.sin(np.clip(lat + step / 2, -np.pi / 2, np.pi / 2))
-    lo = np.sin(np.clip(lat - step / 2, -np.pi / 2, np.pi / 2))
-    w = (hi - lo)[:, None] * np.ones(da.sizes["longitude"])[None, :]
-    return float((da.values * w).sum() / w.sum())
-
-
 def test_regrid_shape_and_coordinates():
     out = regrid_half_degree(to_lon_180(field(1.0)))
     assert out.shape == (360, 720)
@@ -187,3 +179,48 @@ def test_regrid_marks_mostly_missing_cells_as_nan():
     src.values[200:203, 200:203] = np.nan  # a full 3x3 stencil of missing points
     out = regrid_half_degree(src)
     assert np.isnan(out.values).sum() >= 1
+
+
+# ---- area-weighted mean ----------------------------------------------------------------
+
+
+def test_area_weighted_mean_of_constant_is_constant():
+    assert area_weighted_mean(field(3.0)) == pytest.approx(3.0)
+
+
+def test_area_weighted_mean_weights_by_area_not_by_row():
+    # 1 in the northern hemisphere, 0 in the southern, 0.5 on the equator row that straddles
+    # both: exactly half the sphere's area.
+    da = field(fn=lambda lat, lon: (lat > 0) + 0.5 * (lat == 0))
+    assert area_weighted_mean(da) == pytest.approx(0.5, abs=1e-12)
+    # sin(lat) is antisymmetric, so its area-weighted mean is zero.
+    sin = field(fn=lambda lat, lon: np.sin(np.deg2rad(lat)))
+    assert area_weighted_mean(sin) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_area_weighted_mean_ignores_nan():
+    da = field(2.0)
+    da.values[300:310, :] = np.nan
+    assert area_weighted_mean(da) == pytest.approx(2.0)
+
+
+def test_area_weighted_mean_same_on_both_grids():
+    rng = np.random.default_rng(1)
+    src = to_lon_180(field(fn=lambda lat, lon: rng.normal(size=lat.shape)))
+    assert area_weighted_mean(regrid_half_degree(src)) == pytest.approx(
+        area_weighted_mean(src), rel=1e-10, abs=1e-12
+    )
+
+
+# ---- tidy dataset ----------------------------------------------------------------------
+
+
+def test_tidy_dataset_converts_wraps_and_regrids():
+    raw = raw_day(ttr=-240.0 * 86_400, skt=288.0, lsm=1.0, tp=0.003)
+    out = tidy_dataset(raw, date="2026-10-01")
+    assert set(out.data_vars) == {"olr", "skt", "lsm", "tp"}
+    assert out["olr"].shape == (360, 720)
+    assert float(out.longitude[0]) == -179.75 and float(out.latitude[0]) == 89.75
+    np.testing.assert_allclose(out["olr"].values, 240.0)
+    assert out.attrs["date"] == "2026-10-01"
+    assert out["olr"].attrs["units"] == "W m-2"

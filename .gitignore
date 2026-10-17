@@ -10,3 +10,4 @@ web/test-results/
 out/*
 !out/.gitkeep
 raw/
+work/

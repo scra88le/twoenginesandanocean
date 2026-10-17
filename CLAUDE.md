@@ -48,7 +48,9 @@ python3 -m venv .venv && source .venv/bin/activate   # fish: source .venv/bin/ac
 pip install -e "./pipeline[dev]"
 pytest pipeline
 ruff check pipeline
-python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # one date, local
+python -m pipeline.cli fetch --date YYYY-MM-DD [--wait]      # submit/collect CDS requests into ./raw
+python -m pipeline.cli tidy --date YYYY-MM-DD                # raw archives -> ./work/tidy_DATE.nc
+python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # one date, local (milestone 4+)
 python -m pipeline.cli backfill --days 90 --out ./out
 python -m pipeline.cli climatology --out ./out               # one-off, 1991–2020
 
@@ -106,7 +108,8 @@ npm run e2e          # Playwright smoke test
   | `str` | `lw_up` = −`str` | Net surface longwave loss, upward positive |
 
   All other fields keep their ERA5 short names. State the convention in each layer's info panel.
-- Vertical integrals (`p…162` params) may not be in the daily product. If a request fails, fetch from the hourly dataset at 6-hourly sampling and average to daily.
+- Vertical integrals (`p…162` params) **are** in the daily product (confirmed 2026-10-17), so the hourly fallback isn't needed. Confirmed NetCDF names and GRIB parameter IDs: `vike` = 162059 (`p59.162`), `vited` = 162086 (`p86.162`), `vitee` = 162075 (`p75.162`), `viten` = 162076 (`p76.162`).
+- **Result format.** Each CDS result is a zip holding one NetCDF per variable, whatever the file is named; each field has a length-1 `valid_time` dimension (and `pressure_level` for 250 hPa). `pipeline.load` treats the archive as untrusted, extracts it to a temporary directory, squeezes the extra dimensions and keys fields by the spec's names.
 - **Regridding.** ERA5's 0.25° grid is point-centred: 1440 × 721 points, lon 0 → 359.75, lat 90 → −90 including both poles. It does not split into 2×2 blocks. Treat each ERA5 point as the centre of a 0.25° cell (pole points are half-cells), roll longitude to −180…180, and remap conservatively to the cell-centred 0.5° grid. Each 0.5° cell then overlaps a 3 × 3 stencil of ERA5 points with weights [½, 1, ½] ⊗ [½, 1, ½], multiplied by cos(lat), and normalised. Test that the global area-weighted mean is preserved. Keep native files for 30 days.
 - Retry CDS requests with exponential backoff (queues can take hours). Each daily run attempts the most recent 10 days and skips dates already built.
 - **Don't block on the CDS queue.** GitHub Actions kills jobs after 6 h. Submit requests without waiting, store their request IDs in `/state/pending.json` in object storage, and collect finished results on the next run.
@@ -234,7 +237,7 @@ Point and series chunks are little-endian uint16 and use the same per-layer pack
 
 ### One-off jobs
 
-- Monthly climatology from ERA5 monthly means, 1991–2020, for every raw input. Derived climatologies are computed from those. Before converting, check the accumulation period of accumulated fields in the monthly-means product (the expectation is mean daily accumulation, J m⁻² per day, but this must be confirmed in milestone 2) and record it in `docs/DECISIONS.md`.
+- Monthly climatology from ERA5 monthly means, 1991–2020, for every raw input. Derived climatologies are computed from those. Accumulated fields in the monthly-means product are **mean daily accumulations** (J m⁻² per day, `GRIB_stepType=avgad`; checked 2026-10-17: October 2025 `tsr` ÷ 86 400 = 245.4 W m⁻²), so the daily conversions apply unchanged.
 - `human_q` from the chosen dataset, regridded to 0.5° by area-weighted averaging.
 
 ## Front end behaviour
@@ -330,7 +333,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 ## Milestones
 
 1. Scaffold the repo, tooling, linting, and CI running both test suites. Fill in **Commands**.
-2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. Set the `div_e` and `flux_e` encode ranges.
+2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. Settle what `div_e` and `flux_e` show, then set their encode ranges (**done except the last part**, which waits on that decision).
 3. Write `derived.py`, test-first, with the fixtures above.
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit.
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value.
@@ -370,14 +373,13 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 | Item | Risk or question | Proposed handling |
 | --- | --- | --- |
 | Human energy data | Which gridded anthropogenic heat flux dataset, and is its licence compatible? | Shortlist published datasets (e.g. Varquez et al., 2021, *Scientific Data*). Fall back to OWID country totals. |
-| Vertical integrals | May be missing from the daily product | Hourly fallback; confirm in milestone 2 |
-| Pressure-level daily ID | Unconfirmed | Confirm in milestone 2; else hourly pressure levels at 6-hourly sampling |
+| `div_e` noise | Daily 0.5° `p86.162` is dominated by grid-scale noise (rms 535 W m⁻², 55% of it finer than 5×5 cells; net TOA is 8%), although zonal means track net TOA correctly | **Decision needed.** See `docs/DECISIONS.md` for options (spatial smoothing, or deriving it from the energy budget) |
+| `flux_e` content | Raw `p75.162`/`p76.162` are dominated by a large circulation component (local rms 2.6e10 W m⁻¹ vs zonal-mean transport under 1e9), so arrows would show circulation, not poleward transport | **Decision needed.** Use the divergent part of the flux instead (see `docs/DECISIONS.md`) |
 | KE generation | No direct ERA5 field; `bld` covers boundary-layer friction only | Later: check the definition of `p64.162`, or compute pressure-gradient work |
 | Max-power model | Single-column, no storage; absolute values are illustrative | Land-only display; compare against Kleidon's published estimates; label as model-based |
 | Data lag | ~6 days | State it clearly; later add ECMWF open data / GFS for same-day winds |
 | CDS queue | Hours-long waits, outages; Actions jobs are killed after 6 h | Submit without waiting, track IDs in `/state/pending.json`, collect on the next run; 10-day rolling catch-up; never overwrite good data |
 | Cron shutdown | GitHub disables scheduled workflows after 60 days with no repo activity | Add a keepalive step (e.g. a monthly empty commit or the API "enable workflow" call), or check it during monthly maintenance |
-| Monthly-means accumulations | Accumulation period unconfirmed | Confirm in milestone 2 before the ÷ 86 400 conversion |
 | Storage growth | ~1–2 GB rolling | Monitor against free tiers |
 | Write operations | Series rebuild is 648 tiles × 24 layers ≈ 15.5k objects/day (~470k/month), plus fields and points | Within R2's free tier for writes, but monitor; skip uploading unchanged objects |
 | PNG size | The low byte of a uint16 is close to random noise and compresses poorly, which may break the 400 kB limit | Measure in milestone 4; if needed, use 2-channel (LA) PNGs or PNG filter tuning |

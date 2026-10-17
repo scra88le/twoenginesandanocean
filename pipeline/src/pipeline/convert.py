@@ -116,3 +116,29 @@ def regrid_half_degree(da: xr.DataArray, min_coverage: float = 0.5) -> xr.DataAr
         name=da.name,
         attrs=da.attrs,
     )
+
+
+def area_weighted_mean(da: xr.DataArray) -> float:
+    """Global mean weighted by cell area, ignoring NaN. Works on the 0.25 and 0.5 degree grids.
+
+    A cell's area is proportional to sin(upper edge) - sin(lower edge), clipped at the poles,
+    which also gives the half-width pole rows of the ERA5 grid their true weight.
+    """
+    lat = np.deg2rad(da["latitude"].values)
+    step = np.deg2rad(abs(float(da["latitude"][1] - da["latitude"][0])))
+    band = np.sin(np.clip(lat + step / 2, -np.pi / 2, np.pi / 2)) - np.sin(
+        np.clip(lat - step / 2, -np.pi / 2, np.pi / 2)
+    )
+    weights = np.broadcast_to(band[:, None], da.shape)
+    valid = np.isfinite(da.values)
+    return float((da.values * weights)[valid].sum() / weights[valid].sum())
+
+
+def tidy_dataset(raw: Mapping[str, xr.DataArray], date: str) -> xr.Dataset:
+    """Raw ERA5 fields -> converted, sign-flipped fields on the 0.5 degree grid."""
+    converted = convert_fields(raw)
+    fields = {
+        str(name): regrid_half_degree(to_lon_180(da)).assign_attrs(da.attrs)
+        for name, da in converted.data_vars.items()
+    }
+    return xr.Dataset(fields, attrs={"date": date, "grid": "0.5 degree, cell-centred"})
