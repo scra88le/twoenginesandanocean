@@ -83,7 +83,7 @@ npm run e2e          # Playwright smoke test
 | --- | --- | --- | --- |
 | ERA5 daily statistics | CDS `derived-era5-single-levels-daily-statistics` | All natural single-level layers | ~6 days |
 | ERA5 hourly single levels | CDS `reanalysis-era5-single-levels` | Fallback for variables missing from the daily product | ~5 days |
-| ERA5 pressure-level daily statistics | CDS `derived-era5-pressure-levels-daily-statistics` (**verify ID**) | 250 hPa winds | ~6 days |
+| ERA5 pressure-level daily statistics | CDS `derived-era5-pressure-levels-daily-statistics` (ID confirmed 2026-10-17; `daily_mean` only) | 250 hPa winds | ~6 days |
 | ERA5 monthly means | CDS `reanalysis-era5-single-levels-monthly-means` | 1991–2020 monthly climatology | one-off |
 | Anthropogenic heat flux | Gridded global dataset, **to be chosen** (see Open questions) | `human_q` | static |
 | Our World in Data energy | CSV, CC BY | Fallback human layer: country totals spread over land area | annual |
@@ -91,7 +91,9 @@ npm run e2e          # Playwright smoke test
 
 ### Ingestion rules
 
-- Daily statistics requests: `daily_statistic: daily_mean` for state variables, `daily_sum` for accumulated variables. Use `time_zone: utc+00:00` and `frequency: 1_hourly`.
+- Daily statistics requests: `daily_statistic: daily_mean` for state variables, `daily_sum` for accumulated variables. Use `time_zone: utc+00:00` and `frequency: 1_hourly`. A request carries one `daily_statistic`, so a date needs **three** requests: single-levels means, single-levels sums, and pressure-level means (250 hPa `u`, `v`).
+- **Land-sea mask.** `g_max` and `j_ratio` are land-only, so the pipeline needs `lsm`. It is a static field, fetched in the single-levels mean request (`land_sea_mask`). A cell is land where `lsm` ≥ 0.5 after regridding. Ocean and sea-ice cells are both non-land, so no separate sea-ice field is needed.
+- **Credentials.** `CDSAPI_URL` and `CDSAPI_KEY` environment variables, else `~/.cdsapirc`. Each CDS dataset's licence must be accepted once on the CDS website before the API will serve it.
 - Accumulated energy (J m⁻² per day) → W m⁻²: divide by 86 400.
 - `tp` (m per day) → kg m⁻² s⁻¹: × 1000 ÷ 86 400. For display in mm day⁻¹: × 1000.
 - **Sign convention:** ECMWF fluxes are positive downwards. `pipeline.convert` flips the sign of `slhf`, `sshf`, `str` and `ttr` so that upward heat loss is positive, and renames the results so a flipped field can't be mistaken for a raw one:
