@@ -2,6 +2,13 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-17 — Milestone 1 scaffold
+
+- **Python versions.** The package declares `requires-python >=3.12` and CI runs on 3.12, as specified. Local development uses a 3.14 venv, because 3.12 isn't installed on this machine. All dependencies installed from wheels on 3.14.
+- **Tooling.** Ruff for Python lint (rules E, F, I, UP, B, line length 100). ESLint with typescript-eslint, `tsc --noEmit` and Vitest for the front end.
+- **Dev data root.** `npm run dev` serves `../out` under `/data/` through a small Vite middleware in `web/vite.config.ts`, so the front end fetches `/data/manifest.json`, `/data/fields/...` and so on. The production base URL will be configurable in milestone 13.
+- **Playwright** is run as `npm run e2e`. `npx playwright test` also works.
+
 ## 2026-10-17 — Spec review before milestone 1
 
 - **Sign flips happen once.** `pipeline.convert` flips `ttr`, `slhf`, `sshf` and `str` and renames them `olr`, `le`, `h` and `lw_up`. `pipeline.derived` never negates an input. This replaces the earlier notation (`OLR = −ttr` on fields that were already flipped), which would have flipped twice. `net_toa = tsr − olr`.

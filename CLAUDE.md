@@ -34,7 +34,8 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /web/src/layers        raster.ts, particles.ts, arrows.ts
 /story                 01-fuel.md … 09-humans.md  (story-mode card text, 60–100 words each)
 /docs/DECISIONS.md     log of deviations and choices made during the build
-/.github/workflows/daily.yml
+/.github/workflows/ci.yml       lint + tests for both stacks (milestone 1)
+/.github/workflows/daily.yml    scheduled build and upload (milestone 13)
 ```
 
 ## Commands
@@ -42,18 +43,23 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 Create these as part of milestone 1 and keep this section up to date. All commands run from the repo root unless they `cd`.
 
 ```bash
-# Pipeline
+# Pipeline (local dev uses a venv at ./.venv; CI uses Python 3.12)
+python3 -m venv .venv && source .venv/bin/activate   # fish: source .venv/bin/activate.fish
 pip install -e "./pipeline[dev]"
 pytest pipeline
+ruff check pipeline
 python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # one date, local
 python -m pipeline.cli backfill --days 90 --out ./out
 python -m pipeline.cli climatology --out ./out               # one-off, 1991–2020
 
 # Front end
 cd web && npm install
-npm run dev          # serves ../out as the data root
+npm run dev          # serves ../out at /data/ as the data root
+npm run lint
+npm run typecheck
 npm test             # Vitest
-npx playwright test  # smoke test
+npx playwright install chromium   # first time only
+npm run e2e          # Playwright smoke test
 ```
 
 ## Tech stack
