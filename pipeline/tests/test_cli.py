@@ -43,7 +43,7 @@ def test_build_publishes_from_a_tidy_file(tmp_path, capsys):
 
     work, out = tmp_path / "work", tmp_path / "out"
     work.mkdir()
-    synthetic_tidy().to_netcdf(work / "tidy_2026-10-01.nc")
+    synthetic_tidy(tsr=240.0).to_netcdf(work / "tidy_2026-10-01.nc")  # passes validation
     code = main(["build", "--date", "2026-10-01", "--work", str(work), "--out", str(out),
                  "--raw", str(tmp_path / "raw")])  # fmt: skip
     assert code == 0

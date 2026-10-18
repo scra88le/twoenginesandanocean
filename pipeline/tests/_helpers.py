@@ -54,3 +54,19 @@ def synthetic_tidy(**overrides):
     fields["lsm"][1][180:] = 0.0
     coords = {"latitude": lat, "longitude": lon}
     return xr.Dataset(fields, coords=coords, attrs={"date": "2026-10-01"})
+
+
+def make_multiday_archive(zpath, members, days, workdir):
+    """A CDS-style archive whose members hold several days: members = {name: (var, value)}."""
+    times = np.array([np.datetime64(d.isoformat()) for d in days], dtype="datetime64[ns]")
+    with zipfile.ZipFile(zpath, "w") as z:
+        for name, (var, value) in members.items():
+            data = np.stack(
+                [np.full((721, 1440), value + k, dtype="float32") for k in range(len(days))]
+            )
+            coords = {"valid_time": times, "latitude": LAT, "longitude": LON, "number": 0}
+            da = xr.DataArray(data, dims=("valid_time", "latitude", "longitude"), coords=coords)
+            p = workdir / name
+            da.to_dataset(name=var).to_netcdf(p)
+            z.write(p, name)
+    return zpath

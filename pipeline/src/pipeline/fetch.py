@@ -14,6 +14,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 SINGLE_DAILY = "derived-era5-single-levels-daily-statistics"
 PRESSURE_DAILY = "derived-era5-pressure-levels-daily-statistics"
 
@@ -66,47 +68,76 @@ class FetchSpec:
     filename: str
 
 
-def _common(day: date) -> dict[str, Any]:
+def _check_date(day) -> date:
     if not isinstance(day, date):
         raise TypeError(f"expected datetime.date, got {type(day).__name__}")
-    return {
+    return day
+
+
+def _specs(first: date, day_value, stamp: str) -> list[FetchSpec]:
+    """The three requests (single-levels means and sums, pressure-level means) for a month's
+    `day_value` (one "DD" or a list of them). A daily-statistics request carries a single
+    `daily_statistic`, so the single-levels dataset needs two requests."""
+    base = {
         "product_type": "reanalysis",
-        "year": f"{day.year:04d}",
-        "month": f"{day.month:02d}",
-        "day": f"{day.day:02d}",
+        "year": f"{first.year:04d}",
+        "month": f"{first.month:02d}",
+        "day": day_value,
         "time_zone": "utc+00:00",
         "frequency": "1_hourly",
     }
 
+    def names(collection: str, statistic: str) -> list[str]:
+        return [
+            v.cds_name
+            for v in VARIABLES.values()
+            if v.collection == collection and v.statistic == statistic
+        ]
 
-def _single(day: date, statistic: str) -> dict[str, Any]:
-    names = [
-        v.cds_name
-        for v in VARIABLES.values()
-        if v.collection == SINGLE_DAILY and v.statistic == statistic
+    single = {"daily_statistic": "daily_mean", "variable": names(SINGLE_DAILY, "mean")}
+    sums = {"daily_statistic": "daily_sum", "variable": names(SINGLE_DAILY, "sum")}
+    pressure = {
+        "daily_statistic": "daily_mean",
+        "variable": names(PRESSURE_DAILY, "mean"),
+        "pressure_level": ["250"],
+    }
+    return [
+        FetchSpec("single_mean", SINGLE_DAILY, {**base, **single}, f"single_mean_{stamp}.nc"),
+        FetchSpec("single_sum", SINGLE_DAILY, {**base, **sums}, f"single_sum_{stamp}.nc"),
+        FetchSpec(
+            "pressure_mean", PRESSURE_DAILY, {**base, **pressure}, f"pressure_mean_{stamp}.nc"
+        ),
     ]
-    return {**_common(day), "variable": names, "daily_statistic": f"daily_{statistic}"}
 
 
 def build_requests(day: date) -> list[FetchSpec]:
-    """The three CDS requests needed for one date.
+    """The three requests for one date; their filenames are the per-date raw archives."""
+    day = _check_date(day)
+    return _specs(day, f"{day.day:02d}", day.isoformat())
 
-    The spec asked for one request per dataset per date, but a daily-statistics request has a
-    single `daily_statistic`, so the single-levels dataset needs one request for means and one
-    for sums.
+
+def chunk_dates(days) -> list[list[date]]:
+    """Split dates into runs of consecutive days within one month (one request each)."""
+    chunks: list[list[date]] = []
+    for d in sorted(set(map(_check_date, days))):
+        last = chunks[-1][-1] if chunks else None
+        if last and (d - last).days == 1 and d.month == last.month and d.year == last.year:
+            chunks[-1].append(d)
+        else:
+            chunks.append([d])
+    return chunks
+
+
+def build_chunk_requests(chunk: list[date]) -> list[FetchSpec]:
+    """The three requests for consecutive days within one month.
+
+    Requesting a month at a time cuts a 90-day backfill from 270 requests to about 12. The CDS
+    limit is 400 cost units per request, where cost = variables x days (9 x 31 at most here).
     """
-    pressure = {
-        **_common(day),
-        "variable": [v.cds_name for v in VARIABLES.values() if v.collection == PRESSURE_DAILY],
-        "pressure_level": ["250"],
-        "daily_statistic": "daily_mean",
-    }
-    stamp = day.isoformat()
-    return [
-        FetchSpec("single_mean", SINGLE_DAILY, _single(day, "mean"), f"single_mean_{stamp}.nc"),
-        FetchSpec("single_sum", SINGLE_DAILY, _single(day, "sum"), f"single_sum_{stamp}.nc"),
-        FetchSpec("pressure_mean", PRESSURE_DAILY, pressure, f"pressure_mean_{stamp}.nc"),
-    ]
+    first, last = chunk[0], chunk[-1]
+    if (first.year, first.month) != (last.year, last.month):
+        raise ValueError("a chunk must lie within one month")
+    return _specs(first, [f"{d.day:02d}" for d in chunk], f"{first}_{last}")
 
 
 def read_credentials(
@@ -136,52 +167,106 @@ def client():
 _FAILED = {"failed", "rejected", "dismissed"}
 
 
-def _load_state(path: Path) -> dict[str, dict[str, str]]:
-    return json.loads(path.read_text()) if path.is_file() else {}
+def _load_state(path: Path) -> dict[str, dict]:
+    """Queued requests: {chunk filename: {"id", "name", "days"}}. Older entries are dropped."""
+    state = json.loads(path.read_text()) if path.is_file() else {}
+    return {k: v for k, v in state.items() if isinstance(v, dict) and "id" in v}
 
 
-def _save_state(path: Path, state: dict[str, dict[str, str]]) -> None:
+def _save_state(path: Path, state: dict[str, dict]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=1, sort_keys=True))
     os.replace(tmp, path)
 
 
-def fetch_date(c, day: date, raw_dir: Path) -> list[str]:
-    """Advance the downloads for one date by one step, without waiting on the queue.
+def split_archive(src: Path, name: str, raw_dir: Path) -> list[Path]:
+    """Split a multi-day CDS archive into per-date archives `{name}_{date}.nc`.
 
-    For each request: skip it if its file is already there; download it if its queued request
-    has finished; resubmit it if that request failed; submit it if it was never queued. Queued
-    request IDs live in `raw_dir/pending.json`, so a later run picks up where this one left
-    off. Returns the names of requests that are still pending.
+    Each member NetCDF keeps its file name and a length-1 `valid_time`, so the per-date
+    archives look exactly like single-day results. Existing per-date archives are kept.
     """
-    specs = build_requests(day)  # raises TypeError for a non-date
+    import tempfile
+    import zipfile
+
+    import xarray as xr
+
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    with zipfile.ZipFile(src) as zf, tempfile.TemporaryDirectory() as tmp:
+        members = []
+        for info in zf.infolist():
+            if info.filename.startswith("/") or ".." in info.filename or "/" in info.filename:
+                raise ValueError(f"unsafe member name in archive: {info.filename!r}")
+            if info.filename.endswith(".nc"):
+                members.append((info.filename, xr.load_dataset(zf.extract(info, tmp))))
+        times = sorted({t for _, ds in members for t in ds["valid_time"].values})
+        for t in times:
+            day = str(np.datetime_as_string(t, unit="D"))
+            target = raw_dir / f"{name}_{day}.nc"
+            if target.exists():
+                continue
+            part = target.with_name(target.name + ".part")
+            with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as out:
+                for member, ds in members:
+                    one = Path(tmp) / f"day-{member}"
+                    ds.sel(valid_time=[t]).to_netcdf(one)
+                    out.write(one, member)
+            os.replace(part, target)
+            written.append(target)
+    return written
+
+
+def fetch_dates(c, days, raw_dir: Path) -> list[str]:
+    """Advance the downloads for some dates by one step, without waiting on the queue.
+
+    First collects every queued request: a finished one is downloaded and split into
+    per-date archives, a failed one is forgotten so its dates are requested again. Then dates
+    still missing an archive, and not covered by a queued request, are submitted in runs of
+    consecutive days within a month. Queued requests (with the dates they cover) live in
+    `raw_dir/pending.json`, so later runs pick up where this one left off. Returns the
+    chunk names still pending.
+    """
+    days = sorted(set(map(_check_date, days)))
     raw_dir.mkdir(parents=True, exist_ok=True)
     state_path = raw_dir / "pending.json"
     state = _load_state(state_path)
-    queued = state.get(day.isoformat(), {})
-    for spec in specs:
-        target = raw_dir / spec.filename
-        if target.exists():
-            queued.pop(spec.name, None)
-            continue
-        rid = queued.get(spec.name)
-        if rid is not None:
-            st = c.get_remote(rid).status
-            if st == "successful":
-                part = target.with_name(target.name + ".part")
-                c.get_remote(rid).download(str(part))
-                os.replace(part, target)
-                queued.pop(spec.name)
-                continue
-            if st not in _FAILED:
-                continue
-        queued[spec.name] = submit(c, spec)
-    if queued:
-        state[day.isoformat()] = queued
-    else:
-        state.pop(day.isoformat(), None)
+
+    for key, job in list(state.items()):
+        st = c.get_remote(job["id"]).status
+        if st == "successful":
+            chunk = raw_dir / key
+            part = chunk.with_name(chunk.name + ".part")
+            c.get_remote(job["id"]).download(str(part))
+            os.replace(part, chunk)
+            split_archive(chunk, job["name"], raw_dir)
+            chunk.unlink()
+            del state[key]
+        elif st in _FAILED:
+            del state[key]
+        _save_state(state_path, state)
+
+    for name in ("single_mean", "single_sum", "pressure_mean"):
+        covered = {d for job in state.values() if job["name"] == name for d in job["days"]}
+        missing = [
+            d
+            for d in days
+            if not (raw_dir / f"{name}_{d}.nc").exists() and d.isoformat() not in covered
+        ]
+        for chunk in chunk_dates(missing):
+            spec = next(s for s in build_chunk_requests(chunk) if s.name == name)
+            state[spec.filename] = {
+                "id": submit(c, spec),
+                "name": name,
+                "days": [d.isoformat() for d in chunk],
+            }
+            _save_state(state_path, state)
     _save_state(state_path, state)
-    return sorted(queued)
+    return sorted(state)
+
+
+def fetch_date(c, day: date, raw_dir: Path) -> list[str]:
+    """`fetch_dates` for a single date."""
+    return fetch_dates(c, [day], raw_dir)
 
 
 def submit(c, spec: FetchSpec) -> str:
