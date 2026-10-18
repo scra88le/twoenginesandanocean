@@ -34,3 +34,23 @@ def make_archive(zpath, members, workdir):
             write_member(p, var, val, pl)
             z.write(p, name)
     return zpath
+
+
+def synthetic_tidy(**overrides):
+    """A tidy 0.5 degree dataset with constant fields; the southern hemisphere is ocean."""
+    from pipeline import derived as d
+
+    lat = 89.75 - 0.5 * np.arange(360)
+    lon = -179.75 + 0.5 * np.arange(720)
+    base = {
+        "tsr": 300.0, "olr": d.SIGMA * 255.0**4, "ssr": 200.0, "skt": 300.0,
+        "le": 60.0, "h": 20.0, "bld": 2.0, "tcwv": 25.0, "tp": 3.0 / 86_400,
+        "u10": 3.0, "v10": 4.0, "u100": 6.0, "v100": 8.0, "u250": 30.0, "v250": 40.0,
+        "p59.162": 2.0e6, "p86.162": 0.0, "lsm": 1.0,
+    }  # fmt: skip
+    base.update(overrides)
+    dims = ("latitude", "longitude")
+    fields = {k: (dims, np.full((360, 720), float(v))) for k, v in base.items()}
+    fields["lsm"][1][180:] = 0.0
+    coords = {"latitude": lat, "longitude": lon}
+    return xr.Dataset(fields, coords=coords, attrs={"date": "2026-10-01"})

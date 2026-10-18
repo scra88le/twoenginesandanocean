@@ -32,3 +32,30 @@ def test_tidy_reports_missing_archives(tmp_path, capsys):
     code = main(["tidy", "--date", "2026-10-01", "--raw", str(tmp_path), "--work", str(tmp_path)])
     assert code == 1
     assert "missing raw archives" in capsys.readouterr().err
+
+
+def test_build_publishes_from_a_tidy_file(tmp_path, capsys):
+    import json
+
+    from _helpers import synthetic_tidy
+
+    from pipeline.cli import main
+
+    work, out = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    synthetic_tidy().to_netcdf(work / "tidy_2026-10-01.nc")
+    code = main(["build", "--date", "2026-10-01", "--work", str(work), "--out", str(out),
+                 "--raw", str(tmp_path / "raw")])  # fmt: skip
+    assert code == 0
+    assert json.loads((out / "manifest.json").read_text())["dates"] == ["2026-10-01"]
+    assert (out / "fields" / "2026-10-01" / "jet250_uv.png").is_file()
+
+
+def test_build_without_raw_or_tidy_fails_cleanly(tmp_path, capsys):
+    from pipeline.cli import main
+
+    code = main(["build", "--date", "2026-10-01", "--work", str(tmp_path), "--out",
+                 str(tmp_path / "out"), "--raw", str(tmp_path)])  # fmt: skip
+    assert code == 1
+    assert "missing raw archives" in capsys.readouterr().err
+    assert not (tmp_path / "out" / "manifest.json").exists()

@@ -50,7 +50,7 @@ pytest pipeline
 ruff check pipeline
 python -m pipeline.cli fetch --date YYYY-MM-DD [--wait]      # submit/collect CDS requests into ./raw
 python -m pipeline.cli tidy --date YYYY-MM-DD                # raw archives -> ./work/tidy_DATE.nc
-python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # one date, local (milestone 4+)
+python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # tidy -> layers -> PNGs + manifest
 python -m pipeline.cli backfill --days 90 --out ./out
 python -m pipeline.cli climatology --out ./out               # one-off, 1991–2020
 
@@ -201,17 +201,15 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 ### Encoding
 
 - Grid: 720 × 360 cells at 0.5°, cell-centred. Cell centres run lon −179.75 → 179.75 and lat 89.75 → −89.75. There are no pole rows.
-- Scalar layers: uint16 packed into a PNG, R = high byte and G = low byte.
+- Scalar layers: uint16 packed into an RGB PNG, R = high byte, G = low byte, B = 0 (no alpha).
   - Reserved codes: **0 = no data** (missing input), **1 = masked** (land-only layer over ocean, or a threshold mask such as `evap_frac` where LE + H < 10). Valid data uses 2–65535.
   - Linear layers: value = offset + scale × (int − 2).
   - Log layers (any layer marked "log" in the catalogue): log₁₀(value) = offset + scale × (int − 2). Linear packing can't work for these; for example, linear packing of `human_q` gives a step of about 1.8e-3, larger than its 0.001 floor. Values ≤ 0 are coded as masked.
-- Vector layers (`wind10`, `wind100`, `jet250`, `flux_e`): u in R+G and v in B+A of one RGBA PNG, linear packing, same reserved codes.
-- **Encode ranges** are fixed per layer, not per day, and stored in the manifest with the scale and offset. They live in one table, `pipeline.layers`. The default is the display range with each end extended by 10% of the span (10% of the decades for log layers). Overrides:
-  - Layers that can go negative even though their display range starts at 0 (`j_conv`, `lh`) are encoded from −100 W m⁻².
-  - `evap_frac`: −0.5 to 1.5.
-  - `carnot`: 0–45%, so that it covers the 40% validation bound.
-  - `div_e`: ±2000 W m⁻². `flux_e` components: ±1.5e9 W m⁻¹. Set 2026-10-18 from five dates across seasons (largest values 1793 W m⁻² and 1.06e9 W m⁻¹), with headroom. Their display ranges stay "auto".
-  - Anomalies (`{layer}_anom`): a linear range symmetric about zero, ±50% of the display span by default (in the layer's own units, even for log layers), set per layer in `pipeline.layers`.
+- Vector layers (`wind10`, `wind100`, `jet250`, `flux_e`) get **two files**: `{layer}.png`, the magnitude, packed like any scalar layer (so every raster decodes the same way and the front end never computes √(u² + v²)); and `{layer}_uv.png`, with u in R+G and v in B+A of an RGBA PNG, linear packing, same reserved codes.
+- **Encode ranges and resolutions** are fixed per layer, not per day, live in one table, `pipeline.layers`, and are stored in the manifest as `lo`, `hi`, `scale` and `offset`.
+  - `scale` is a fixed **resolution** per layer, about what the data and display can resolve (0.1–0.25 W m⁻² for most fluxes, 0.02 K, 0.002 decades for log layers, and so on). It is not the range divided by 65 533: a step finer than the data leaves the low byte as noise that PNG can't compress, and pushed every file past 400 kB. Each resolution must be at most 1/1000 of the display span, and the encode range must fit in 65 533 steps (tested).
+  - Encode ranges are wide enough not to clip real values (based on physical limits and the 2026-10-01 data); values outside are clipped to the ends and counted. For example `lh` −200 to 1200 W m⁻², `evap_frac` −20 to 20, `carnot` 0–45% (covers the 40% validation bound), `div_e` ±2000 W m⁻², `flux_e` components ±1.5e9 W m⁻¹.
+  - Anomalies (`{layer}_anom`): a linear range symmetric about zero, ±50% of the display span by default (the encode span for "auto" layers), in the layer's own units even for log layers. Resolution as the layer, or a tenth of the display floor for log layers.
 - Round-trip error must be below one quantisation step, measured in log space for log layers (tested).
 - **Front-end decoding:** browsers premultiply alpha and may apply colour-space conversion when they decode images, which corrupts packed data, especially v in B+A. Upload textures with `UNPACK_PREMULTIPLY_ALPHA_WEBGL = false` and `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`, or use `createImageBitmap(blob, {premultiplyAlpha: 'none', colorSpaceConversion: 'none'})`. Sample with `NEAREST` filtering and interpolate after decoding. Cover this with a Vitest decode test that uses a fixture PNG with A = 0 texels.
 
@@ -220,6 +218,7 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 ```
 /manifest.json                      dates, layers, scale/offset, units, build time
 /fields/{YYYY-MM-DD}/{layer}.png
+/fields/{YYYY-MM-DD}/{layer}_uv.png        vector layers only: u, v components
 /fields/{YYYY-MM-DD}/{layer}_anom.png
 /points/{YYYY-MM-DD}/{tx}_{ty}.bin  all layers, one 10°×10° tile (20×20 cells), uint16 (~19 kB)
 /series/{layer}/{tx}_{ty}.bin       last 90 days, one tile, uint16 (~72 kB), rebuilt daily
@@ -341,7 +340,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 1. Scaffold the repo, tooling, linting, and CI running both test suites. Fill in **Commands**.
 2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. (**Done.** The `div_e` and `flux_e` encode ranges moved to milestone 3, because they depend on the smoothing.)
 3. Write `derived.py`, test-first, with the fixtures above, including the spherical solver for `div_e` and `flux_e`. Tune `smooth_length_m`, then set the `div_e` and `flux_e` encode ranges from a sample of dates across seasons. (**Done** 2026-10-18.)
-4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit.
+4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit. (**Done** 2026-10-18.)
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value.
 6. Layer menu with all scalar layers and info panels.
 7. Backfill 90 days. Time bar with play/step/pre-fetch.
@@ -386,9 +385,9 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 | Data lag | ~6 days | State it clearly; later add ECMWF open data / GFS for same-day winds |
 | CDS queue | Hours-long waits, outages; Actions jobs are killed after 6 h | Submit without waiting, track IDs in `/state/pending.json`, collect on the next run; 10-day rolling catch-up; never overwrite good data |
 | Cron shutdown | GitHub disables scheduled workflows after 60 days with no repo activity | Add a keepalive step (e.g. a monthly empty commit or the API "enable workflow" call), or check it during monthly maintenance |
-| Storage growth | ~1–2 GB rolling | Monitor against free tiers |
+| Storage growth | 6.3 MB of field PNGs per date (2026-10-01), so ~570 MB for 90 days, about double with anomalies | Monitor against free tiers (R2: 10 GB) |
 | Write operations | Series rebuild is 648 tiles × 24 layers ≈ 15.5k objects/day (~470k/month), plus fields and points | Within R2's free tier for writes, but monitor; skip uploading unchanged objects |
-| PNG size | The low byte of a uint16 is close to random noise and compresses poorly, which may break the 400 kB limit | Measure in milestone 4; if needed, use 2-channel (LA) PNGs or PNG filter tuning |
+| PNG size | The low byte of a uint16 is noise when the step is finer than the data | **Resolved** with per-layer resolutions: 91–344 kB per file on 2026-10-01. Re-check on stormy winter dates |
 | Basemap | Licence and attribution | Openly licensed style, credited |
 
 Record answers to these in `docs/DECISIONS.md` as they are resolved.

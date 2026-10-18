@@ -28,9 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     tidy.add_argument("--raw", type=Path, default=Path("raw"))
     tidy.add_argument("--work", type=Path, default=Path("work"))
 
-    build = sub.add_parser("build", help="build one date")
-    build.add_argument("--date", required=True, help="YYYY-MM-DD")
-    build.add_argument("--out", required=True)
+    build = sub.add_parser("build", help="derive, encode and publish one date")
+    build.add_argument("--date", required=True, type=_date, help="YYYY-MM-DD")
+    build.add_argument("--out", type=Path, required=True)
+    build.add_argument("--raw", type=Path, default=Path("raw"))
+    build.add_argument("--work", type=Path, default=Path("work"))
 
     backfill = sub.add_parser("backfill", help="build the last N days")
     backfill.add_argument("--days", type=int, default=90)
@@ -70,12 +72,41 @@ def _tidy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build(args: argparse.Namespace) -> int:
+    import xarray as xr
+
+    from .derived import compute_layers
+    from .publish import encode_date, publish_date
+    from .tidy import build_tidy, write_tidy
+
+    tidy_path = args.work / f"tidy_{args.date.isoformat()}.nc"
+    if tidy_path.is_file():
+        tidy = xr.load_dataset(tidy_path)
+    else:
+        try:
+            tidy = build_tidy(args.date, args.raw)
+        except FileNotFoundError as e:
+            print(e, file=sys.stderr)
+            return 1
+        write_tidy(tidy, args.work)
+    files, stats = encode_date(compute_layers(tidy))
+    publish_date(args.out, args.date.isoformat(), files)
+    for lid, st in stats.items():
+        if st["clipped"] or st["nodata_pct"]:
+            print(f"  {lid}: {st['clipped']} values clipped, {st['nodata_pct']:.2f}% no data")
+    size = sum(len(b) for b in files.values())
+    print(f"published {args.date} to {args.out}: {len(files)} files, {size / 1e6:.1f} MB")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "fetch":
         return _fetch(args)
     if args.command == "tidy":
         return _tidy(args)
+    if args.command == "build":
+        return _build(args)
     print(f"{args.command}: not implemented yet", file=sys.stderr)
     return 1
 

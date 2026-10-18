@@ -2,6 +2,33 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-18 — Milestone 4: encoding, storage layout and manifest
+
+- **New modules:**
+  - `pipeline.layers`: the catalogue of all 24 layers, with IDs, titles, groups, units, colour scales, display and encode ranges, resolutions and anomaly ranges.
+  - `pipeline.encode`: quantisation, decoding and PNG packing.
+  - `pipeline.publish`: encoding a date, the atomic write, the manifest, and pruning to 90 days.
+  - `cli build`: tidy → layers → PNGs → manifest.
+- **Fixed resolution instead of spreading each range over 65 533 levels.** With full-range steps (for example 0.008 W m⁻² for `asr_sfc`), neighbouring cells differ by hundreds of codes, the low byte is noise, and 23 of 26 files were 403–457 kB (11.4 MB per date). Per-layer resolutions about what the data can resolve brought the files to 91–344 kB (6.3 MB per date), with every round-trip error within half a step. The manifest's `scale` is the resolution, so the packing formula is unchanged. Chosen steps:
+  - most W m⁻² fluxes: 0.1–0.25 W m⁻²;
+  - `t_emit`: 0.02 K; `carnot`: 0.02 %;
+  - wind speeds: 0.02–0.05 m s⁻¹; wind components: 0.1 m s⁻¹, enough for particle advection, and it gives `jet250_uv` room (392 → 294 kB);
+  - `div_e`: 1 W m⁻²; `flux_e`: 1e6 W m⁻¹, against typical values of 2e8;
+  - log layers: 0.002 decades (0.46% relative);
+  - `j_ratio`: 0.002, so its ±50 range fits.
+- **Vector layers are two files**: the magnitude as an ordinary scalar PNG, plus `{layer}_uv.png`. The raster path is then the same for every layer, and the front end never computes a wind speed.
+- **Scalar PNGs are RGB with B = 0**, so the alpha channel only matters for the `_uv` files. Writing an RGBA PNG with A = 0 texels keeps their RGB on the Python side (tested). The browser side is milestone 5.
+- **Encode ranges** are set from physical limits and the 2026-10-01 data, wide enough that real values aren't clipped. The exception is log layers: values between 0 and the encode floor are raised to the floor. On 2026-10-01 that was 6278 `precip` cells under 0.001 mm/day and 18 `p_lift` cells. They are counted as clipped in the build output.
+- **Publishing:**
+  - A date's files go into `fields/.{date}.tmp/` and are renamed into place only once all are written. Republishing a date swaps the old directory out the same way.
+  - `manifest.json` is written last via a temporary file and `os.replace`, then dates beyond the newest 90 are deleted.
+  - Tests simulate a failed file write and a failed manifest write; both leave the published site byte-for-byte unchanged.
+- **Manifest contents** (version 1, about 14 kB):
+  - built time, sorted dates, grid, reserved codes, and file path templates;
+  - for every layer, in catalogue order: title, group, units, colour scale, display range (or "auto"), log flag, centre, vector flag, and the encode, uv and anomaly ranges with their scale and offset;
+  - the Copernicus attribution text.
+- **Not in this milestone:** point and series chunks (milestone 9, as the spec orders them) and the per-date validation gate (step 6 of the daily run; milestone 13 has the validation log). `build` publishes without validating.
+
 ## 2026-10-18 — Milestone 3: derived quantities
 
 - **`pipeline.derived`** holds every formula: the point formulas, the spherical solver, and `compute_layers`, which returns all 22 natural layers in catalogue units (`carnot` in %, `ke_col` in MJ m⁻², `precip` in mm/day). Each layer is a `LayerField`: values, a boolean `masked` (ocean for land-only layers, threshold masks), and u/v components for vector layers, whose `values` are the magnitude. NaN outside the mask means missing data. This maps onto the reserved codes 0 and 1 in milestone 4.
