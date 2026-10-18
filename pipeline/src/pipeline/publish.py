@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import numpy as np
 
 from .derived import LayerField
 from .encode import FIRST_VALID, MASKED, NODATA, quantise, scalar_png, scale_offset, vector_png
+from .info import INFO
 from .layers import GROUPS, LAYERS, LayerSpec
 
 MANIFEST_VERSION = 1
@@ -69,6 +71,8 @@ def _layer_meta(s: LayerSpec) -> dict:
         "anomaly_encode": (
             _range(*s.anomaly_encode, s.anomaly_resolution) if s.anomaly_encode else None
         ),
+        "hatch_zero": s.hatch_zero,
+        "info": asdict(INFO[s.id]),
     }
 
 
@@ -81,11 +85,12 @@ def _credits(year: int) -> str:
     )
 
 
-def build_manifest(dates: list[str], built_at: str) -> dict:
+def build_manifest(dates: list[str], built_at: str, built_layers: list[str] | None = None) -> dict:
     return {
         "version": MANIFEST_VERSION,
         "built_at": built_at,
         "dates": dates,
+        "built_layers": built_layers or [],
         "grid": {"nlon": 720, "nlat": 360, "lon0": -179.75, "lat0": 89.75, "step": 0.5},
         "codes": {"nodata": NODATA, "masked": MASKED, "first_valid": FIRST_VALID},
         "files": {"field": "fields/{date}/{layer}.png", "uv": "fields/{date}/{layer}_uv.png"},
@@ -104,9 +109,15 @@ def _write_manifest(out: Path, manifest: dict) -> None:
     os.replace(tmp, out / "manifest.json")
 
 
-def _read_dates(out: Path) -> list[str]:
+def _read_manifest(out: Path) -> dict:
     path = out / "manifest.json"
-    return json.loads(path.read_text())["dates"] if path.is_file() else []
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def _layer_ids(files: dict[str, bytes]) -> set[str]:
+    """Layer IDs with a field PNG among `files` (not the _uv companions)."""
+    stems = {name.removesuffix(".png") for name in files if name.endswith(".png")}
+    return {s for s in stems if s in LAYERS}
 
 
 def publish_date(
@@ -142,8 +153,10 @@ def publish_date(
     else:
         os.rename(tmp, final)
 
-    previous = _read_dates(out)
+    old = _read_manifest(out)
+    previous = old.get("dates", [])
     dates = sorted(set(previous) | {day})[-keep_days:]
-    _write_manifest(out, build_manifest(dates, built_at))
+    built = sorted(set(old.get("built_layers", [])) | _layer_ids(files))
+    _write_manifest(out, build_manifest(dates, built_at, built))
     for gone in set(previous) - set(dates):
         shutil.rmtree(fields / gone, ignore_errors=True)

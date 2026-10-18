@@ -9,6 +9,16 @@ export interface Grid {
   step: number;
 }
 
+export interface LayerInfo {
+  summary: string;
+  source: string;
+  formula: string;
+  sign: string;
+  meaning: string;
+  caveats: string;
+  mask: string | null;
+}
+
 export interface LayerMeta {
   title: string;
   group: number;
@@ -23,12 +33,15 @@ export interface LayerMeta {
   encode: EncodeRange;
   uv_encode: EncodeRange | null;
   anomaly_encode: EncodeRange | null;
+  hatch_zero: boolean;
+  info: LayerInfo;
 }
 
 export interface Manifest {
   version: number;
   built_at: string;
   dates: string[];
+  built_layers: string[];
   grid: Grid;
   codes: { nodata: number; masked: number; first_valid: number };
   files: { field: string; uv: string };

@@ -28,6 +28,7 @@ class LayerSpec:
     resolution: float = 0.0  # quantisation step: layer units, or log10 decades for log layers
     uv_resolution: float | None = None
     anomaly_resolution: float | None = None
+    hatch_zero: bool = False  # cells clamped at exactly 0 are hatched (carnot)
 
 
 GROUPS = {
@@ -55,7 +56,7 @@ _SPECS = [
     LayerSpec(
         "t_emit", "Effective emission temperature", 2, "K", "thermal", (200, 290), (150, 300)
     ),
-    LayerSpec("carnot", "Local Carnot limit", 3, "%", "viridis", (0, 30), (0, 45)),
+    LayerSpec("carnot", "Local Carnot limit", 3, "%", "viridis", (0, 30), (0, 45), hatch_zero=True),
     LayerSpec("g_max", "Maximum convective power", 3, _W, "magma", (0, 15), (0, 60)),
     LayerSpec("j_conv", "Actual convective heat flux", 4, _W, "magma", (0, 300), (-300, 1500)),
     LayerSpec(

@@ -6,7 +6,8 @@
 - web/tests/fixtures/vector.png: u = (i * 91 + j) % 65536, v = (i % 256) << 8, so the
   low byte of v, and with it the alpha channel, is 0 everywhere
 - web/e2e/fixtures/data: a data root with a manifest and two layers for one date.
-  t_emit = 200 + 0.1 * i K (depends on longitude only); net_toa = latitude in W m-2.
+  t_emit = 200 + 0.1 * i K (depends on longitude only); net_toa = latitude in W m-2;
+  carnot = 15% in the north and 0 (clamped, hatched) in the south.
 """
 
 from pathlib import Path
@@ -32,7 +33,7 @@ def unit_fixtures() -> None:
 
 def e2e_fixtures() -> None:
     lat = 89.75 - 0.5 * j
-    fields = {"t_emit": 200 + 0.1 * i, "net_toa": lat}
+    fields = {"t_emit": 200 + 0.1 * i, "net_toa": lat, "carnot": np.where(lat > 0, 15.0, 0.0)}
     files = {}
     for lid, x in fields.items():
         s = LAYERS[lid]

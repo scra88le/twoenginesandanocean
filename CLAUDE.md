@@ -27,7 +27,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 
 ```
 /pipeline/pyproject.toml
-/pipeline/src/pipeline Python package: fetch.py, convert.py, derived.py, encode.py, publish.py, cli.py, layers.py
+/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, publish.py, cli.py
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
@@ -224,7 +224,7 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 ### Storage layout
 
 ```
-/manifest.json                      dates, layers, scale/offset, units, build time
+/manifest.json                      dates, built_layers, layers (metadata, encoding, info text), credits, build time
 /fields/{YYYY-MM-DD}/{layer}.png
 /fields/{YYYY-MM-DD}/{layer}_uv.png        vector layers only: u, v components
 /fields/{YYYY-MM-DD}/{layer}_anom.png
@@ -271,6 +271,7 @@ Full-bleed dark map with four overlays:
   - Wind particles, with a level selector (10 m / 100 m / 250 hPa), usable over any raster.
   - Transport arrows (`flux_e`).
 - An anomaly switch applies to the active raster.
+- Layers listed in the manifest but not in `built_layers` are shown disabled ("Not available yet"). Radio buttons give keyboard navigation (Tab into the list, arrow keys select).
 
 ### Time bar
 
@@ -305,7 +306,9 @@ Below the table, a 90-day chart of the active layer at that point, with the clim
 
 ### Info panel
 
-Source dataset and variable, units, sign convention, formula, one paragraph on its meaning for the heat engine, and caveats.
+Source dataset and variable, units, sign convention, formula, one paragraph on its meaning for the heat engine, caveats, what grey cells mean (if the layer masks any), and the data credit.
+
+The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is published in the manifest. Config values the panels quote (`h_lift`, the smoothing length, the mask thresholds) are filled in from `pipeline.derived`, so they can't drift. Shown in a native `<dialog>` (Esc closes it and focus returns to the (i) button).
 
 ### Story mode
 
@@ -350,7 +353,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 3. Write `derived.py`, test-first, with the fixtures above, including the spherical solver for `div_e` and `flux_e`. Tune `smooth_length_m`, then set the `div_e` and `flux_e` encode ranges from a sample of dates across seasons. (**Done** 2026-10-18.)
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit. (**Done** 2026-10-18.)
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value. (**Done** 2026-10-18.)
-6. Layer menu with all scalar layers and info panels.
+6. Layer menu with all scalar layers and info panels. (**Done** 2026-10-18.)
 7. Backfill 90 days. Time bar with play/step/pre-fetch.
 8. Wind particle layer (10 m, 100 m, 250 hPa).
 9. Point chunks, series chunks, readout panel, 90-day chart.

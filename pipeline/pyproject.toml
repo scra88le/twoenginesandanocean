@@ -38,3 +38,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Info-panel prose reads better as whole sentences than wrapped string fragments.
+"src/pipeline/info.py" = ["E501"]

@@ -2,6 +2,19 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-18 — Milestone 6: layer menu and info panels
+
+- **Info text lives in the pipeline** (`pipeline/src/pipeline/info.py`) and is published in the manifest, so every layer's source variables (with ERA5 parameter IDs), formula, sign convention, meaning, caveats and mask explanation sit next to the code that computes it. Values the panels quote, such as `h_lift` = 3000 m, the 100 km smoothing length and the mask thresholds, are filled in from `pipeline.derived`. Tests check that every layer has complete info and that every natural layer names ERA5 as its source. The manifest grew from 14 to 32 kB.
+- **The text is for informed non-specialists**, with formulas and parameter numbers for anyone checking. Numbers it quotes are hedged ("about 240 W m⁻²", "around 5 PW") and match what the 2026-10-01 data showed.
+- **Wind speed caveat added:** speeds come from the daily-mean u and v, so where the wind direction changes during the day they are lower than the day's average speed. The spec didn't mention this.
+- **`built_layers`** in the manifest is the union of the layers published so far. The menu disables the rest, which for now means `human_q` and `human_ratio`, until milestone 11.
+- **Menu:** native radio buttons in one group, one fieldset per story group. A selection made while an earlier layer is still loading wins (stale responses are dropped), and decoded layers are cached per date. The (i) buttons work for disabled layers too, so you can read about a layer before it exists.
+- **Info panel:** a native modal `<dialog>`. Escape and the backdrop close it, and focus returns to the button that opened it.
+- **Carnot hatching:** a `hatch_zero` flag in the catalogue (set for `carnot` only) makes the shader draw light diagonal stripes on cells whose nearest code is the lowest valid code, which is exactly 0 for `carnot`. On 2026-10-01 the 6810 clamped cells are all south of 60°S, on the Antarctic plateau.
+- **Legend notes** explain grey cells (first clause of the mask text), hatching, and "auto" colour ranges. A hover over a masked cell says why it isn't shown.
+- **Narrow screens** (under 700 px): the menu is behind a "Layers" button. The full mobile layout (bottom sheets) is still milestone 13.
+- **Not yet:** the overlay toggles (wind particles, transport arrows; milestone 8) and the anomaly switch (milestone 10) are not in the menu yet, since they would have nothing to show.
+
 ## 2026-10-18 — Milestone 5: map, raster layer, legend and hover
 
 - **Basemap:** a dark background plus Natural Earth 1:50m coastlines and country borders (public domain), minified to 350 kB gzipped and drawn *over* the data with a dark outline under each line. The data covers the whole globe, so tiles under it would never be seen. There's no tile service, API key or licence question. Place labels are not included; a labelled vector style can be added later if wanted.

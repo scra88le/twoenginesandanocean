@@ -138,3 +138,23 @@ def test_dates_are_sorted_and_unique(tmp_path):
 def test_rejects_bad_date_strings(tmp_path):
     with pytest.raises(ValueError):
         publish.publish_date(tmp_path, "../etc", {"x.png": b"x"})
+
+
+def test_manifest_carries_info_hatching_and_built_layers(tmp_path, encoded):
+    files, _ = encoded
+    publish.publish_date(tmp_path, D, files)
+    m = json.loads((tmp_path / "manifest.json").read_text())
+    assert m["layers"]["carnot"]["hatch_zero"] is True
+    assert m["layers"]["olr"]["hatch_zero"] is False
+    assert m["layers"]["p_lift"]["info"]["formula"]
+    assert m["layers"]["g_max"]["info"]["mask"]
+    assert m["built_layers"] == sorted(NATURAL)
+
+
+def test_built_layers_accumulate_across_publishes(tmp_path):
+    publish.publish_date(
+        tmp_path, "2026-10-01", {"olr.png": b"x", "wind10.png": b"x", "wind10_uv.png": b"x"}
+    )
+    publish.publish_date(tmp_path, "2026-10-02", {"precip.png": b"x"})
+    m = json.loads((tmp_path / "manifest.json").read_text())
+    assert m["built_layers"] == ["olr", "precip", "wind10"]

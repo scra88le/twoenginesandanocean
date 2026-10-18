@@ -32,6 +32,7 @@ uniform float u_centre;
 uniform bool u_has_centre;
 uniform float u_opacity;
 uniform vec4 u_mask_colour;
+uniform bool u_hatch_zero;
 in vec2 v_merc;
 out vec4 frag;
 const float PI = 3.141592653589793;
@@ -73,6 +74,10 @@ void main() {
   }
   float t = toT(sum / wsum);
   vec3 rgb = texture(u_lut, vec2(t * (255.0 / 256.0) + 0.5 / 256.0, 0.5)).rgb;
+  // Cells clamped at exactly zero (the lowest valid code) get light diagonal stripes.
+  if (u_hatch_zero && nearest == 2 && mod(gl_FragCoord.x + gl_FragCoord.y, 8.0) < 2.5) {
+    rgb = mix(rgb, vec3(1.0), 0.55);
+  }
   frag = vec4(rgb * u_opacity, u_opacity);
 }`;
 
@@ -83,6 +88,7 @@ export interface RasterData {
   encode: EncodeRange;
   scale: DisplayScale;
   lut: Uint8Array; // 256 x 1 RGBA
+  hatchZero: boolean;
 }
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
@@ -123,7 +129,7 @@ export class RasterLayer implements CustomLayerInterface {
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'link');
     this.program = p;
     for (const n of ['u_matrix', 'u_data', 'u_lut', 'u_size', 'u_scale', 'u_offset', 'u_lo', 'u_hi',
-      'u_centre', 'u_has_centre', 'u_opacity', 'u_mask_colour']) this.loc[n] = gl.getUniformLocation(p, n);
+      'u_centre', 'u_has_centre', 'u_opacity', 'u_mask_colour', 'u_hatch_zero']) this.loc[n] = gl.getUniformLocation(p, n);
     // Mercator x in [-1, 2] covers three world copies; y in [0, 1] is +/-85.05 degrees.
     this.buffer = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
@@ -175,6 +181,7 @@ export class RasterLayer implements CustomLayerInterface {
     gl.uniform1i(this.loc.u_has_centre!, d.scale.centre === null ? 0 : 1);
     gl.uniform1f(this.loc.u_centre!, d.scale.centre === null ? 0 : space(d.scale.centre));
     gl.uniform1f(this.loc.u_opacity!, this.opacity);
+    gl.uniform1i(this.loc.u_hatch_zero!, d.hatchZero ? 1 : 0);
     gl.uniform4f(this.loc.u_mask_colour!, 0.35 * 0.6, 0.37 * 0.6, 0.4 * 0.6, 0.6); // premultiplied grey
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer!);
     const a = gl.getAttribLocation(this.program, 'a_pos');
