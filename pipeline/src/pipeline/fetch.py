@@ -43,8 +43,6 @@ VARIABLES: dict[str, Variable] = dict(
         _v("lsm", "land_sea_mask"),
         _v("p59.162", "vertical_integral_of_kinetic_energy"),
         _v("p86.162", "vertical_integral_of_divergence_of_total_energy_flux"),
-        _v("p75.162", "vertical_integral_of_eastward_total_energy_flux"),
-        _v("p76.162", "vertical_integral_of_northward_total_energy_flux"),
         _v("tsr", "top_net_solar_radiation", "sum"),
         _v("ttr", "top_net_thermal_radiation", "sum"),
         _v("ssr", "surface_net_solar_radiation", "sum"),

@@ -108,7 +108,7 @@ npm run e2e          # Playwright smoke test
   | `str` | `lw_up` = −`str` | Net surface longwave loss, upward positive |
 
   All other fields keep their ERA5 short names. State the convention in each layer's info panel.
-- Vertical integrals (`p…162` params) **are** in the daily product (confirmed 2026-10-17), so the hourly fallback isn't needed. Confirmed NetCDF names and GRIB parameter IDs: `vike` = 162059 (`p59.162`), `vited` = 162086 (`p86.162`), `vitee` = 162075 (`p75.162`), `viten` = 162076 (`p76.162`).
+- Vertical integrals (`p…162` params) **are** in the daily product (confirmed 2026-10-17), so the hourly fallback isn't needed. Confirmed NetCDF names and GRIB parameter IDs: `vike` = 162059 (`p59.162`), `vited` = 162086 (`p86.162`), `vitee` = 162075 (`p75.162`), `viten` = 162076 (`p76.162`). The last two were used only to check the `flux_e` solver and are no longer fetched.
 - **Result format.** Each CDS result is a zip holding one NetCDF per variable, whatever the file is named; each field has a length-1 `valid_time` dimension (and `pressure_level` for 250 hPa). `pipeline.load` treats the archive as untrusted, extracts it to a temporary directory, squeezes the extra dimensions and keys fields by the spec's names.
 - **Regridding.** ERA5's 0.25° grid is point-centred: 1440 × 721 points, lon 0 → 359.75, lat 90 → −90 including both poles. It does not split into 2×2 blocks. Treat each ERA5 point as the centre of a 0.25° cell (pole points are half-cells), roll longitude to −180…180, and remap conservatively to the cell-centred 0.5° grid. Each 0.5° cell then overlaps a 3 × 3 stencil of ERA5 points with weights [½, 1, ½] ⊗ [½, 1, ½], multiplied by cos(lat), and normalised. Test that the global area-weighted mean is preserved. Keep native files for 30 days.
 - Retry CDS requests with exponential backoff (queues can take hours). Each daily run attempts the most recent 10 days and skips dates already built.
@@ -160,14 +160,14 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 | Layer | Formula | Notes |
 | --- | --- | --- |
 | `t_emit` | T_e = (OLR / σ)^(1/4) | |
-| `carnot` | η_C = (T_s − T_e) / T_s | Clamp < 0 to 0 and render clamped cells hatched |
+| `carnot` | η_C = (T_s − T_e) / T_s | Clamp < 0 to 0 and render clamped cells hatched. Clamped cells are exactly 0 (the lowest valid code), which is how the front end finds them |
 | `g_max` | J_opt = R_s / 2; G_max = R_s² / (4 k_r T_s); k_r = 4σT_e³ | Clip T_e to 230–290 K in k_r. Kleidon & Renner single-column model. Land only. |
-| `j_ratio` | r_J = (LE + H) / J_opt | Land only; grey out ocean and sea ice (the model ignores heat storage) |
+| `j_ratio` | r_J = (LE + H) / J_opt | Land only; grey out ocean and sea ice (the model ignores heat storage). Also masked where R_s < 10 W m⁻², where J_opt → 0 and the ratio is meaningless |
 | `evap_frac` | EF = LE / (LE + H) | Mask where LE + H < 10 W m⁻² |
 | `p_lift` | P_lift = P · g · h_lift | P in kg m⁻² s⁻¹; `h_lift` is a config value, default 3000 m, shown in the info panel |
 | wind speed | √(u² + v²) | Keep u, v for the particle texture |
 | `human_ratio` | r_H = q_human / D_BL | Mask where `bld` < 0.01 W m⁻² |
-| `div_e` | (1 − L²∇²) D_s = D, with D = `p86.162` | Implicit diffusion on the sphere: isotropic, preserves the global mean, no pole problem. L is a config value (`smooth_length_m`, default 300 km, tuned in milestone 3) shown in the info panel. The raw field is grid-scale noise on top of the signal |
+| `div_e` | (1 − L²∇²) D_s = D, with D = `p86.162` | Implicit diffusion on the sphere: isotropic, preserves the global mean, no pole problem. L is a config value (`smooth_length_m`, default 100 km, tuned 2026-10-18) shown in the info panel. It removes grid-scale noise only; the weather-scale structure left on a given day is real (see `docs/DECISIONS.md`) |
 | `flux_e` | ∇²χ = D_s − ⟨D_s⟩; F_div = ∇χ | Divergent part of the energy flux, so arrows point from sources to sinks. ⟨·⟩ is the area-weighted global mean, removed so the equation is solvable. The info panel says the circulating part is left out |
 
 **Spherical solver for `div_e` and `flux_e`.** One finite-volume operator on the 0.5° grid (earth radius a = 6.371e6 m): FFT in longitude, then a tridiagonal solve in latitude for each zonal wavenumber. Fluxes through the pole edges are zero because cos(±90°) = 0. The same operator gives both the smoothing and the Poisson solve.
@@ -183,7 +183,7 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 - T_s = 300 K, T_e = 255 K → η_C = 15%
 - R_s = 200 W m⁻², T_s = 300 K, T_e = 255 K → J_opt = 100 W m⁻², G_max ≈ 8.86 W m⁻²
 - Solver: smoothing preserves the global mean and leaves a constant field unchanged; ∇·F_div reproduces D_s − ⟨D_s⟩; Gauss check: the zonal integral of northward F_div across any latitude circle equals the area integral of D_s − ⟨D_s⟩ poleward of it
-- Real-data check (unsmoothed D): the zonal-mean northward F_div matches the zonal mean of raw `p76.162`, because the circulating part carries nothing across a latitude circle
+- Real-data check (unsmoothed D): the zonal-mean northward F_div matches the zonal mean of raw `p76.162`, because the circulating part carries nothing across a latitude circle (**passed** 2026-10-18 on five dates, rms difference ≤ 0.02 PW; `p75.162`/`p76.162` are no longer fetched)
 
 **Later (not MVP):** maximum-power evaporation, LE_opt = s / (s + γ) · J_opt, mapped against actual LE.
 
@@ -210,7 +210,7 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
   - Layers that can go negative even though their display range starts at 0 (`j_conv`, `lh`) are encoded from −100 W m⁻².
   - `evap_frac`: −0.5 to 1.5.
   - `carnot`: 0–45%, so that it covers the 40% validation bound.
-  - `div_e` and `flux_e` have "auto" display ranges. Their fixed encode ranges are set in milestone 2 from the 0.1st–99.9th percentiles over a sample of dates, then recorded in `docs/DECISIONS.md`.
+  - `div_e`: ±2000 W m⁻². `flux_e` components: ±1.5e9 W m⁻¹. Set 2026-10-18 from five dates across seasons (largest values 1793 W m⁻² and 1.06e9 W m⁻¹), with headroom. Their display ranges stay "auto".
   - Anomalies (`{layer}_anom`): a linear range symmetric about zero, ±50% of the display span by default (in the layer's own units, even for log layers), set per layer in `pipeline.layers`.
 - Round-trip error must be below one quantisation step, measured in log space for log layers (tested).
 - **Front-end decoding:** browsers premultiply alpha and may apply colour-space conversion when they decode images, which corrupts packed data, especially v in B+A. Upload textures with `UNPACK_PREMULTIPLY_ALPHA_WEBGL = false` and `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`, or use `createImageBitmap(blob, {premultiplyAlpha: 'none', colorSpaceConversion: 'none'})`. Sample with `NEAREST` filtering and interpolate after decoding. Cover this with a Vitest decode test that uses a fixture PNG with A = 0 texels.
@@ -340,7 +340,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 
 1. Scaffold the repo, tooling, linting, and CI running both test suites. Fill in **Commands**.
 2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. (**Done.** The `div_e` and `flux_e` encode ranges moved to milestone 3, because they depend on the smoothing.)
-3. Write `derived.py`, test-first, with the fixtures above, including the spherical solver for `div_e` and `flux_e`. Tune `smooth_length_m`, then set the `div_e` and `flux_e` encode ranges from a sample of dates across seasons.
+3. Write `derived.py`, test-first, with the fixtures above, including the spherical solver for `div_e` and `flux_e`. Tune `smooth_length_m`, then set the `div_e` and `flux_e` encode ranges from a sample of dates across seasons. (**Done** 2026-10-18.)
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit.
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value.
 6. Layer menu with all scalar layers and info panels.

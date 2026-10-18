@@ -22,7 +22,7 @@ SMOOTH_LENGTH_M = 100e3  # diffusion length for div_e (tuned 2026-10-18); shown 
 T_E_CLIP_K = (230.0, 290.0)  # T_e range used in k_r
 LAND_THRESHOLD = 0.5  # lsm >= this is land
 MIN_TURBULENT_FLUX = 10.0  # W m-2; below this evap_frac is masked
-MIN_SURFACE_SOLAR = 10.0  # W m-2; below this j_ratio is masked (J_opt -> 0)
+MIN_SURFACE_SOLAR = 10.0  # W m-2; below this j_ratio is masked (J_opt -> 0, ratio explodes)
 MIN_DISSIPATION = 0.01  # W m-2; below this human_ratio is masked
 
 
