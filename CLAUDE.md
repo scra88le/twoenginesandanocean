@@ -140,8 +140,8 @@ npm run e2e          # Playwright smoke test
 | `tcwv` | Column water vapour | 7 Water | `tcwv` | kg m⁻² | rain | 0–70 |
 | `precip` | Precipitation | 7 Water | `tp` | mm day⁻¹ | rain, log | 0.1–100 |
 | `p_lift` | Power lifting water (indicative) | 7 Water | derived (`tp`) | W m⁻² | deep, log | 0.01–10 |
-| `div_e` | Divergence of total energy flux | 8 Transport | `p86.162` | W m⁻² | balance | auto |
-| `flux_e` | Poleward energy transport (arrows) | 8 Transport | `p75.162`, `p76.162` | W m⁻¹ | cividis | auto |
+| `div_e` | Divergence of total energy flux (smoothed) | 8 Transport | derived (`p86.162`) | W m⁻² | balance | auto |
+| `flux_e` | Divergent energy transport (arrows) | 8 Transport | derived (`div_e`) | W m⁻¹ | cividis | auto |
 | `human_q` | Human energy use density | 9 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
 | `human_ratio` | Human ÷ natural dissipation | 9 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
 
@@ -167,6 +167,10 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 | `p_lift` | P_lift = P · g · h_lift | P in kg m⁻² s⁻¹; `h_lift` is a config value, default 3000 m, shown in the info panel |
 | wind speed | √(u² + v²) | Keep u, v for the particle texture |
 | `human_ratio` | r_H = q_human / D_BL | Mask where `bld` < 0.01 W m⁻² |
+| `div_e` | (1 − L²∇²) D_s = D, with D = `p86.162` | Implicit diffusion on the sphere: isotropic, preserves the global mean, no pole problem. L is a config value (`smooth_length_m`, default 300 km, tuned in milestone 3) shown in the info panel. The raw field is grid-scale noise on top of the signal |
+| `flux_e` | ∇²χ = D_s − ⟨D_s⟩; F_div = ∇χ | Divergent part of the energy flux, so arrows point from sources to sinks. ⟨·⟩ is the area-weighted global mean, removed so the equation is solvable. The info panel says the circulating part is left out |
+
+**Spherical solver for `div_e` and `flux_e`.** One finite-volume operator on the 0.5° grid (earth radius a = 6.371e6 m): FFT in longitude, then a tridiagonal solve in latitude for each zonal wavenumber. Fluxes through the pole edges are zero because cos(±90°) = 0. The same operator gives both the smoothing and the Poisson solve.
 
 **Model background for `g_max` and `j_ratio`.** Absorbed surface solar R_s balances net longwave loss, linearised as k_r(T_s − T_a), plus the convective flux J. Convective power is J(T_s − T_a)/T_s. Maximising over J gives J_opt and G_max.
 
@@ -178,6 +182,8 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 - OLR = 240 W m⁻² → T_e ≈ 255.1 K
 - T_s = 300 K, T_e = 255 K → η_C = 15%
 - R_s = 200 W m⁻², T_s = 300 K, T_e = 255 K → J_opt = 100 W m⁻², G_max ≈ 8.86 W m⁻²
+- Solver: smoothing preserves the global mean and leaves a constant field unchanged; ∇·F_div reproduces D_s − ⟨D_s⟩; Gauss check: the zonal integral of northward F_div across any latitude circle equals the area integral of D_s − ⟨D_s⟩ poleward of it
+- Real-data check (unsmoothed D): the zonal-mean northward F_div matches the zonal mean of raw `p76.162`, because the circulating part carries nothing across a latitude circle
 
 **Later (not MVP):** maximum-power evaporation, LE_opt = s / (s + γ) · J_opt, mapped against actual LE.
 
@@ -333,8 +339,8 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 ## Milestones
 
 1. Scaffold the repo, tooling, linting, and CI running both test suites. Fill in **Commands**.
-2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. Settle what `div_e` and `flux_e` show, then set their encode ranges (**done except the last part**, which waits on that decision).
-3. Write `derived.py`, test-first, with the fixtures above.
+2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. (**Done.** The `div_e` and `flux_e` encode ranges moved to milestone 3, because they depend on the smoothing.)
+3. Write `derived.py`, test-first, with the fixtures above, including the spherical solver for `div_e` and `flux_e`. Tune `smooth_length_m`, then set the `div_e` and `flux_e` encode ranges from a sample of dates across seasons.
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit.
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value.
 6. Layer menu with all scalar layers and info panels.
@@ -373,8 +379,8 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 | Item | Risk or question | Proposed handling |
 | --- | --- | --- |
 | Human energy data | Which gridded anthropogenic heat flux dataset, and is its licence compatible? | Shortlist published datasets (e.g. Varquez et al., 2021, *Scientific Data*). Fall back to OWID country totals. |
-| `div_e` noise | Daily 0.5° `p86.162` is dominated by grid-scale noise (rms 535 W m⁻², 55% of it finer than 5×5 cells; net TOA is 8%), although zonal means track net TOA correctly | **Decision needed.** See `docs/DECISIONS.md` for options (spatial smoothing, or deriving it from the energy budget) |
-| `flux_e` content | Raw `p75.162`/`p76.162` are dominated by a large circulation component (local rms 2.6e10 W m⁻¹ vs zonal-mean transport under 1e9), so arrows would show circulation, not poleward transport | **Decision needed.** Use the divergent part of the flux instead (see `docs/DECISIONS.md`) |
+| `div_e` noise | Daily 0.5° `p86.162` is dominated by grid-scale noise | **Decided 2026-10-18:** smooth with implicit diffusion (see Derived quantities) |
+| `flux_e` content | Raw `p75.162`/`p76.162` are dominated by circulation that carries no energy poleward | **Decided 2026-10-18:** draw only the divergent part, from smoothed `div_e` |
 | KE generation | No direct ERA5 field; `bld` covers boundary-layer friction only | Later: check the definition of `p64.162`, or compute pressure-gradient work |
 | Max-power model | Single-column, no storage; absolute values are illustrative | Land-only display; compare against Kleidon's published estimates; label as model-based |
 | Data lag | ~6 days | State it clearly; later add ECMWF open data / GFS for same-day winds |

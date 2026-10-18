@@ -2,6 +2,18 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-18 — `div_e` is smoothed; `flux_e` shows the divergent flux
+
+Decided by the project owner, choosing options 1 and 3 below (evidence in the milestone 2 entry).
+
+- **`div_e`** is ERA5 `p86.162` smoothed on the sphere by implicit diffusion: solve (1 − L²∇²) D_s = D. This damps grid-scale noise while leaving the global mean and large-scale pattern alone, and it is isotropic on the sphere, so there are no polar artefacts as with a lat-lon box filter. A wave of wavelength λ is damped by a factor of 1 / (1 + (2πL/λ)²). The length scale L is a config value (`smooth_length_m`, default 300 km), tuned in milestone 3 so that the fine-scale share of the rms is close to that of net TOA radiation (about 10%). The info panel states L and that the field is smoothed.
+- **`flux_e`** is the divergent part of the energy flux: solve ∇²χ = D_s − ⟨D_s⟩ and draw F_div = ∇χ. Its divergence is `div_e`, so the arrows run from energy sources (tropics) to sinks (poles), which is the transport the story step is about. The circulating part (k × ∇ψ in the Helmholtz decomposition) is left out. It dominates the raw `p75.162`/`p76.162` field but carries nothing across a latitude circle. The info panel says so. The global mean ⟨D_s⟩ (−0.04 W m⁻² on 2026-10-01) is removed so the equation has a solution.
+- **One solver for both**, in `pipeline.derived`: a finite-volume Laplacian on the cell-centred 0.5° grid, FFT in longitude and a tridiagonal solve in latitude for each zonal wavenumber. Numpy only, no new dependency.
+- **Checks** (milestone 3): smoothing preserves the global mean; ∇·F_div reproduces the input; the zonal integral of northward F_div across each latitude circle equals the area integral of the source poleward of it (exact at the discrete level for a finite-volume operator). On real data with unsmoothed D, the zonal-mean northward F_div should match the zonal mean of raw `p76.162`, which checks the solver against ERA5's own flux.
+- **`p75.162` and `p76.162`** are no longer layer inputs. They stay in the fetch until that real-data check passes, then they can be dropped.
+- **Rejected:** deriving `div_e` from the surface and TOA energy budget (option 2). It needs `str` fetched and ignores heat storage, and the smoothed ERA5 field stays closer to the source variable.
+- **Encode ranges** for `div_e` and `flux_e` move to milestone 3. They depend on L and are set from a sample of dates across seasons.
+
 ## 2026-10-17 — Milestone 2 findings
 
 - **Dataset IDs confirmed** in the CDS catalogue: `derived-era5-single-levels-daily-statistics`, `derived-era5-pressure-levels-daily-statistics`, `reanalysis-era5-single-levels`, `reanalysis-era5-single-levels-monthly-means`. Latest daily data was 2026-10-11 on 2026-10-17, so the lag is 6 days, as expected.
@@ -18,7 +30,7 @@ A log of deviations from the plan and choices made during the build. Newest firs
 - **Real-data check, 2026-10-01** (0.5° grid, area-weighted global means): `tsr` 243.6, `olr` 243.1, `ssr` 164.5 W m⁻²; `tp` 3.07 mm/day; land fraction 28.9%; latent heat 110 W m⁻² over ocean and 42 over land; sensible heat 11.5 and 28.7. All within the validation ranges, no missing cells, and the global-mean divergence of the energy flux is −0.04 W m⁻².
 - **`fetch` is idempotent and non-blocking.** `fetch_date` skips downloaded files, downloads finished requests (via a `.part` file), resubmits failed ones, and keeps queued request IDs in `raw/pending.json`. `--wait` polls with exponential backoff capped at 5 minutes.
 
-### Open decision: what `div_e` and `flux_e` should show
+### What `div_e` and `flux_e` should show (decided 2026-10-18, see above)
 
 Evidence from 2026-10-01:
 
@@ -59,4 +71,4 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 
 ### Still open
 
-- What `div_e` and `flux_e` should show (see above), and therefore their encode ranges.
+- `div_e` and `flux_e` encode ranges, after the smoothing length is tuned (milestone 3).
