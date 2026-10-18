@@ -1,10 +1,12 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
-const OUT_DIR = resolve(fileURLToPath(new URL('.', import.meta.url)), '../out');
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+// DATA_ROOT overrides the data root (the e2e test points it at e2e/fixtures/data).
+const OUT_DIR = resolve(HERE, process.env.DATA_ROOT ?? '../out');
 
 const TYPES: Record<string, string> = {
   '.json': 'application/json',
@@ -13,22 +15,26 @@ const TYPES: Record<string, string> = {
   '.bin': 'application/octet-stream',
 };
 
-// Serves ../out under /data/ so the dev server uses the pipeline output as its data root.
+// Serves the data root under /data/ in `vite dev` and `vite preview`.
 function serveOut(): Plugin {
+  const handler = (
+    req: { url?: string },
+    res: import('node:http').ServerResponse,
+    next: () => void,
+  ) => {
+    const rel = normalize(decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/'));
+    const file = join(OUT_DIR, rel);
+    if (!file.startsWith(OUT_DIR + sep) || !existsSync(file) || !statSync(file).isFile()) {
+      next();
+      return;
+    }
+    res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
+    createReadStream(file).pipe(res);
+  };
   return {
     name: 'serve-out',
-    configureServer(server) {
-      server.middlewares.use('/data', (req, res, next) => {
-        const rel = normalize(decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/'));
-        const file = join(OUT_DIR, rel);
-        if (!file.startsWith(OUT_DIR) || !existsSync(file) || !statSync(file).isFile()) {
-          next();
-          return;
-        }
-        res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
-        createReadStream(file).pipe(res);
-      });
-    },
+    configureServer: (server) => void server.middlewares.use('/data', handler),
+    configurePreviewServer: (server) => void server.middlewares.use('/data', handler),
   };
 }
 

@@ -20,6 +20,11 @@ dev = [
     "pytest",
     "ruff",
 ]
+# One-off tools: exporting colour maps for the front end (pipeline/scripts/)
+tools = [
+    "matplotlib",
+    "cmocean",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

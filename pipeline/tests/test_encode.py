@@ -62,9 +62,17 @@ def test_nan_is_nodata_and_mask_wins_over_values():
     assert np.isnan(d[:3]).all() and d[3] == pytest.approx(5.0, abs=1e-3)
 
 
-def test_log_layers_mark_non_positive_values_as_masked():
-    q, _ = quantise(np.array([0.0, -1.0, 1.0]), np.zeros(3, bool), 1e-3, 1e3, log=True)
-    assert list(q[:2]) == [MASKED, MASKED] and q[2] >= FIRST_VALID
+def test_log_layers_store_values_below_the_floor_as_the_floor():
+    # Zero rain is a value, not a gap: it is stored as the floor ("below the range").
+    x = np.array([0.0, -1.0, 1e-6, 1.0])
+    q, clipped = quantise(x, np.zeros(4, bool), 1e-3, 1e3, log=True)
+    assert list(q[:3]) == [FIRST_VALID] * 3 and q[3] > FIRST_VALID
+    assert clipped == 0  # expected for amounts, so not counted
+
+
+def test_log_layers_count_values_above_the_top():
+    q, clipped = quantise(np.array([1e4]), np.zeros(1, bool), 1e-3, 1e3, log=True)
+    assert clipped == 1 and q[0] == MAX_INT
 
 
 def test_out_of_range_values_are_clipped_and_counted():

@@ -32,6 +32,10 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
 /web/src/layers        raster.ts, particles.ts, arrows.ts
+/web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
+/web/tests/fixtures    PNGs from the real encoder, for decoder tests
+/web/e2e/fixtures/data a small data root (manifest + two layers) for the Playwright test
+/pipeline/scripts      export_colormaps.py (writes web/src/colormap-tables.json), make_web_fixtures.py
 /story                 01-fuel.md … 09-humans.md  (story-mode card text, 60–100 words each)
 /docs/DECISIONS.md     log of deviations and choices made during the build
 /.github/workflows/ci.yml       lint + tests for both stacks (milestone 1)
@@ -56,12 +60,16 @@ python -m pipeline.cli climatology --out ./out               # one-off, 1991–2
 
 # Front end
 cd web && npm install
-npm run dev          # serves ../out at /data/ as the data root
+npm run dev          # serves ../out at /data/ as the data root (DATA_ROOT=... overrides)
 npm run lint
 npm run typecheck
 npm test             # Vitest
 npx playwright install chromium   # first time only
-npm run e2e          # Playwright smoke test
+npm run e2e          # Playwright: builds, then tests the production build against e2e/fixtures/data
+
+# Regenerate committed front-end assets (only when the encoder or colour scales change)
+python pipeline/scripts/make_web_fixtures.py
+pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.py web/src/colormap-tables.json
 ```
 
 ## Tech stack
@@ -72,7 +80,7 @@ npm run e2e          # Playwright smoke test
 | Scheduler | GitHub Actions cron, daily; CDS API key as a repo secret |
 | Storage | Cloudflare R2 or AWS S3, public read |
 | Front end | Vite + TypeScript |
-| Map | MapLibre GL JS, openly licensed dark vector basemap |
+| Map | MapLibre GL JS 6, mercator. Dark background with Natural Earth coastlines and borders drawn over the data; no tile service or API key |
 | Rasters | Custom WebGL layer in MapLibre; decode packed PNGs, colour scale in a fragment shader |
 | Wind | Custom WebGL particle layer (earth.nullschool / webgl-wind technique) |
 | Panel charts | Observable Plot or uPlot |
@@ -204,14 +212,14 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 - Scalar layers: uint16 packed into an RGB PNG, R = high byte, G = low byte, B = 0 (no alpha).
   - Reserved codes: **0 = no data** (missing input), **1 = masked** (land-only layer over ocean, or a threshold mask such as `evap_frac` where LE + H < 10). Valid data uses 2–65535.
   - Linear layers: value = offset + scale × (int − 2).
-  - Log layers (any layer marked "log" in the catalogue): log₁₀(value) = offset + scale × (int − 2). Linear packing can't work for these; for example, linear packing of `human_q` gives a step of about 1.8e-3, larger than its 0.001 floor. Values ≤ 0 are coded as masked.
+  - Log layers (any layer marked "log" in the catalogue): log₁₀(value) = offset + scale × (int − 2). Linear packing can't work for these; for example, linear packing of `human_q` gives a step of about 1.8e-3, larger than its 0.001 floor. Values below the floor, including zero (no rain, no human energy use), are stored as the floor and read as "< floor"; they don't count as clipped.
 - Vector layers (`wind10`, `wind100`, `jet250`, `flux_e`) get **two files**: `{layer}.png`, the magnitude, packed like any scalar layer (so every raster decodes the same way and the front end never computes √(u² + v²)); and `{layer}_uv.png`, with u in R+G and v in B+A of an RGBA PNG, linear packing, same reserved codes.
 - **Encode ranges and resolutions** are fixed per layer, not per day, live in one table, `pipeline.layers`, and are stored in the manifest as `lo`, `hi`, `scale` and `offset`.
   - `scale` is a fixed **resolution** per layer, about what the data and display can resolve (0.1–0.25 W m⁻² for most fluxes, 0.02 K, 0.002 decades for log layers, and so on). It is not the range divided by 65 533: a step finer than the data leaves the low byte as noise that PNG can't compress, and pushed every file past 400 kB. Each resolution must be at most 1/1000 of the display span, and the encode range must fit in 65 533 steps (tested).
   - Encode ranges are wide enough not to clip real values (based on physical limits and the 2026-10-01 data); values outside are clipped to the ends and counted. For example `lh` −200 to 1200 W m⁻², `evap_frac` −20 to 20, `carnot` 0–45% (covers the 40% validation bound), `div_e` ±2000 W m⁻², `flux_e` components ±1.5e9 W m⁻¹.
   - Anomalies (`{layer}_anom`): a linear range symmetric about zero, ±50% of the display span by default (the encode span for "auto" layers), in the layer's own units even for log layers. Resolution as the layer, or a tenth of the display floor for log layers.
 - Round-trip error must be below one quantisation step, measured in log space for log layers (tested).
-- **Front-end decoding:** browsers premultiply alpha and may apply colour-space conversion when they decode images, which corrupts packed data, especially v in B+A. Upload textures with `UNPACK_PREMULTIPLY_ALPHA_WEBGL = false` and `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`, or use `createImageBitmap(blob, {premultiplyAlpha: 'none', colorSpaceConversion: 'none'})`. Sample with `NEAREST` filtering and interpolate after decoding. Cover this with a Vitest decode test that uses a fixture PNG with A = 0 texels.
+- **Front-end decoding:** browsers premultiply alpha and may apply colour-space conversion when they decode images, which corrupts packed data, especially v in B+A. So PNGs are **decoded in JS** (`web/src/png.ts`: `DecompressionStream` plus PNG unfiltering, 8-bit RGB/RGBA only), never through `<img>` or `createImageBitmap`. The same bytes go to the GPU as an integer texture (`RGB8UI`, read with `texelFetch`) and to the CPU for hover and readout values. The shader interpolates bilinearly after decoding, skipping no-data and masked neighbours. Vitest decodes fixture PNGs made by the real encoder, including one where every texel has A = 0.
 
 ### Storage layout
 
@@ -341,7 +349,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 2. Fetch + convert for one fixed date. Download all inputs, apply the ingestion rules, save a tidy NetCDF. Test sign flips, unit conversions and conservative regridding. Confirm the vertical-integral and pressure-level dataset availability and the monthly-means accumulation period. (**Done.** The `div_e` and `flux_e` encode ranges moved to milestone 3, because they depend on the smoothing.)
 3. Write `derived.py`, test-first, with the fixtures above, including the spherical solver for `div_e` and `flux_e`. Tune `smooth_length_m`, then set the `div_e` and `flux_e` encode ranges from a sample of dates across seasons. (**Done** 2026-10-18.)
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit. (**Done** 2026-10-18.)
-5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value.
+5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value. (**Done** 2026-10-18.)
 6. Layer menu with all scalar layers and info panels.
 7. Backfill 90 days. Time bar with play/step/pre-fetch.
 8. Wind particle layer (10 m, 100 m, 250 hPa).
@@ -388,6 +396,6 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 | Storage growth | 6.3 MB of field PNGs per date (2026-10-01), so ~570 MB for 90 days, about double with anomalies | Monitor against free tiers (R2: 10 GB) |
 | Write operations | Series rebuild is 648 tiles × 24 layers ≈ 15.5k objects/day (~470k/month), plus fields and points | Within R2's free tier for writes, but monitor; skip uploading unchanged objects |
 | PNG size | The low byte of a uint16 is noise when the step is finer than the data | **Resolved** with per-layer resolutions: 91–344 kB per file on 2026-10-01. Re-check on stormy winter dates |
-| Basemap | Licence and attribution | Openly licensed style, credited |
+| Basemap | Licence and attribution | **Resolved:** Natural Earth (public domain), credited in the footer. Place labels are not included yet |
 
 Record answers to these in `docs/DECISIONS.md` as they are resolved.

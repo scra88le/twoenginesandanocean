@@ -1,0 +1,23 @@
+:root {
+  --ground: #0b0e14;
+  --panel: rgba(17, 21, 30, 0.88);
+  --text: #e6e8ec;
+  --muted: #a3a9b4;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+html, body { margin: 0; height: 100%; background: var(--ground); color: var(--text); }
+#app, #map { position: absolute; inset: 0; }
+.panel { position: absolute; background: var(--panel); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+#legend { left: 12px; bottom: 44px; width: min(320px, calc(100vw - 48px)); }
+.legend-title { font-weight: 600; margin-bottom: 6px; }
+.legend-title .units { white-space: nowrap; }
+.legend-bar { height: 12px; border-radius: 3px; }
+.legend-ticks { position: relative; height: 16px; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.legend-ticks span:first-child { transform: none; }
+.legend-ticks span:last-child { transform: translateX(-100%); }
+.legend-value { margin-top: 6px; font-variant-numeric: tabular-nums; }
+#date { left: 12px; top: 12px; color: var(--muted); }
+#credits { left: 12px; right: 12px; bottom: 8px; font-size: 10px; color: var(--muted); padding: 4px 8px; }
+.fatal { max-width: 32em; margin: 20vh auto; padding: 0 16px; font-size: 16px; line-height: 1.5; }

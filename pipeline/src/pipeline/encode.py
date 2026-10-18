@@ -45,15 +45,14 @@ def quantise(
     """Values -> uint16 codes. Returns (codes, number of valid values clipped to the range).
 
     Masked cells get code 1 whatever their value; NaN elsewhere gets 0. For log layers,
-    values <= 0 can't be shown and are coded as masked.
+    values below the floor, including zero (no rain, no human energy use), are stored as the
+    floor and read as "below the range"; they are expected, so they don't count as clipped.
     """
     scale, _ = scale_offset(lo, hi, log, step)
     x = np.asarray(values, dtype="float64")
     masked = np.asarray(masked, dtype=bool)
     if log:
-        masked = masked | (x <= 0)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            x = np.log10(np.where(masked, np.nan, x))
+        x = np.log10(np.where(masked, np.nan, np.maximum(x, lo)))  # NaN stays NaN
     a, b = _space(lo, hi, log)
     valid = np.isfinite(x) & ~masked
     clipped = int((valid & ((x < a) | (x > b))).sum())

@@ -2,6 +2,21 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-18 — Milestone 5: map, raster layer, legend and hover
+
+- **Basemap:** a dark background plus Natural Earth 1:50m coastlines and country borders (public domain), minified to 350 kB gzipped and drawn *over* the data with a dark outline under each line. The data covers the whole globe, so tiles under it would never be seen. There's no tile service, API key or licence question. Place labels are not included; a labelled vector style can be added later if wanted.
+- **Raster layer** (`web/src/layers/raster.ts`): a MapLibre custom layer that draws one quad over three world copies in mercator space. The fragment shader works out lat/lon from mercator coordinates, reads codes from an `RGB8UI` integer texture with `texelFetch`, interpolates bilinearly in encoded space (so log layers interpolate in log space) using only valid neighbours, and looks up a 256-entry colour texture. A no-data texel is transparent; a masked texel is semi-transparent grey. It uses `defaultProjectionData.mainMatrix`, which MapLibre documents as enough for a mercator-only layer, so globe projection is not supported.
+- **PNG decoding in JS** instead of `createImageBitmap`. A small decoder (`DecompressionStream` plus unfiltering) gives the exact bytes for both the texture and the hover lookup, with no premultiplied alpha or colour management involved. This replaces the `UNPACK_*`/`createImageBitmap` approach in the spec; `UNPACK_PREMULTIPLY_ALPHA_WEBGL` is still set to false before uploads.
+- **Colour scales** are exported once from matplotlib/cmocean (`pipeline/scripts/export_colormaps.py`) into `web/src/colormap-tables.json` (15 kB, 10 scales). The web build doesn't need Python.
+- **Display mapping:** linear, log (decades) and centred scales (the centre maps to the middle of the colour bar even when the range isn't symmetric, as for `human_ratio`). "auto" uses the day's 2nd–98th percentile, symmetric about zero when the centre is 0. The shader and `scale.ts` use the same formula. Log tick labels are powers of ten.
+- **Hover value:** the value of the cell under the cursor, with decimals set by the layer's resolution, °C in brackets for kelvin, "Not shown here (masked)" for masked cells, and "< floor" at the floor of log layers.
+- **Fix found during the visual check:** log layers used to code values ≤ 0 as masked, so dry areas looked like missing data on the `precip` map. Values below a log layer's floor, including zero, are now stored as the floor (code 2) and read as "< 0.001 mm day⁻¹", and they no longer count as clipped. Masking is only for deliberate masks.
+- **MapLibre 6 worker:** MapLibre looks for `maplibre-gl-worker.mjs` next to its own module, which a bundled build doesn't have, so the production site would have had no map. The worker URL is now imported with `?url` and passed to `setWorkerUrl`. The Playwright test runs against the production build (`vite build` + `vite preview`) so this kind of failure is caught.
+- **Playwright test:** it uses a committed fixture data root (`t_emit` = 200 + 0.1·column K) and checks the legend, the credits, the hover value at a known cell (236.00 K), and the rendered pixel colour at the centre against the colour scale (within 3 levels per channel). That covers the shader's decode, colour mapping and blending end to end. A second test checks the plain message when WebGL2 is missing. Chromium runs with SwiftShader so WebGL2 works headless and in CI.
+- **Credits** are in the footer: the Copernicus text from the manifest, plus Natural Earth and MapLibre. MapLibre's own attribution box is turned off because it overlapped the footer.
+- **Temporary URL parameters** `?layer=`, `?date=`, `?center=lng,lat` and `?zoom=` are read so a view can be opened directly. They are not written back to the URL; full URL state is milestone 13.
+- **Not yet:** `carnot` hatching of clamped cells (milestone 6, with all layers), the layer menu, info panels, and the time bar.
+
 ## 2026-10-18 — Milestone 4: encoding, storage layout and manifest
 
 - **New modules:**
