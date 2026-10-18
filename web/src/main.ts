@@ -15,11 +15,14 @@ import { fieldUrl, loadManifest, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
 import { decodePng } from './png';
 import { displayScale } from './scale';
+import { TimeBar, nearbyDates } from './timebar';
 
 setWorkerUrl(workerUrl);
 
 const DATA = import.meta.env.VITE_DATA_URL ?? '/data';
 const DEFAULT_LAYER = 'net_toa';
+const PREFETCH_DAYS = 3;
+const CACHE_SIZE = 40; // decoded fields, about 1.3 MB each
 
 function fail(message: string): void {
   const app = document.getElementById('app')!;
@@ -44,45 +47,63 @@ interface LoadedField {
 }
 
 class App {
-  private readonly cache = new Map<string, Promise<LoadedField>>();
+  private readonly cache = new Map<string, Promise<LoadedField>>(); // insertion order = LRU
   private codes: Uint16Array | null = null;
   private layerId = '';
   private request = 0;
 
   constructor(
     private readonly manifest: Manifest,
-    private readonly date: string,
+    private date: string,
     private readonly raster: RasterLayer,
     private readonly legend: Legend,
     private readonly menu: LayerMenu,
   ) {}
 
-  private load(layer: string): Promise<LoadedField> {
-    const key = `${this.date}/${layer}`;
+  private load(date: string, layer: string): Promise<LoadedField> {
+    const key = `${date}/${layer}`;
     let p = this.cache.get(key);
-    if (!p) {
-      p = fetch(fieldUrl(DATA, this.manifest, this.date, layer)).then(async (r) => {
+    if (p) {
+      this.cache.delete(key); // refresh its place in the LRU order
+    } else {
+      p = fetch(fieldUrl(DATA, this.manifest, date, layer)).then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const png = await decodePng(await r.arrayBuffer());
         return { width: png.width, height: png.height, rgb: png.data, codes: scalarCodes(png) };
       });
       p.catch(() => this.cache.delete(key));
-      this.cache.set(key, p);
     }
+    this.cache.set(key, p);
+    while (this.cache.size > CACHE_SIZE) this.cache.delete(this.cache.keys().next().value!);
     return p;
+  }
+
+  private prefetch(layer: string): void {
+    const i = this.manifest.dates.indexOf(this.date);
+    for (const d of nearbyDates(this.manifest.dates, i, PREFETCH_DAYS)) {
+      this.load(d, layer).catch(() => undefined);
+    }
+  }
+
+  setDate(date: string): Promise<void> {
+    this.date = date;
+    return this.select(this.layerId || DEFAULT_LAYER);
   }
 
   async select(layer: string): Promise<void> {
     const meta = this.manifest.layers[layer];
     if (!meta) return;
     const request = ++this.request;
+    const date = this.date;
     this.menu.setSelected(layer);
     let field: LoadedField;
     try {
-      field = await this.load(layer);
+      field = await this.load(date, layer);
     } catch (e) {
       if (request === this.request) {
-        this.legend.showMessage(`No data for ${meta.title} on ${this.date} (${e instanceof Error ? e.message : e})`);
+        this.codes = null;
+        this.layerId = layer;
+        this.legend.showMessage(`No data for ${meta.title} on ${date} (${e instanceof Error ? e.message : e})`);
       }
       return;
     }
@@ -96,6 +117,8 @@ class App {
     this.codes = field.codes;
     this.layerId = layer;
     document.body.dataset.layer = layer;
+    document.body.dataset.date = date;
+    this.prefetch(layer);
   }
 
   hover(lng: number, lat: number): void {
@@ -132,7 +155,6 @@ async function start(): Promise<void> {
   });
   document.getElementById('credits')!.textContent =
     `${manifest.credits} Coastlines and borders: Natural Earth (public domain). Map rendering: MapLibre GL JS.`;
-  document.getElementById('date')!.textContent = `${date} · ERA5, about 6 days behind real time`;
 
   const info = new InfoPanel(document.getElementById('info') as HTMLDialogElement);
   const raster = new RasterLayer('field');
@@ -147,6 +169,7 @@ async function start(): Promise<void> {
   );
   const app = new App(manifest, date, raster, legend, menu);
   handlers.select = (id) => void app.select(id);
+  new TimeBar(document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d));
 
   const toggle = document.getElementById('menu-toggle')!;
   toggle.addEventListener('click', () => {

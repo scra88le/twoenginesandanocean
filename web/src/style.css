@@ -18,7 +18,6 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 .legend-ticks span:first-child { transform: none; }
 .legend-ticks span:last-child { transform: translateX(-100%); }
 .legend-value { margin-top: 6px; font-variant-numeric: tabular-nums; }
-#date { left: 12px; top: 12px; color: var(--muted); }
 #credits { left: 12px; right: 12px; bottom: 8px; font-size: 10px; color: var(--muted); padding: 4px 8px; }
 .fatal { max-width: 32em; margin: 20vh auto; padding: 0 16px; font-size: 16px; line-height: 1.5; }
 
@@ -72,6 +71,28 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 /* Narrow screens: the menu sits behind a button (the full mobile layout is milestone 13). */
 @media (max-width: 700px) {
   #menu-toggle { display: block; }
-  #menu { display: none; top: 56px; left: 12px; right: 12px; width: auto; }
+  #menu { display: none; top: 56px; left: 12px; right: 12px; width: auto; bottom: 44px; z-index: 2; }
+  #timebar { top: auto; bottom: 44px; left: 12px; right: 12px; flex-wrap: wrap; }
+  .tb-text { flex: 1 0 100%; flex-direction: row; gap: 8px; align-items: baseline; }
+  #legend { bottom: 132px; }
   body.menu-open #menu { display: block; }
+}
+
+/* Time bar */
+#timebar {
+  left: calc(12px + min(320px, calc(100vw - 48px)) + 36px); right: calc(300px + 36px); bottom: 44px;
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+}
+#timebar button {
+  flex: none; width: 30px; height: 30px; border-radius: 6px; border: 1px solid #3a4252;
+  background: transparent; color: var(--text); font-size: 15px; cursor: pointer;
+}
+#timebar button:hover { border-color: var(--text); }
+.tb-range { flex: 1; min-width: 80px; accent-color: #7aa7ff; }
+.tb-text { flex: none; display: flex; flex-direction: column; line-height: 1.25; }
+.tb-date { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tb-note { color: var(--muted); font-size: 11px; }
+@media (min-width: 701px) and (max-width: 1100px) {
+  #timebar { left: 12px; right: 12px; bottom: auto; top: 12px; }
+  #menu { top: 70px; }
 }

@@ -11,3 +11,4 @@ out/*
 !out/.gitkeep
 raw/
 work/
+logs-local/
