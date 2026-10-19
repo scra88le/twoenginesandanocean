@@ -6,8 +6,8 @@ const meta = (over: Partial<LayerMeta>): LayerMeta => ({
   title: 't', group: 1, group_name: 'Fuel', units: 'W m-2', colour: 'viridis', display: [0, 100],
   log: false, centre: null, vector: false, anomaly: true,
   encode: { lo: 0, hi: 200, log: false, scale: 0.1, offset: 0 }, uv_encode: null, anomaly_encode: null,
-  hatch_zero: false,
-  info: { summary: '', source: '', formula: '', sign: '', meaning: '', caveats: '', mask: null },
+  anomaly_display: null, anomaly_colour: null, hatch_zero: false,
+  info: { summary: '', source: '', formula: '', sign: '', meaning: '', caveats: '', mask: null, anomaly: '' },
   ...over,
 });
 

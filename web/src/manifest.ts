@@ -17,6 +17,7 @@ export interface LayerInfo {
   meaning: string;
   caveats: string;
   mask: string | null;
+  anomaly: string; // how the anomaly is made, or why there is none
 }
 
 export interface LayerMeta {
@@ -29,7 +30,9 @@ export interface LayerMeta {
   log: boolean;
   centre: number | null;
   vector: boolean;
-  anomaly: boolean;
+  anomaly: boolean; // has an anomaly variant
+  anomaly_display: [number, number] | null;
+  anomaly_colour: string | null;
   encode: EncodeRange;
   uv_encode: EncodeRange | null;
   anomaly_encode: EncodeRange | null;
@@ -44,11 +47,19 @@ export interface Manifest {
   built_layers: string[];
   grid: Grid;
   codes: { nodata: number; masked: number; first_valid: number };
-  files: { field: string; uv: string };
+  files: { field: string; uv: string; anomaly: string };
+  clim?: ClimMeta | null; // null until the climatology job has run
   layers: Record<string, LayerMeta>;
   points?: PointsMeta; // absent in manifests from before milestone 9
   series?: { file: string; magic: string };
   credits: string;
+}
+
+export interface ClimMeta {
+  period: string; // "1991-2020"
+  layers: string[];
+  file: string; // clim/{MM}/{layer}.png
+  series: string; // clim/series/{layer}/{tx}_{ty}.bin: 12 months x tile x tile codes
 }
 
 /** A readout-only quantity in the point chunks (not a map layer). */
@@ -81,4 +92,13 @@ export function uvUrl(base: string, m: Manifest, date: string, layer: string): s
 
 export function tileUrl(base: string, template: string, vars: Record<string, string | number>): string {
   return `${base}/${template.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k]))}`;
+}
+
+export function anomalyUrl(base: string, m: Manifest, date: string, layer: string): string {
+  return tileUrl(base, m.files.anomaly, { date, layer });
+}
+
+/** Whether the anomaly of a layer can be shown: it has one and the climatology is published. */
+export function hasAnomaly(m: Manifest, layer: string): boolean {
+  return !!m.layers[layer]?.anomaly && !!m.clim?.layers.includes(layer);
 }

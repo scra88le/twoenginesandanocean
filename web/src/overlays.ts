@@ -54,3 +54,36 @@ export class OverlayControls {
     return { on: this.checkbox.checked, level: this.select.value as WindLevel };
   }
 }
+
+/** The anomaly switch: shows the active raster as the difference from its 1991-2020 mean. */
+export class AnomalySwitch {
+  readonly element: HTMLDivElement;
+  private readonly checkbox: HTMLInputElement;
+  private readonly note: HTMLElement;
+
+  constructor(m: Manifest, initial: boolean, onChange: (on: boolean) => void) {
+    this.element = document.createElement('div');
+    this.element.className = 'overlay-row anomaly-row';
+    const period = m.clim?.period.replace('-', '–') ?? '1991–2020';
+    this.element.innerHTML = `
+      <label class="overlay-toggle"><input type="checkbox" class="anomaly-on" /> Anomaly vs ${period}</label>
+      <span class="anomaly-note"></span>`;
+    this.checkbox = this.element.querySelector('.anomaly-on')!;
+    this.note = this.element.querySelector('.anomaly-note')!;
+    const published = !!m.clim;
+    this.checkbox.checked = initial && published;
+    this.checkbox.disabled = !published;
+    if (!published) this.note.textContent = 'Climatology not published yet';
+    this.checkbox.addEventListener('change', () => onChange(this.checkbox.checked));
+  }
+
+  get on(): boolean {
+    return this.checkbox.checked;
+  }
+
+  /** Say when the switch is on but the active layer has no anomaly. */
+  setLayerHasAnomaly(has: boolean): void {
+    if (this.checkbox.disabled) return;
+    this.note.textContent = this.on && !has ? 'Not for this layer' : '';
+  }
+}

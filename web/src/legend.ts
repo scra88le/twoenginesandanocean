@@ -8,6 +8,7 @@ export class Legend {
   private readonly value: HTMLElement;
   private readonly wind: HTMLElement;
   private meta?: LayerMeta;
+  private signed = false;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
@@ -21,8 +22,10 @@ export class Legend {
     this.wind = root.querySelector('.legend-wind')!;
   }
 
-  show(meta: LayerMeta, scale: DisplayScale): void {
+  /** `extra` notes go after the standard ones; `signed` shows values with a sign (anomalies). */
+  show(meta: LayerMeta, scale: DisplayScale, extra: string[] = [], signed = false): void {
     this.meta = meta;
+    this.signed = signed;
     const units = prettyUnits(meta.units);
     const title = this.root.querySelector('.legend-title')!;
     title.textContent = `${meta.title} `;
@@ -47,6 +50,7 @@ export class Legend {
     if (meta.info.mask) note('note-mask', `Grey: ${maskLabel(meta.info.mask).toLowerCase()}`);
     if (meta.hatch_zero) note('note-hatch', 'Hatched: clamped at zero');
     if (meta.display === 'auto') note('note-auto', "Colour range: this day's 2nd–98th percentile");
+    for (const text of extra) note('note-extra', text);
     this.showValue(null);
   }
 
@@ -65,6 +69,6 @@ export class Legend {
     if (v === null) this.value.textContent = 'Hover over the map for a value';
     else if (masked)
       this.value.textContent = `Not shown here: ${maskLabel(this.meta.info.mask ?? 'masked').toLowerCase()}`;
-    else this.value.textContent = formatReading(v, this.meta.units, this.meta.encode);
+    else this.value.textContent = formatReading(v, this.meta.units, this.meta.encode, this.signed);
   }
 }

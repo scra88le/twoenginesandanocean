@@ -52,3 +52,16 @@ def test_p_lift_is_labelled_indicative():
 def test_flipped_fluxes_state_the_sign_convention():
     for lid in ("olr", "lh", "sh", "j_conv"):
         assert "upward" in INFO[lid].sign.lower()
+
+
+def test_every_layer_says_how_its_anomaly_is_made_or_why_there_is_none():
+    from pipeline.layers import ANOMALY, LAYERS
+
+    for lid in LAYERS:
+        text = INFO[lid].anomaly
+        assert text
+        if lid in ANOMALY:
+            assert "1991–2020" in text and ("Exact" in text or "approximation" in text)
+        else:
+            assert text.startswith("No anomaly")
+    assert "approximation" in INFO["carnot"].anomaly and "Exact" in INFO["olr"].anomaly

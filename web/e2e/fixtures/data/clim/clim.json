@@ -1,0 +1,10 @@
+{
+ "period": "1991-2020",
+ "layers": [
+  "t_emit",
+  "net_toa",
+  "carnot"
+ ],
+ "file": "clim/{MM}/{layer}.png",
+ "series": "clim/series/{layer}/{tx}_{ty}.bin"
+}

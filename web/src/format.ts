@@ -19,8 +19,8 @@ function decimalsFor(step: number): number {
   return 4;
 }
 
-/** A value for display, with precision from the layer's resolution. */
-export function formatValue(v: number, units: string, enc: EncodeRange): string {
+/** A value for display, with precision from the layer's resolution; `signed` adds "+" (anomalies). */
+export function formatValue(v: number, units: string, enc: EncodeRange, signed = false): string {
   if (!Number.isFinite(v)) return 'no data';
   const u = UNITLESS.has(units) ? '' : ` ${prettyUnits(units)}`;
   let text: string;
@@ -32,15 +32,20 @@ export function formatValue(v: number, units: string, enc: EncodeRange): string 
   } else {
     text = minus(v.toFixed(decimalsFor(enc.scale)));
   }
-  const celsius = units === 'K' ? ` (${minus((v - 273.15).toFixed(1))} °C)` : '';
+  if (signed) {
+    const zero = /^−?0(\.0*)?$/.test(text);
+    text = zero ? text.replace('−', '') : v > 0 ? `+${text}` : text;
+  }
+  // A temperature difference has no Celsius equivalent to add.
+  const celsius = units === 'K' && !signed ? ` (${minus((v - 273.15).toFixed(1))} °C)` : '';
   return `${text}${u}${celsius}`;
 }
 
 /** A reading for the hover and point readout. Log layers store values below their floor
  * (including zero) as the floor, so all that is known there is "less than the floor". */
-export function formatReading(v: number, units: string, enc: EncodeRange): string {
+export function formatReading(v: number, units: string, enc: EncodeRange, signed = false): string {
   if (enc.log && Number.isFinite(v) && v <= enc.lo * (1 + 1e-9)) {
     return `< ${enc.lo}${UNITLESS.has(units) ? '' : ` ${prettyUnits(units)}`}`;
   }
-  return formatValue(v, units, enc);
+  return formatValue(v, units, enc, signed);
 }

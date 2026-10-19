@@ -23,11 +23,13 @@ class LayerSpec:
     log: bool = False
     centre: float | None = None  # diverging scales: the value at the centre colour
     uv_encode: tuple[float, float] | None = None  # vector layers: range for u and v
-    anomaly: bool = True
-    anomaly_encode: tuple[float, float] | None = None
+    anomaly: bool = True  # a natural layer, from ERA5 (the human layers are not)
+    anomaly_encode: tuple[float, float] | None = None  # set for layers with an anomaly variant
     resolution: float = 0.0  # quantisation step: layer units, or log10 decades for log layers
     uv_resolution: float | None = None
     anomaly_resolution: float | None = None
+    anomaly_display: tuple[float, float] | None = None
+    anomaly_colour: str = "balance"
     hatch_zero: bool = False  # cells clamped at exactly 0 are hatched (carnot)
 
 
@@ -153,22 +155,41 @@ RESOLUTION = {
 UV_RESOLUTION = {"wind10": 0.1, "wind100": 0.1, "jet250": 0.1, "flux_e": 1e6}
 
 
+# Anomaly colour scales: brown-green for water, blue-red for everything else.
+WATER_ANOMALY = ("lh", "evap_frac", "tcwv", "precip", "p_lift")
+
+# Fixed anomaly display ranges (+/-), so the colours mean the same on every date: about the
+# 98th percentile of |anomaly| over the 78 dates published on 2026-10-19, rounded to a round
+# number (pipeline/scripts/anomaly_ranges.py; see docs/DECISIONS.md, milestone 10).
+ANOMALY_DISPLAY: dict[str, float] = {
+    "asr_toa": 100, "asr_sfc": 150, "net_toa": 100, "olr": 100, "t_emit": 25, "carnot": 10,
+    "g_max": 7.5, "j_conv": 150, "j_ratio": 1, "lh": 150, "sh": 100, "evap_frac": 0.5,
+    "ke_col": 3, "diss_bl": 8, "tcwv": 20, "precip": 20, "p_lift": 4, "div_e": 1000,
+}  # fmt: skip
+
+
 def _complete(s: LayerSpec) -> LayerSpec:
-    """Attach resolutions and the default anomaly range (+/- half the display span, or the
-    encode span for "auto"). Anomalies are linear in layer units; for log layers their
-    resolution is a tenth of the display floor."""
+    """Attach resolutions and, for natural non-vector layers, the anomaly encoding: +/- half
+    the display span (or the encode span for "auto"), linear in layer units even for log
+    layers, whose anomaly resolution is the display floor (a tenth of it made `diss_bl_anom`
+    files 404 kB, just over the budget, for precision the anomalies don't have). Vector
+    layers get no anomaly: the climatology of their speed can't be had from monthly means."""
     extra = {"resolution": RESOLUTION[s.id], "uv_resolution": UV_RESOLUTION.get(s.id)}
-    if s.anomaly:
+    if s.anomaly and s.uv_encode is None:
         lo, hi = s.display if s.display is not None else s.encode
         half = (hi - lo) / 2
+        shown = ANOMALY_DISPLAY.get(s.id, half / 2)
         extra["anomaly_encode"] = (-half, half)
-        extra["anomaly_resolution"] = s.display[0] / 10 if s.log else RESOLUTION[s.id]
+        extra["anomaly_resolution"] = s.display[0] if s.log else RESOLUTION[s.id]
+        extra["anomaly_display"] = (-shown, shown)
+        extra["anomaly_colour"] = "BrBG" if s.id in WATER_ANOMALY else "balance"
     return LayerSpec(**{**s.__dict__, **extra})
 
 
 LAYERS: dict[str, LayerSpec] = {s.id: _complete(s) for s in _SPECS}
 NATURAL = tuple(i for i, s in LAYERS.items() if s.anomaly)
 VECTOR = tuple(i for i, s in LAYERS.items() if s.uv_encode is not None)
+ANOMALY = tuple(i for i, s in LAYERS.items() if s.anomaly_encode is not None)
 
 
 @dataclass(frozen=True)

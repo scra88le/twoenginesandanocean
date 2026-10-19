@@ -15,13 +15,16 @@
   j_opt = 100 W m-2 on land (the northern hemisphere) and masked at sea; series chunks are
   rebuilt from the PNGs, so t_emit at a cell steps by 5 K a day. Only the tiles in
   FIXTURE_TILES are kept (around 0.25 E, 35.25 S and 35.25 N), so the fixtures stay small; other
-  tiles are missing on purpose.
+  tiles are missing on purpose. A climatology for t_emit (230 K), net_toa (0) and carnot
+  (10%), the same every month, gives anomalies of t_emit - 230 K, the latitude, and +5 / -10.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
+from pipeline.climatology import Climatology, encode_anomalies
 from pipeline.encode import quantise, scalar_png, vector_png
 from pipeline.layers import EXTRAS, LAYERS
 from pipeline.points import build_series, point_tiles
@@ -42,6 +45,14 @@ def unit_fixtures() -> None:
     (out / "vector.png").write_bytes(vector_png(u, v))
 
 
+class _Field:
+    """Just enough of a LayerField (values and mask) for encode_anomalies."""
+
+    def __init__(self, x: np.ndarray):
+        self.values = SimpleNamespace(values=x)
+        self.masked = SimpleNamespace(values=np.zeros_like(x, bool))
+
+
 def _codes(lid: str, x: np.ndarray) -> np.ndarray:
     s = LAYERS[lid]
     return quantise(x, np.zeros_like(x, bool), *s.encode, log=s.log, step=s.resolution)[0]
@@ -52,9 +63,40 @@ def _uv_codes(lid: str, x: np.ndarray) -> np.ndarray:
     return quantise(x, np.zeros_like(x, bool), *s.uv_encode, step=s.uv_resolution)[0]
 
 
+CLIM = {"t_emit": 230.0, "net_toa": 0.0, "carnot": 10.0}
+
+
+def clim_fixtures(data: Path) -> None:
+    import json
+
+    from pipeline.points import _tiles
+
+    for lid, value in CLIM.items():
+        codes = _codes(lid, np.full((360, 720), value))
+        for m in range(1, 13):
+            path = data / "clim" / f"{m:02d}" / f"{lid}.png"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(scalar_png(codes))
+        stack = np.repeat(codes[None], 12, 0).astype("<u2")
+        for (tx, ty), tile in _tiles(stack):
+            if f"{tx}_{ty}.bin" in FIXTURE_TILES:
+                path = data / "clim" / "series" / lid / f"{tx}_{ty}.bin"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(tile.tobytes())
+    index = {
+        "period": "1991-2020",
+        "layers": list(CLIM),
+        "file": "clim/{MM}/{layer}.png",
+        "series": "clim/series/{layer}/{tx}_{ty}.bin",
+    }
+    (data / "clim" / "clim.json").write_text(json.dumps(index, indent=1))
+
+
 def e2e_fixtures() -> None:
     lat = 89.75 - 0.5 * j
     data = ROOT / "web/e2e/fixtures/data"
+    clim_fixtures(data)
+    climatology = Climatology(data)
     for k, day in enumerate(E2E_DATES):
         older = len(E2E_DATES) - 1 - k  # 0 for the newest date
         fields = {
@@ -80,6 +122,10 @@ def e2e_fixtures() -> None:
         ):
             e = EXTRAS[eid]
             codes[eid] = quantise(x, masked, *e.encode, step=e.resolution)[0]
+        anomalies, _ = encode_anomalies(
+            {k: _Field(x) for k, x in fields.items()}, int(day[5:7]), climatology
+        )
+        files.update(anomalies)
         points = {k: v for k, v in point_tiles(codes).items() if k in FIXTURE_TILES}
         publish_date(data, day, files, built_at="2026-10-18T00:00:00Z", points=points)
     build_series(data)

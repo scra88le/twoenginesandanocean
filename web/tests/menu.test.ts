@@ -29,11 +29,11 @@ test('each menu entry carries its one-line summary', () => {
   expect(olr.summary).toBe(manifest.layers.olr!.info.summary);
 });
 
-test('info sections cover source, units, sign, formula, meaning, caveats and credit', () => {
+test('info sections cover source, units, sign, formula, meaning, caveats, anomaly and credit', () => {
   const s = infoSections(manifest.layers.g_max!, manifest.credits);
   expect(s.map((x) => x.label)).toEqual([
     'Source', 'Units', 'Sign convention', 'Formula', 'What it means for the heat engine', 'Caveats',
-    'Grey cells', 'Data credit',
+    'Grey cells', 'Anomaly', 'Data credit',
   ]);
   expect(s.find((x) => x.label === 'Units')!.text).toBe('W m⁻²');
 });

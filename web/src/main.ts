@@ -4,6 +4,7 @@ import { Map as MapLibreMap, Marker, setWorkerUrl } from 'maplibre-gl';
 // MapLibre looks for its worker next to its own module, which a bundled build doesn't have;
 // importing the URL makes Vite emit the file in builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import { anomalyNote, anomalyView } from './anomaly';
 import { baseStyle } from './basemap';
 import { parseSeries, pointCodes, seriesCodes, tileOf } from './chunks';
 import { MASKED, decodeAll, scalarCodes, vectorCodes } from './codes';
@@ -13,11 +14,11 @@ import { InfoPanel } from './info';
 import { ParticleLayer } from './layers/particles';
 import { RasterLayer } from './layers/raster';
 import { Legend } from './legend';
-import { fieldUrl, loadManifest, tileUrl, uvUrl, type Manifest } from './manifest';
+import { anomalyUrl, fieldUrl, hasAnomaly, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
-import { OverlayControls, type ParticleChoice } from './overlays';
+import { AnomalySwitch, OverlayControls, type ParticleChoice } from './overlays';
 import { decodePng, type DecodedPng } from './png';
-import { ReadoutPanel, readoutItems } from './readout';
+import { ReadoutPanel, climAtCell, readoutItems } from './readout';
 import { displayScale } from './scale';
 import { TimeBar, nearbyDates } from './timebar';
 import { LEVEL_LABELS, describeWind, isWindLevel, windAt } from './wind';
@@ -68,6 +69,9 @@ class App {
   private readonly cache = new Map<string, Promise<DecodedPng>>(); // insertion order = LRU
   private readonly chunks = new Map<string, Promise<ArrayBuffer>>(); // point and series chunks
   private pinned: Pin | null = null;
+  private view: LayerMeta | null = null; // the active layer as drawn: itself or its anomaly
+  private anomalyOn = false;
+  anomalySwitch: AnomalySwitch | null = null;
   private marker: Marker | null = null;
   private pinRequest = 0;
   private chartRequest = 0;
@@ -174,9 +178,24 @@ class App {
       if (request === this.chartRequest) this.readout.showChartMessage(`No 90-day series for ${meta.title} yet.`);
       return;
     }
+    const clim = await this.climatologyAt(layer, pin, tile);
     if (request !== this.chartRequest) return;
-    this.readout.showChart(meta, s.dates, seriesCodes(s, tile, pin.k), this.date);
-    document.body.dataset.chart = `${layer}:${s.dates.length}`;
+    this.readout.showChart(meta, s.dates, seriesCodes(s, tile, pin.k), this.date, clim);
+    document.body.dataset.chart = `${layer}:${s.dates.length}${typeof clim === 'string' ? '' : ':clim'}`;
+  }
+
+  /** The layer's monthly means at the pinned cell, or why there are none. */
+  private async climatologyAt(layer: string, pin: Pin, tile: number) {
+    const clim = this.manifest.clim;
+    const meta = this.manifest.layers[layer]!;
+    if (!clim) return 'Climatology line: not published yet.';
+    if (!clim.layers.includes(layer)) return 'No climatology for this layer (see its info).';
+    try {
+      const buf = await this.loadChunk(tileUrl(DATA, clim.series, { layer, tx: pin.tx, ty: pin.ty }));
+      return { byMonth: climAtCell(buf, tile, pin.k, meta.encode), period: clim.period };
+    } catch {
+      return 'Climatology line: no data for this place.';
+    }
   }
 
   private load(url: string): Promise<DecodedPng> {
@@ -205,6 +224,16 @@ class App {
   async setDate(date: string): Promise<void> {
     this.date = date;
     await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateReadout()]);
+  }
+
+  /** Set the mode before the first draw, without drawing. */
+  setAnomalyFlag(on: boolean): void {
+    this.anomalyOn = on;
+  }
+
+  setAnomaly(on: boolean): Promise<void> {
+    this.anomalyOn = on;
+    return this.select(this.layerId || DEFAULT_LAYER);
   }
 
   setParticles(choice: ParticleChoice): Promise<void> {
@@ -255,9 +284,12 @@ class App {
     const request = ++this.request;
     const date = this.date;
     this.menu.setSelected(layer);
+    const anom = this.anomalyOn && hasAnomaly(this.manifest, layer);
+    const view = anom ? anomalyView(meta) : meta;
+    const url = (d: string) => (anom ? anomalyUrl : fieldUrl)(DATA, this.manifest, d, layer);
     let field: DecodedPng;
     try {
-      field = await this.load(fieldUrl(DATA, this.manifest, date, layer));
+      field = await this.load(url(date));
     } catch (e) {
       if (request === this.request) {
         this.codes = null;
@@ -268,23 +300,29 @@ class App {
     }
     if (request !== this.request) return; // a later selection won
     const codes = scalarCodes(field);
-    const scale = displayScale(meta, meta.display === 'auto' ? decodeAll(codes, meta.encode) : undefined);
+    const scale = displayScale(view, view.display === 'auto' ? decodeAll(codes, view.encode) : undefined);
     this.raster.setData({
-      width: field.width, height: field.height, rgb: field.data, encode: meta.encode, scale,
-      lut: lutBytes(meta.colour), hatchZero: meta.hatch_zero,
+      width: field.width, height: field.height, rgb: field.data, encode: view.encode, scale,
+      lut: lutBytes(view.colour), hatchZero: view.hatch_zero,
     });
-    this.legend.show(meta, scale);
+    const notes = anom
+      ? [anomalyNote(this.manifest.clim!.period, date)]
+      : this.anomalyOn ? ['No anomaly for this layer (see its info): showing the value'] : [];
+    this.legend.show(view, scale, notes, anom);
     this.codes = codes;
+    this.view = view;
     this.layerId = layer;
+    this.anomalySwitch?.setLayerHasAnomaly(hasAnomaly(this.manifest, layer));
     document.body.dataset.layer = layer;
     document.body.dataset.date = date;
-    this.prefetch((d) => fieldUrl(DATA, this.manifest, d, layer));
+    document.body.dataset.anomaly = anom ? 'on' : this.anomalyOn ? 'unavailable' : 'off';
+    this.prefetch(url);
     void this.updateChart(); // the chart follows the active layer and marks the date
   }
 
   hover(lng: number, lat: number): void {
     this.hoverWind(lng, lat);
-    const meta = this.manifest.layers[this.layerId];
+    const meta = this.view;
     const cell = cellIndex(lng, lat, this.manifest.grid);
     if (!meta || !this.codes || !cell) return this.legend.showValue(null);
     const code = this.codes[cell.j * this.manifest.grid.nlon + cell.i]!;
@@ -351,6 +389,11 @@ async function start(): Promise<void> {
   handlers.select = (id) => void app.select(id);
   const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
   document.querySelector('#menu .menu-heading')!.after(overlays.element);
+  // ?anom=1 starts in anomaly mode (temporary, until URL state lands in milestone 13).
+  const anomaly = new AnomalySwitch(manifest, params.get('anom') === '1', (on) => void app.setAnomaly(on));
+  overlays.element.append(anomaly.element);
+  app.anomalySwitch = anomaly;
+  if (anomaly.on) app.setAnomalyFlag(true);
   void app.setParticles(overlays.choice);
   new TimeBar(document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d));
 

@@ -21,6 +21,7 @@ class LayerInfo:
     meaning: str
     caveats: str
     mask: str | None = None  # why cells are greyed out, if the layer masks any
+    anomaly: str = ""  # how the anomaly is computed, or why there is none
 
 
 _DAILY = "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day"
@@ -357,4 +358,38 @@ _TEXT: dict[str, dict[str, str | None]] = {
     ),
 }
 
-INFO: dict[str, LayerInfo] = {lid: LayerInfo(**text) for lid, text in _TEXT.items()}  # type: ignore[arg-type]
+# How each layer's anomaly is made. The climatology is the layer's formula applied to the
+# 1991-2020 ERA5 monthly means: exact for layers linear in their inputs, approximate otherwise.
+_ANOM_BASE = (
+    "Daily value minus the 1991–2020 mean for the same calendar month, from ERA5 monthly means "
+    "(reanalysis-era5-single-levels-monthly-means)."
+)
+_ANOM_EXACT = f"{_ANOM_BASE} Exact: the layer is linear in its inputs, so the mean of the layer is the layer of the means."
+_ANOM_APPROX = (
+    f"{_ANOM_BASE} The climatology applies this layer's formula to the monthly-mean inputs. The "
+    "formula is nonlinear, so that is an approximation: it differs from the mean of daily values, "
+    "most where the inputs vary a lot within a month. Read small anomalies with care."
+)
+_ANOM_VECTOR = (
+    "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far "
+    "below the average of daily speeds where the direction changes (by about 1.8 m/s on average "
+    "for the 10 m wind in August 2026), so the difference would show that bias, not the weather."
+)
+_ANOM_HUMAN = "No anomaly: this layer is not from ERA5 and has no 1991–2020 climatology."
+_NONLINEAR = ("t_emit", "carnot", "g_max", "j_ratio", "evap_frac")
+_VECTOR_IDS = ("wind10", "wind100", "jet250", "flux_e")
+_HUMAN_IDS = ("human_q", "human_ratio")
+
+
+def _anomaly_text(lid: str) -> str:
+    if lid in _HUMAN_IDS:
+        return _ANOM_HUMAN
+    if lid in _VECTOR_IDS:
+        return _ANOM_VECTOR
+    return _ANOM_APPROX if lid in _NONLINEAR else _ANOM_EXACT
+
+
+INFO: dict[str, LayerInfo] = {
+    lid: LayerInfo(**text, anomaly=_anomaly_text(lid))  # type: ignore[arg-type]
+    for lid, text in _TEXT.items()
+}

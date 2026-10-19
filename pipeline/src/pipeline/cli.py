@@ -42,15 +42,18 @@ def build_parser() -> argparse.ArgumentParser:
     series = sub.add_parser("series", help="rebuild the 90-day series chunks")
     series.add_argument("--out", type=Path, required=True)
 
+    clim = sub.add_parser("climatology", help="fetch and publish the 1991-2020 climatology")
+    clim.add_argument("--out", type=Path, required=True)
+    clim.add_argument("--raw", type=Path, default=Path("raw"))
+    clim.add_argument("--work", type=Path, default=Path("work"))
+    clim.add_argument("--wait", action="store_true", help="keep going until it is published")
+
     backfill = sub.add_parser("backfill", help="fetch and build the last N available days")
     backfill.add_argument("--days", type=int, default=90)
     backfill.add_argument("--out", type=Path, required=True)
     backfill.add_argument("--raw", type=Path, default=Path("raw"))
     backfill.add_argument("--work", type=Path, default=Path("work"))
     backfill.add_argument("--wait", action="store_true", help="keep going until nothing is pending")
-
-    clim = sub.add_parser("climatology", help="one-off 1991-2020 climatology")
-    clim.add_argument("--out", required=True)
     return parser
 
 
@@ -100,6 +103,32 @@ def _build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _climatology(args: argparse.Namespace) -> int:
+    from .climatology import build_climatology, chunks_done, fetch_chunks
+    from .fetch import client
+    from .publish import refresh_manifest
+
+    c = None
+    delay = 60.0
+    while not chunks_done(args.work):
+        c = c or client()
+        pending = fetch_chunks(c, args.raw, args.work)
+        if chunks_done(args.work):
+            break
+        print(
+            f"waiting on {len(pending)} climatology request(s); next check in {delay:.0f} s",
+            flush=True,
+        )
+        if not args.wait:
+            return 0
+        time.sleep(delay)
+        delay = min(delay * 1.5, 300.0)
+    print(f"climatology: wrote {build_climatology(args.work, args.out)} files", flush=True)
+    refresh_manifest(args.out)
+    print("manifest refreshed; run `rebuild` to add anomalies to the published dates")
+    return 0
+
+
 def _rebuild(args: argparse.Namespace) -> int:
     from .run import rebuild
 
@@ -146,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         return _rebuild(args)
     if args.command == "series":
         return _series(args)
+    if args.command == "climatology":
+        return _climatology(args)
     print(f"{args.command}: not implemented yet", file=sys.stderr)
     return 1
 

@@ -77,6 +77,21 @@ export function seriesData(dates: string[], codes: Uint16Array, enc: EncodeRange
   return [xs, ys];
 }
 
+/** The climatology under each chart day: its calendar month's mean (null where there is none). */
+export function climLine(xs: number[], byMonth: (number | null)[]): (number | null)[] {
+  return xs.map((x) => byMonth[new Date(x * 1000).getUTCMonth()] ?? null);
+}
+
+/** The 12 monthly means at one cell of a climatology series tile (month-major codes). */
+export function climAtCell(buf: ArrayBuffer, tile: number, k: number, enc: EncodeRange): (number | null)[] {
+  if (buf.byteLength !== 12 * tile * tile * 2) throw new Error('climatology tile has the wrong length');
+  const view = new DataView(buf);
+  return Array.from({ length: 12 }, (_, m) => {
+    const c = view.getUint16((m * tile * tile + k) * 2, true);
+    return c >= FIRST_VALID ? decodeValue(c, enc) : null;
+  });
+}
+
 /** "39.75° N, 0.25° E" for a cell centre. */
 export function formatPlace(lng: number, lat: number): string {
   const f = (v: number, pos: string, neg: string) => `${Math.abs(v).toFixed(2)}° ${v >= 0 ? pos : neg}`;
@@ -171,13 +186,19 @@ export class ReadoutPanel {
   }
 
   /** The 90-day chart of the active layer at this point, marking the date on the map. */
-  showChart(meta: LayerMeta, dates: string[], codes: Uint16Array, current: string): void {
+  showChart(
+    meta: LayerMeta, dates: string[], codes: Uint16Array, current: string,
+    clim: { byMonth: (number | null)[]; period: string } | string,
+  ): void {
     const [xs, ys] = seriesData(dates, codes, meta.encode);
+    const climYs = typeof clim === 'string' ? xs.map(() => null) : climLine(xs, clim.byMonth);
     this.chartTitle.textContent = `${meta.title} (${prettyUnits(meta.units)}), ${dates[0]} to ${dates.at(-1)}`;
     const valid = ys.filter((y): y is number => y !== null);
-    this.chartNote.textContent = valid.length
-      ? 'Climatology line: not available yet.'
-      : 'No values here on these dates (masked or no data).';
+    this.chartNote.textContent = !valid.length
+      ? 'No values here on these dates (masked or no data).'
+      : typeof clim === 'string'
+        ? clim
+        : `Dashed: the ${clim.period.replace('-', '–')} mean for each calendar month.`;
     const i = xs.indexOf(noon(current));
     const marker: (number | null)[] = ys.map((y, k) => (k === i ? y : null));
     const width = Math.max(200, this.chartBox.clientWidth || 300);
@@ -196,11 +217,12 @@ export class ReadoutPanel {
         // Dots as well as the line, so a day with no neighbours still shows.
         { stroke: '#7aa7ff', width: 1.5, spanGaps: false, points: { show: true, size: 3, fill: '#7aa7ff' } },
         { stroke: '#ffffff', fill: '#ffffff', width: 0, points: { show: true, size: 7, fill: '#ffffff' } },
+        { stroke: '#c8ccd4', width: 1.2, dash: [5, 4], points: { show: false } },
       ],
     };
     this.chart?.destroy();
     this.chartBox.innerHTML = '';
-    this.chart = new uPlot(opts, [xs, ys, marker], this.chartBox);
+    this.chart = new uPlot(opts, [xs, ys, marker, climYs], this.chartBox);
     this.chartBox.setAttribute('role', 'img');
     this.chartBox.setAttribute('aria-label', `${meta.title} at this point: ${valid.length} of ${dates.length} days have values`);
   }

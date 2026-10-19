@@ -31,6 +31,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Some tests write full-grid NetCDFs; keep temp dirs only for failed tests, and only the last run.
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = 1
 
 [tool.ruff]
 line-length = 100

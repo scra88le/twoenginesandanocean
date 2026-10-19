@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from pipeline.layers import LAYERS, NATURAL, VECTOR
+from pipeline.layers import ANOMALY, LAYERS, NATURAL, VECTOR
 
 SPEC_IDS = [
     "asr_toa", "asr_sfc", "net_toa", "olr", "t_emit", "carnot", "g_max", "j_conv", "j_ratio",
@@ -84,6 +84,15 @@ def test_spec_encode_overrides():
 
 
 def test_anomaly_ranges_are_symmetric_and_linear():
-    for lid in NATURAL:
+    for lid in ANOMALY:
         lo, hi = LAYERS[lid].anomaly_encode
         assert lo == -hi and hi > 0
+        d_lo, d_hi = LAYERS[lid].anomaly_display
+        assert d_lo == -d_hi and 0 < d_hi <= hi  # shown within what is stored
+
+
+def test_natural_layers_have_anomalies_except_the_vector_ones():
+    assert set(ANOMALY) == set(NATURAL) - set(VECTOR)
+    for lid in VECTOR:
+        assert LAYERS[lid].anomaly_encode is None and LAYERS[lid].anomaly_display is None
+    assert LAYERS["precip"].anomaly_colour == "BrBG" and LAYERS["olr"].anomaly_colour == "balance"

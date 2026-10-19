@@ -18,7 +18,7 @@ test('clicking the map opens the local engine readout and chart within a second'
   await page.mouse.click(Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2));
   await expect(page.locator('#readout')).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-readout', /^18_12_200@2026-10-01$/);
-  await expect(page.locator('body')).toHaveAttribute('data-chart', 't_emit:3');
+  await expect(page.locator('body')).toHaveAttribute('data-chart', 't_emit:3:clim');
   expect(Date.now() - t0).toBeLessThan(1000);
   await expect(page.locator('.ro-place')).toHaveText('35.25° S, 0.25° E · 2026-10-01');
   await expect(page.locator('#readout th')).toHaveText([
@@ -41,7 +41,7 @@ test('the readout follows the date and the chart follows the layer', async ({ pa
   await expect(value(page, 't_emit')).toHaveText(/^231\.00 K/);
   await expect(page.locator('.ro-place')).toHaveText(/2026-09-30$/);
   await page.locator('#menu input[value=net_toa]').check();
-  await expect(page.locator('body')).toHaveAttribute('data-chart', 'net_toa:3');
+  await expect(page.locator('body')).toHaveAttribute('data-chart', 'net_toa:3:clim');
   await expect(page.locator('.ro-chart-title')).toHaveText(/^Net radiation, TOA \(W m⁻²\)/);
 });
 

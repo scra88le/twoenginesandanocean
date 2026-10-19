@@ -76,7 +76,9 @@ def _layer_meta(s: LayerSpec) -> dict:
         "log": s.log,
         "centre": s.centre,
         "vector": s.uv_encode is not None,
-        "anomaly": s.anomaly,
+        "anomaly": s.anomaly_encode is not None,
+        "anomaly_display": list(s.anomaly_display) if s.anomaly_display else None,
+        "anomaly_colour": s.anomaly_colour if s.anomaly_encode else None,
         "encode": _range(*s.encode, s.resolution, log=s.log),
         "uv_encode": _range(*s.uv_encode, s.uv_resolution) if s.uv_encode else None,
         "anomaly_encode": (
@@ -96,7 +98,12 @@ def _credits(year: int) -> str:
     )
 
 
-def build_manifest(dates: list[str], built_at: str, built_layers: list[str] | None = None) -> dict:
+def build_manifest(
+    dates: list[str],
+    built_at: str,
+    built_layers: list[str] | None = None,
+    clim: dict | None = None,
+) -> dict:
     return {
         "version": MANIFEST_VERSION,
         "built_at": built_at,
@@ -104,7 +111,12 @@ def build_manifest(dates: list[str], built_at: str, built_layers: list[str] | No
         "built_layers": built_layers or [],
         "grid": {"nlon": 720, "nlat": 360, "lon0": -179.75, "lat0": 89.75, "step": 0.5},
         "codes": {"nodata": NODATA, "masked": MASKED, "first_valid": FIRST_VALID},
-        "files": {"field": "fields/{date}/{layer}.png", "uv": "fields/{date}/{layer}_uv.png"},
+        "files": {
+            "field": "fields/{date}/{layer}.png",
+            "uv": "fields/{date}/{layer}_uv.png",
+            "anomaly": "fields/{date}/{layer}_anom.png",
+        },
+        "clim": clim,  # null until the climatology job has run
         "layers": {lid: _layer_meta(s) for lid, s in LAYERS.items()},
         "points": {
             "file": "points/{date}/{tx}_{ty}.bin",
@@ -137,6 +149,24 @@ def _write_manifest(out: Path, manifest: dict) -> None:
 def _read_manifest(out: Path) -> dict:
     path = out / "manifest.json"
     return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def _clim_index(out: Path) -> dict | None:
+    path = out / "clim" / "clim.json"
+    return json.loads(path.read_text()) if path.is_file() else None
+
+
+def refresh_manifest(out: Path, built_at: str | None = None) -> None:
+    """Rewrite the manifest for the dates already published (after the climatology job, or
+    when layer metadata changes)."""
+    old = _read_manifest(out)
+    built_at = built_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _write_manifest(
+        out,
+        build_manifest(
+            old.get("dates", []), built_at, old.get("built_layers", []), _clim_index(out)
+        ),
+    )
 
 
 def _layer_ids(files: dict[str, bytes]) -> set[str]:
@@ -190,7 +220,7 @@ def publish_date(
     previous = old.get("dates", [])
     dates = sorted(set(previous) | {day})[-keep_days:]
     built = sorted(set(old.get("built_layers", [])) | _layer_ids(files))
-    _write_manifest(out, build_manifest(dates, built_at, built))
+    _write_manifest(out, build_manifest(dates, built_at, built, _clim_index(out)))
     for gone in set(previous) - set(dates):
         shutil.rmtree(fields / gone, ignore_errors=True)
         shutil.rmtree(out / "points" / gone, ignore_errors=True)

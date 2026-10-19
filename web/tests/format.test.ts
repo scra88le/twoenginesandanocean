@@ -46,3 +46,11 @@ test('dimensionless layers show no unit, and "0-1" is not an exponent', () => {
   expect(formatValue(0.531, '0-1', enc(0.001))).toBe('0.531');
   expect(formatValue(1.2, 'ratio', enc(0.002))).toBe('1.200');
 });
+
+test('anomalies are signed, with no Celsius for a temperature difference', () => {
+  expect(formatValue(1.25, 'W m-2', enc(0.25), true)).toBe('+1.25 W m⁻²');
+  expect(formatValue(0.5, 'W m-2', enc(0.25), true)).toBe('+0.50 W m⁻²');
+  expect(formatValue(-3, 'K', enc(0.02), true)).toBe('−3.00 K');
+  expect(formatValue(-0.001, 'W m-2', enc(0.25), true)).toBe('0.00 W m⁻²');
+  expect(formatValue(1.5e6, 'W m-2', enc(1), true)).toBe('+1.50 × 10⁶ W m⁻²');
+});

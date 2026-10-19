@@ -21,6 +21,7 @@ export function infoSections(meta: LayerMeta, credits: string): InfoSection[] {
     { label: 'Caveats', text: i.caveats },
   ];
   if (i.mask) sections.push({ label: 'Grey cells', text: i.mask });
+  if (i.anomaly) sections.push({ label: 'Anomaly', text: i.anomaly });
   sections.push({ label: 'Data credit', text: credits });
   return sections;
 }

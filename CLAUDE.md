@@ -58,7 +58,8 @@ python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # tidy -> layers ->
 python -m pipeline.cli backfill --days 90 --out ./out [--wait]  # fetch, build, validate and publish the last 90 days
 python -m pipeline.cli rebuild --out ./out                   # re-run every published date from ./work tidy files, then series
 python -m pipeline.cli series --out ./out                    # rebuild the series chunks from the published PNGs
-python -m pipeline.cli climatology --out ./out               # one-off, 1991–2020
+python -m pipeline.cli climatology --out ./out [--wait]      # one-off: fetch ERA5 monthly means 1991–2020, publish clim/, refresh the manifest
+python -m pipeline.cli rebuild --out ./out                   # afterwards: adds {layer}_anom.png to the published dates
 
 # Front end
 cd web && npm install
@@ -158,7 +159,7 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | `human_q` | Human energy use density | 9 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
 | `human_ratio` | Human ÷ natural dissipation | 9 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
 
-- Every natural layer has an anomaly variant (`{layer}_anom`). Human layers do not.
+- Every natural layer has an anomaly variant (`{layer}_anom`), **except the four vector layers** (`wind10`, `wind100`, `jet250`, `flux_e`): monthly means only give the speed of the mean vector, far below the mean of daily speeds (+1.8 m/s bias at 10 m, August 2026), so there is no honest climatology for them (decided 2026-10-19). Human layers have none either. That leaves 18 layers with anomalies (`pipeline.layers.ANOMALY`).
 - `p_lift` must be labelled "indicative" in the UI.
 - Colour scales must be perceptually uniform and colour-blind safe (matplotlib / cmocean equivalents).
 
@@ -222,7 +223,8 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 - **Encode ranges and resolutions** are fixed per layer, not per day, live in one table, `pipeline.layers`, and are stored in the manifest as `lo`, `hi`, `scale` and `offset`.
   - `scale` is a fixed **resolution** per layer, about what the data and display can resolve (0.1–0.25 W m⁻² for most fluxes, 0.02 K, 0.002 decades for log layers, and so on). It is not the range divided by 65 533: a step finer than the data leaves the low byte as noise that PNG can't compress, and pushed every file past 400 kB. Each resolution must be at most 1/1000 of the display span, and the encode range must fit in 65 533 steps (tested).
   - Encode ranges are wide enough not to clip real values (based on physical limits and the 2026-10-01 data); values outside are clipped to the ends and counted. For example `lh` −200 to 1200 W m⁻², `evap_frac` −20 to 20, `carnot` 0–45% (covers the 40% validation bound), `div_e` ±2000 W m⁻², `flux_e` components ±1.5e9 W m⁻¹.
-  - Anomalies (`{layer}_anom`): a linear range symmetric about zero, ±50% of the display span by default (the encode span for "auto" layers), in the layer's own units even for log layers. Resolution as the layer, or a tenth of the display floor for log layers.
+  - Anomalies (`{layer}_anom`): a linear range symmetric about zero, ±50% of the display span by default (the encode span for "auto" layers), in the layer's own units even for log layers. Resolution as the layer, or the display floor for log layers (a tenth of it made `diss_bl_anom` 404 kB). Value = daily value − the 1991–2020 mean for the date's calendar month; masked where either is masked.
+  - Anomaly display: a fixed symmetric range per layer (`ANOMALY_DISPLAY`, set from the anomalies of the published dates), on `balance`, or `BrBG` for the water layers (`lh`, `evap_frac`, `tcwv`, `precip`, `p_lift`).
 - Round-trip error must be below one quantisation step, measured in log space for log layers (tested).
 - **Front-end decoding:** browsers premultiply alpha and may apply colour-space conversion when they decode images, which corrupts packed data, especially v in B+A. So PNGs are **decoded in JS** (`web/src/png.ts`: `DecompressionStream` plus PNG unfiltering, 8-bit RGB/RGBA only), never through `<img>` or `createImageBitmap`. The same bytes go to the GPU as an integer texture (`RGB8UI`, read with `texelFetch`) and to the CPU for hover and readout values. The shader interpolates bilinearly after decoding, skipping no-data and masked neighbours. Vitest decodes fixture PNGs made by the real encoder, including one where every texel has A = 0.
 
@@ -235,7 +237,9 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 /fields/{YYYY-MM-DD}/{layer}_anom.png
 /points/{YYYY-MM-DD}/{tx}_{ty}.bin  all 24 layers + readout extras, one 10°×10° tile (20×20 cells), uint16 (20.8 kB)
 /series/{layer}/{tx}_{ty}.bin       the published dates (up to 90), one tile, uint16 (~72 kB), rebuilt daily
-/clim/{MM}/{layer}.png              monthly 1991–2020 climatology
+/clim/{MM}/{layer}.png              monthly 1991–2020 climatology, the layer's own packing
+/clim/series/{layer}/{tx}_{ty}.bin  the 12 monthly means of one tile (12 × 20 × 20 codes, month-major), for the readout chart
+/clim/clim.json                     period, layers and file templates; copied into the manifest's `clim` (null until published)
 /static/human_q.png
 /logs/global_means.csv              daily validation log
 /state/pending.json                 in-flight CDS request IDs (pipeline-only, not read by the front end)
@@ -260,7 +264,7 @@ Point and series chunks are little-endian uint16 and use the same per-layer pack
 
 ### One-off jobs
 
-- Monthly climatology from ERA5 monthly means, 1991–2020, for every raw input. Derived climatologies are computed from those. Accumulated fields in the monthly-means product are **mean daily accumulations** (J m⁻² per day, `GRIB_stepType=avgad`; checked 2026-10-17: October 2025 `tsr` ÷ 86 400 = 245.4 W m⁻²), so the daily conversions apply unchanged.
+- Monthly climatology from ERA5 monthly means (`reanalysis-era5-single-levels-monthly-means`), 1991–2020, for every raw input of the 18 anomaly layers (`pipeline.climatology`). Six requests of five years × 12 inputs (cost 2 880 each, limit 20 000; ~1 GB each), at most two queued. Each is reduced on arrival to per-calendar-month sums on the 0.5° grid through the same conversion as the daily data (`work/clim/sums_*.nc`, ~220 MB) and the download deleted. Accumulated fields are stamped 06:00 on the 1st, others 00:00, so fields are matched by month. Derived climatologies apply the layer formulas to the monthly means. Accumulated fields in the monthly-means product are **mean daily accumulations** (J m⁻² per day, `GRIB_stepType=avgad`; checked 2026-10-17: October 2025 `tsr` ÷ 86 400 = 245.4 W m⁻²), so the daily conversions apply unchanged.
 - `human_q` from the chosen dataset, regridded to 0.5° by area-weighted averaging.
 
 ## Front end behaviour
@@ -280,7 +284,7 @@ Full-bleed dark map with four overlays:
 - Overlay toggles:
   - Wind particles, with a level selector (10 m / 100 m / 250 hPa), usable over any raster.
   - Transport arrows (`flux_e`).
-- An anomaly switch applies to the active raster.
+- An anomaly switch applies to the active raster ("Anomaly vs 1991–2020" in the Overlays section; `?anom=1` until URL state lands). It is disabled until the climatology is published. On a layer without an anomaly the value is shown, with a legend note and "Not for this layer" by the switch. The legend says which month's mean the difference is from; hover values are signed. Each layer's info panel has an "Anomaly" section: exact for layers linear in their inputs, an approximation for `t_emit`, `carnot`, `g_max`, `j_ratio` and `evap_frac`, and why there is none for the others.
 - Layers listed in the manifest but not in `built_layers` are shown disabled ("Not available yet"). Radio buttons give keyboard navigation (Tab into the list, arrow keys select).
 
 ### Wind particles
@@ -326,7 +330,7 @@ Below the table, a 90-day chart of the active layer at that point, with the clim
 
 - Opens on a click on the map (or `?pin=lng,lat` until URL state lands), at the clicked cell's centre, with a marker. The close button or Esc closes it. Under 700 px it is a full-height sheet.
 - T_s and J_opt come from the point chunk's extras; everything else is a layer. Masked values show "—" with the mask reason as a tooltip and accessible label; unbuilt layers say "not available yet".
-- The table follows the date; the chart follows the active layer and marks the date. The chart has one point per day with gaps where a date has no value or isn't published, and a log axis for log layers (uPlot). The climatology line comes with milestone 10.
+- The table follows the date; the chart follows the active layer and marks the date. The chart has one point per day with gaps where a date has no value or isn't published, and a log axis for log layers (uPlot). The dashed climatology line is each calendar month's 1991–2020 mean at that cell, from `clim/series`; layers without a climatology say so.
 
 ### Info panel
 
@@ -381,7 +385,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19. The code is complete; the backfill was still collecting the last 41 dates from a slow CDS queue at the time.)
 8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. Transport arrows for `flux_e` are not part of it and are still to do.)
 9. Point chunks, series chunks, readout panel, 90-day chart. (**Done** 2026-10-19.)
-10. Climatology job + anomaly switch.
+10. Climatology job + anomaly switch. (**Done** 2026-10-19; no anomalies for the vector layers, see the layer catalogue.)
 11. Human layers: `human_q` static build and `human_ratio`.
 12. Story mode with the 9 Markdown cards.
 13. Deploy:
@@ -400,7 +404,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 - [ ] Global-mean validation passes for every built date, and the log CSV exists.
 - [ ] Derived-layer tests pass, including the three fixtures.
 - [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s.
-- [ ] Anomaly mode works for every natural layer, on a diverging scale centred on zero.
+- [ ] Anomaly mode works for every natural layer, on a diverging scale centred on zero. (Met for the 18 non-vector natural layers; the vector layers have none by decision, 2026-10-19.)
 - [x] Wind particles animate at all three levels over any raster.
 - [ ] Story mode runs through all 9 steps, forwards and back, and each step sets its layer and view.
 - [ ] A copied URL restores layer, date, view and pinned point.
