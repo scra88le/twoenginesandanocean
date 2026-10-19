@@ -6,6 +6,7 @@ import { ticks, type DisplayScale } from './scale';
 
 export class Legend {
   private readonly value: HTMLElement;
+  private readonly wind: HTMLElement;
   private meta?: LayerMeta;
 
   constructor(private readonly root: HTMLElement) {
@@ -14,8 +15,10 @@ export class Legend {
       <div class="legend-bar" role="img"></div>
       <div class="legend-ticks"></div>
       <div class="legend-notes"></div>
-      <div class="legend-value" aria-live="polite">Hover over the map for a value</div>`;
+      <div class="legend-value" aria-live="polite">Hover over the map for a value</div>
+      <div class="legend-wind" hidden></div>`;
     this.value = root.querySelector('.legend-value')!;
+    this.wind = root.querySelector('.legend-wind')!;
   }
 
   show(meta: LayerMeta, scale: DisplayScale): void {
@@ -45,6 +48,12 @@ export class Legend {
     if (meta.hatch_zero) note('note-hatch', 'Hatched: clamped at zero');
     if (meta.display === 'auto') note('note-auto', "Colour range: this day's 2nd–98th percentile");
     this.showValue(null);
+  }
+
+  /** The particle line: what the particles show, or the wind under the cursor. null hides it. */
+  showWind(text: string | null): void {
+    this.wind.hidden = text === null;
+    this.wind.textContent = text ?? '';
   }
 
   showMessage(text: string): void {

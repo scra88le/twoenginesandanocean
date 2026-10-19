@@ -31,10 +31,10 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
-/web/src/layers        raster.ts, particles.ts, arrows.ts
+/web/src/layers        raster.ts, particles.ts (arrows.ts for flux_e still to come)
 /web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
 /web/tests/fixtures    PNGs from the real encoder, for decoder tests
-/web/e2e/fixtures/data a small data root (manifest + two layers) for the Playwright test
+/web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds) for the Playwright tests
 /pipeline/scripts      export_colormaps.py (writes web/src/colormap-tables.json), make_web_fixtures.py
 /story                 01-fuel.md … 09-humans.md  (story-mode card text, 60–100 words each)
 /docs/DECISIONS.md     log of deviations and choices made during the build
@@ -276,12 +276,21 @@ Full-bleed dark map with four overlays:
 - An anomaly switch applies to the active raster.
 - Layers listed in the manifest but not in `built_layers` are shown disabled ("Not available yet"). Radio buttons give keyboard navigation (Tab into the list, arrow keys select).
 
+### Wind particles
+
+- Custom WebGL layer (`web/src/layers/particles.ts`). Particle state lives on the GPU and is advanced with transform feedback, sampling the `{layer}_uv.png` field with `texelFetch` and bilinear interpolation after decoding (same decode as the raster). Each step is drawn as a line into a fading offscreen trail texture, which is redrawn at its old map position when the view moves, so trails stay attached to the ground while panning.
+- On by default at 10 m; the menu's Overlays section switches them off or picks 10 m / 100 m / 250 hPa (unbuilt levels are disabled). `?particles=off|wind10|wind100|jet250` sets the start state until full URL state lands.
+- Screen speed is proportional to wind speed and the same at every zoom and latitude (the top of the level's colour range moves at 180 px/s), so it reads as speed rather than the map's stretching.
+- One particle per 90 px² of map (at most 32 768), halved under 700 px. Particles that leave the view, reach the end of their life (up to 4 s) or land on a cell with no data respawn at random in the view.
+- The legend says what they show ("Particles: wind at 10 m (daily mean)"), and hovering shows the wind under the cursor as text, e.g. "Wind 10 m: 7.3 m/s from SW". A date without that level's wind says so instead.
+- `?debug` exposes `window.ehe = { map, particles }`; `particles.readState()` returns the particle state, which the Playwright tests use to check that particles move downwind.
+
 ### Time bar
 
 - Last 90 available days, newest on the right.
 - Play / pause / step, plus arrow keys.
 - Shows the data date and the note "ERA5, about 6 days behind real time".
-- Pre-fetches ±3 days of the active layer.
+- Pre-fetches ±3 days of the active layer, and of the particle level's u, v field when particles are on.
 - Steps through the manifest's dates, so a date that failed or isn't built yet is skipped. Arrow keys step the date when nothing else has focus (or a time-bar button does); elsewhere they keep their usual job. Play advances every 800 ms, waits for each date to draw, starts again from the oldest date if it's at the newest, and stops at the newest.
 
 ### Legend
@@ -359,7 +368,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value. (**Done** 2026-10-18.)
 6. Layer menu with all scalar layers and info panels. (**Done** 2026-10-18.)
 7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19. The code is complete; the backfill was still collecting the last 41 dates from a slow CDS queue at the time.)
-8. Wind particle layer (10 m, 100 m, 250 hPa).
+8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. Transport arrows for `flux_e` are not part of it and are still to do.)
 9. Point chunks, series chunks, readout panel, 90-day chart.
 10. Climatology job + anomaly switch.
 11. Human layers: `human_q` static build and `human_ratio`.
@@ -381,7 +390,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 - [ ] Derived-layer tests pass, including the three fixtures.
 - [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s.
 - [ ] Anomaly mode works for every natural layer, on a diverging scale centred on zero.
-- [ ] Wind particles animate at all three levels over any raster.
+- [x] Wind particles animate at all three levels over any raster.
 - [ ] Story mode runs through all 9 steps, forwards and back, and each step sets its layer and view.
 - [ ] A copied URL restores layer, date, view and pinned point.
 - [ ] A deliberately failed run (bad API key) leaves yesterday's site intact.

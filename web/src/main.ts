@@ -5,24 +5,27 @@ import { Map as MapLibreMap, setWorkerUrl } from 'maplibre-gl';
 // importing the URL makes Vite emit the file in builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { baseStyle } from './basemap';
-import { MASKED, decodeAll, scalarCodes } from './codes';
+import { MASKED, decodeAll, scalarCodes, vectorCodes } from './codes';
 import { lutBytes } from './colormaps';
 import { cellIndex } from './grid';
 import { InfoPanel } from './info';
+import { ParticleLayer } from './layers/particles';
 import { RasterLayer } from './layers/raster';
 import { Legend } from './legend';
-import { fieldUrl, loadManifest, type Manifest } from './manifest';
+import { fieldUrl, loadManifest, uvUrl, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
-import { decodePng } from './png';
+import { OverlayControls, type ParticleChoice } from './overlays';
+import { decodePng, type DecodedPng } from './png';
 import { displayScale } from './scale';
 import { TimeBar, nearbyDates } from './timebar';
+import { LEVEL_LABELS, describeWind, isWindLevel, windAt } from './wind';
 
 setWorkerUrl(workerUrl);
 
 const DATA = import.meta.env.VITE_DATA_URL ?? '/data';
 const DEFAULT_LAYER = 'net_toa';
 const PREFETCH_DAYS = 3;
-const CACHE_SIZE = 40; // decoded fields, about 1.3 MB each
+const CACHE_SIZE = 48; // decoded PNGs, 0.8 MB (scalar) or 1 MB (wind) each
 
 function fail(message: string): void {
   const app = document.getElementById('app')!;
@@ -39,55 +42,104 @@ function parseCenter(text: string | null): [number, number] | null {
   return parts?.length === 2 && parts.every(Number.isFinite) ? [parts[0]!, parts[1]!] : null;
 }
 
-interface LoadedField {
-  width: number;
-  height: number;
-  rgb: Uint8Array;
-  codes: Uint16Array;
+// Particles are on unless ?particles=off; ?particles=wind100 (or jet250) picks the level.
+function parseParticles(text: string | null): ParticleChoice {
+  if (text === 'off') return { on: false, level: 'wind10' };
+  return { on: true, level: isWindLevel(text) ? text : 'wind10' };
+}
+
+interface WindCodes {
+  level: ParticleChoice['level'];
+  u: Uint16Array;
+  v: Uint16Array;
 }
 
 class App {
-  private readonly cache = new Map<string, Promise<LoadedField>>(); // insertion order = LRU
+  private readonly cache = new Map<string, Promise<DecodedPng>>(); // insertion order = LRU
   private codes: Uint16Array | null = null;
+  private wind: WindCodes | null = null;
   private layerId = '';
   private request = 0;
+  private windRequest = 0;
 
   constructor(
     private readonly manifest: Manifest,
     private date: string,
     private readonly raster: RasterLayer,
+    private readonly particles: ParticleLayer,
     private readonly legend: Legend,
     private readonly menu: LayerMenu,
+    private particleChoice: ParticleChoice,
   ) {}
 
-  private load(date: string, layer: string): Promise<LoadedField> {
-    const key = `${date}/${layer}`;
-    let p = this.cache.get(key);
+  private load(url: string): Promise<DecodedPng> {
+    let p = this.cache.get(url);
     if (p) {
-      this.cache.delete(key); // refresh its place in the LRU order
+      this.cache.delete(url); // refresh its place in the LRU order
     } else {
-      p = fetch(fieldUrl(DATA, this.manifest, date, layer)).then(async (r) => {
+      p = fetch(url).then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const png = await decodePng(await r.arrayBuffer());
-        return { width: png.width, height: png.height, rgb: png.data, codes: scalarCodes(png) };
+        return decodePng(await r.arrayBuffer());
       });
-      p.catch(() => this.cache.delete(key));
+      p.catch(() => this.cache.delete(url));
     }
-    this.cache.set(key, p);
+    this.cache.set(url, p);
     while (this.cache.size > CACHE_SIZE) this.cache.delete(this.cache.keys().next().value!);
     return p;
   }
 
-  private prefetch(layer: string): void {
+  private prefetch(url: (date: string) => string): void {
     const i = this.manifest.dates.indexOf(this.date);
     for (const d of nearbyDates(this.manifest.dates, i, PREFETCH_DAYS)) {
-      this.load(d, layer).catch(() => undefined);
+      this.load(url(d)).catch(() => undefined);
     }
   }
 
-  setDate(date: string): Promise<void> {
+  async setDate(date: string): Promise<void> {
     this.date = date;
-    return this.select(this.layerId || DEFAULT_LAYER);
+    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles()]);
+  }
+
+  setParticles(choice: ParticleChoice): Promise<void> {
+    this.particleChoice = choice;
+    return this.updateParticles();
+  }
+
+  /** Load the wind for the current date and level into the particle layer, or switch it off. */
+  async updateParticles(): Promise<void> {
+    const request = ++this.windRequest;
+    const { on, level } = this.particleChoice;
+    const meta = this.manifest.layers[level];
+    if (!on || !meta?.uv_encode || !this.manifest.built_layers.includes(level)) {
+      this.wind = null;
+      this.particles.setWind(null);
+      this.legend.showWind(null);
+      document.body.dataset.particles = 'off';
+      return;
+    }
+    const date = this.date;
+    let png: DecodedPng;
+    try {
+      png = await this.load(uvUrl(DATA, this.manifest, date, level));
+    } catch {
+      if (request !== this.windRequest) return;
+      this.wind = null;
+      this.particles.setWind(null);
+      this.legend.showWind(`No ${LEVEL_LABELS[level]} wind for ${date}`);
+      document.body.dataset.particles = 'missing';
+      return;
+    }
+    if (request !== this.windRequest) return; // a later change won
+    const speedHi = meta.display === 'auto' ? meta.encode.hi : meta.display[1];
+    this.particles.setWind({ width: png.width, height: png.height, rgba: png.data, encode: meta.uv_encode, speedHi });
+    this.wind = { level, ...vectorCodes(png) };
+    this.legend.showWind(this.windCaption());
+    document.body.dataset.particles = level;
+    this.prefetch((d) => uvUrl(DATA, this.manifest, d, level));
+  }
+
+  private windCaption(): string {
+    return this.wind ? `Particles: wind at ${LEVEL_LABELS[this.wind.level]} (daily mean)` : '';
   }
 
   async select(layer: string): Promise<void> {
@@ -96,9 +148,9 @@ class App {
     const request = ++this.request;
     const date = this.date;
     this.menu.setSelected(layer);
-    let field: LoadedField;
+    let field: DecodedPng;
     try {
-      field = await this.load(date, layer);
+      field = await this.load(fieldUrl(DATA, this.manifest, date, layer));
     } catch (e) {
       if (request === this.request) {
         this.codes = null;
@@ -108,25 +160,39 @@ class App {
       return;
     }
     if (request !== this.request) return; // a later selection won
-    const scale = displayScale(meta, meta.display === 'auto' ? decodeAll(field.codes, meta.encode) : undefined);
+    const codes = scalarCodes(field);
+    const scale = displayScale(meta, meta.display === 'auto' ? decodeAll(codes, meta.encode) : undefined);
     this.raster.setData({
-      width: field.width, height: field.height, rgb: field.rgb, encode: meta.encode, scale,
+      width: field.width, height: field.height, rgb: field.data, encode: meta.encode, scale,
       lut: lutBytes(meta.colour), hatchZero: meta.hatch_zero,
     });
     this.legend.show(meta, scale);
-    this.codes = field.codes;
+    this.codes = codes;
     this.layerId = layer;
     document.body.dataset.layer = layer;
     document.body.dataset.date = date;
-    this.prefetch(layer);
+    this.prefetch((d) => fieldUrl(DATA, this.manifest, d, layer));
   }
 
   hover(lng: number, lat: number): void {
+    this.hoverWind(lng, lat);
     const meta = this.manifest.layers[this.layerId];
     const cell = cellIndex(lng, lat, this.manifest.grid);
     if (!meta || !this.codes || !cell) return this.legend.showValue(null);
     const code = this.codes[cell.j * this.manifest.grid.nlon + cell.i]!;
     this.legend.showValue(decodeAll(Uint16Array.of(code), meta.encode)[0]!, code === MASKED);
+  }
+
+  private hoverWind(lng: number, lat: number): void {
+    const enc = this.wind && this.manifest.layers[this.wind.level]?.uv_encode;
+    if (!this.wind || !enc) return;
+    const w = windAt(this.wind.u, this.wind.v, enc, this.manifest.grid, lng, lat);
+    this.legend.showWind(w ? `Wind ${LEVEL_LABELS[this.wind.level]}: ${describeWind(w)}` : this.windCaption());
+  }
+
+  hoverEnd(): void {
+    this.legend.showValue(null);
+    if (this.wind) this.legend.showWind(this.windCaption());
   }
 }
 
@@ -151,6 +217,7 @@ async function start(): Promise<void> {
     center: parseCenter(params.get('center')) ?? [0.25, 20],
     zoom: Number(params.get('zoom') ?? 1.4),
     renderWorldCopies: true,
+    maxPitch: 0, // the raster and particle layers draw on a flat map
     attributionControl: false, // credits are in the footer
   });
   document.getElementById('credits')!.textContent =
@@ -158,6 +225,7 @@ async function start(): Promise<void> {
 
   const info = new InfoPanel(document.getElementById('info') as HTMLDialogElement);
   const raster = new RasterLayer('field');
+  const particles = new ParticleLayer('particles');
   const legend = new Legend(document.getElementById('legend')!);
   // The menu and the app need each other; the menu calls the app through this late binding.
   const handlers: { select: (id: string) => void } = { select: () => undefined };
@@ -167,8 +235,12 @@ async function start(): Promise<void> {
     (id) => handlers.select(id),
     (id, opener) => info.open(manifest.layers[id]!, manifest.credits, opener),
   );
-  const app = new App(manifest, date, raster, legend, menu);
+  const choice = parseParticles(params.get('particles'));
+  const app = new App(manifest, date, raster, particles, legend, menu, choice);
   handlers.select = (id) => void app.select(id);
+  const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
+  document.querySelector('#menu .menu-heading')!.after(overlays.element);
+  void app.setParticles(overlays.choice);
   new TimeBar(document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d));
 
   const toggle = document.getElementById('menu-toggle')!;
@@ -177,11 +249,15 @@ async function start(): Promise<void> {
     toggle.setAttribute('aria-expanded', String(open));
   });
 
+  // ?debug exposes the map and particle layer to the console and the Playwright tests.
+  if (params.has('debug')) Object.assign(window, { ehe: { map, particles } });
+
   await new Promise((resolve) => map.once('load', resolve));
   map.addLayer(raster, 'coastline-halo');
+  map.addLayer(particles); // on top, over the coastlines
   await app.select(first);
   map.on('mousemove', (e) => app.hover(e.lngLat.lng, e.lngLat.lat));
-  map.on('mouseout', () => legend.showValue(null));
+  map.on('mouseout', () => app.hoverEnd());
   document.body.dataset.ready = 'true';
 }
 

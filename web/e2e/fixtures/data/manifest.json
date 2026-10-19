@@ -8,8 +8,10 @@
  ],
  "built_layers": [
   "carnot",
+  "jet250",
   "net_toa",
-  "t_emit"
+  "t_emit",
+  "wind10"
  ],
  "grid": {
   "nlon": 720,

@@ -18,6 +18,13 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 .legend-ticks span:first-child { transform: none; }
 .legend-ticks span:last-child { transform: translateX(-100%); }
 .legend-value { margin-top: 6px; font-variant-numeric: tabular-nums; }
+.legend-wind { margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend-wind::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: 6px; vertical-align: 3px; background: #fff; }
+#menu .overlays { padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 8px; }
+.overlay-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 2px; }
+.overlay-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.particles-level { background: rgba(255, 255, 255, 0.06); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; padding: 2px 4px; font: inherit; }
+.particles-level option { background: #151a24; }
 #credits { left: 12px; right: 12px; bottom: 8px; font-size: 10px; color: var(--muted); padding: 4px 8px; }
 .fatal { max-width: 32em; margin: 20vh auto; padding: 0 16px; font-size: 16px; line-height: 1.5; }
 
@@ -68,16 +75,6 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 #info dt { font-weight: 600; margin-top: 10px; }
 #info dd { margin: 2px 0 0; }
 
-/* Narrow screens: the menu sits behind a button (the full mobile layout is milestone 13). */
-@media (max-width: 700px) {
-  #menu-toggle { display: block; }
-  #menu { display: none; top: 56px; left: 12px; right: 12px; width: auto; bottom: 44px; z-index: 2; }
-  #timebar { top: auto; bottom: 44px; left: 12px; right: 12px; flex-wrap: wrap; }
-  .tb-text { flex: 1 0 100%; flex-direction: row; gap: 8px; align-items: baseline; }
-  #legend { bottom: 132px; }
-  body.menu-open #menu { display: block; }
-}
-
 /* Time bar */
 #timebar {
   left: calc(12px + min(320px, calc(100vw - 48px)) + 36px); right: calc(300px + 36px); bottom: 44px;
@@ -92,6 +89,18 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 .tb-text { flex: none; display: flex; flex-direction: column; line-height: 1.25; }
 .tb-date { font-weight: 600; font-variant-numeric: tabular-nums; }
 .tb-note { color: var(--muted); font-size: 11px; }
+/* Narrow screens: the menu sits behind a button (the full mobile layout is milestone 13). */
+@media (max-width: 700px) {
+  #menu-toggle { display: block; }
+  #menu { display: none; top: 56px; left: 12px; right: 12px; width: auto; bottom: 44px; z-index: 2; }
+  /* The credits wrap to five lines here: show three and let the rest scroll. */
+  #credits { line-height: 1.2; max-height: 3.6em; overflow-y: auto; }
+  #timebar { top: auto; bottom: 60px; left: 12px; right: 12px; flex-wrap: wrap; }
+  .tb-text { flex: 1 0 100%; flex-direction: row; gap: 8px; align-items: baseline; }
+  #legend { bottom: 144px; }
+  body.menu-open #menu { display: block; }
+}
+
 @media (min-width: 701px) and (max-width: 1100px) {
   #timebar { left: 12px; right: 12px; bottom: auto; top: 12px; }
   #menu { top: 70px; }

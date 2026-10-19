@@ -4,7 +4,7 @@ import { decodePng } from '../src/png';
 
 // The fixture data root (pipeline/scripts/make_web_fixtures.py) has t_emit = 200 + 0.1 * i K,
 // where i is the longitude column, so the cell centred on 0.25 E (i = 360) is 236 K.
-const VIEW = '/?layer=t_emit&center=0.25,-30&zoom=4'; // open South Atlantic: no coastline
+const VIEW = '/?layer=t_emit&center=0.25,-30&zoom=4&particles=off'; // open South Atlantic: no coastline
 
 test('renders the layer with legend, hover value and the right colour', async ({ page }) => {
   const errors: string[] = [];

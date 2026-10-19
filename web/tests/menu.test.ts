@@ -20,7 +20,7 @@ test('menu has the 9 story groups in order, with all 24 layers', () => {
 
 test('only built layers are enabled', () => {
   const enabled = menuGroups(manifest).flatMap((g) => g.layers).filter((l) => l.enabled).map((l) => l.id);
-  expect(enabled.sort()).toEqual(['carnot', 'net_toa', 't_emit']);
+  expect(enabled.sort()).toEqual(['carnot', 'jet250', 'net_toa', 't_emit', 'wind10']);
 });
 
 test('each menu entry carries its one-line summary', () => {

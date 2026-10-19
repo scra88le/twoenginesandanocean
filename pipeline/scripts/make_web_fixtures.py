@@ -8,7 +8,9 @@
 - web/e2e/fixtures/data: a data root with a manifest and three layers for three dates.
   t_emit = 200 + 0.1 * i K on the newest date and 5 K less for each day before (depends on
   longitude only); net_toa = latitude in W m-2; carnot = 15% in the north and 0 (clamped,
-  hatched) in the south.
+  hatched) in the south. Winds, for the particle layer: wind10 is a uniform 10 m/s westerly
+  (u = 10, v = 0) on the two newest dates only, so the oldest date has no wind; jet250 is a
+  uniform 30 m/s southerly (u = 0, v = 30) on the newest date; wind100 isn't built.
 """
 
 from pathlib import Path
@@ -33,6 +35,16 @@ def unit_fixtures() -> None:
     (out / "vector.png").write_bytes(vector_png(u, v))
 
 
+def _codes(lid: str, x: np.ndarray) -> np.ndarray:
+    s = LAYERS[lid]
+    return quantise(x, np.zeros_like(x, bool), *s.encode, log=s.log, step=s.resolution)[0]
+
+
+def _uv_codes(lid: str, x: np.ndarray) -> np.ndarray:
+    s = LAYERS[lid]
+    return quantise(x, np.zeros_like(x, bool), *s.uv_encode, step=s.uv_resolution)[0]
+
+
 def e2e_fixtures() -> None:
     lat = 89.75 - 0.5 * j
     data = ROOT / "web/e2e/fixtures/data"
@@ -43,11 +55,16 @@ def e2e_fixtures() -> None:
             "net_toa": lat,
             "carnot": np.where(lat > 0, 15.0, 0.0),
         }
+        winds = {"wind10": (10.0, 0.0)} if older <= 1 else {}
+        if older == 0:
+            winds["jet250"] = (0.0, 30.0)
         files = {}
         for lid, x in fields.items():
-            s = LAYERS[lid]
-            codes, _ = quantise(x, np.zeros_like(x, bool), *s.encode, log=s.log, step=s.resolution)
-            files[f"{lid}.png"] = scalar_png(codes)
+            files[f"{lid}.png"] = scalar_png(_codes(lid, x))
+        for lid, (u, v) in winds.items():
+            ones = np.ones((360, 720))
+            files[f"{lid}.png"] = scalar_png(_codes(lid, np.hypot(u, v) * ones))
+            files[f"{lid}_uv.png"] = vector_png(_uv_codes(lid, u * ones), _uv_codes(lid, v * ones))
         publish_date(data, day, files, built_at="2026-10-18T00:00:00Z")
 
 

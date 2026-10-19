@@ -58,3 +58,7 @@ export async function loadManifest(base: string): Promise<Manifest> {
 export function fieldUrl(base: string, m: Manifest, date: string, layer: string): string {
   return `${base}/${m.files.field.replace('{date}', date).replace('{layer}', layer)}`;
 }
+
+export function uvUrl(base: string, m: Manifest, date: string, layer: string): string {
+  return `${base}/${m.files.uv.replace('{date}', date).replace('{layer}', layer)}`;
+}

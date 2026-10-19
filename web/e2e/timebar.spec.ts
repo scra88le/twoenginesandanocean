@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 // Fixture dates: 2026-09-29, 09-30, 10-01. t_emit at the cell centred on 0.25 E is 236 K on
 // the newest date and 5 K less for each day before.
-const VIEW = '/?layer=t_emit&center=0.25,-30&zoom=4';
+const VIEW = '/?layer=t_emit&center=0.25,-30&zoom=4&particles=off'; // particles: see particles.spec.ts
 
 async function open(page: Page) {
   await page.goto(VIEW);
@@ -52,15 +52,16 @@ test('step buttons and the slider change the date', async ({ page }) => {
   await expect(page.locator('.tb-range')).toHaveAttribute('aria-valuetext', '2026-09-30');
 });
 
-test('neighbouring days of the active layer are pre-fetched', async ({ page }) => {
+test('neighbouring days of the active layer and the particle level are pre-fetched', async ({ page }) => {
   const fetched = new Set<string>();
   page.on('request', (r) => {
     const m = r.url().match(/fields\/([\d-]+)\/(\w+)\.png/);
     if (m) fetched.add(`${m[1]}/${m[2]}`);
   });
-  await open(page);
+  await page.goto(VIEW.replace('&particles=off', ''));
   await expect.poll(() => [...fetched].sort()).toEqual([
-    '2026-09-29/t_emit', '2026-09-30/t_emit', '2026-10-01/t_emit',
+    '2026-09-29/t_emit', '2026-09-29/wind10_uv', // 09-29 has no wind; the miss is harmless
+    '2026-09-30/t_emit', '2026-09-30/wind10_uv', '2026-10-01/t_emit', '2026-10-01/wind10_uv',
   ]);
 });
 
