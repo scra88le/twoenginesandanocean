@@ -165,6 +165,15 @@ def client():
 
 
 _FAILED = {"failed", "rejected", "dismissed"}
+_COLLECTION = {
+    "single_mean": SINGLE_DAILY,
+    "single_sum": SINGLE_DAILY,
+    "pressure_mean": PRESSURE_DAILY,
+}
+
+# The CDS rejects requests beyond a (variable, undocumented) number queued per dataset per
+# user: 8 at once on the single-levels dataset were mostly rejected on 2026-10-18.
+MAX_QUEUED = 2
 
 
 def _load_state(path: Path) -> dict[str, dict]:
@@ -216,15 +225,16 @@ def split_archive(src: Path, name: str, raw_dir: Path) -> list[Path]:
     return written
 
 
-def fetch_dates(c, days, raw_dir: Path) -> list[str]:
+def fetch_dates(c, days, raw_dir: Path, max_queued: int = MAX_QUEUED) -> list[str]:
     """Advance the downloads for some dates by one step, without waiting on the queue.
 
     First collects every queued request: a finished one is downloaded and split into
     per-date archives, a failed one is forgotten so its dates are requested again. Then dates
     still missing an archive, and not covered by a queued request, are submitted in runs of
-    consecutive days within a month. Queued requests (with the dates they cover) live in
-    `raw_dir/pending.json`, so later runs pick up where this one left off. Returns the
-    chunk names still pending.
+    consecutive days within a month, oldest first and at most `max_queued` per dataset (the
+    CDS rejects more). Queued requests (with the dates they cover) live in
+    `raw_dir/pending.json`, so later runs pick up where this one left off. Returns the chunk
+    names still pending.
     """
     days = sorted(set(map(_check_date, days)))
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -245,21 +255,28 @@ def fetch_dates(c, days, raw_dir: Path) -> list[str]:
             del state[key]
         _save_state(state_path, state)
 
-    for name in ("single_mean", "single_sum", "pressure_mean"):
+    missing = {}
+    for name in _COLLECTION:
         covered = {d for job in state.values() if job["name"] == name for d in job["days"]}
-        missing = [
+        missing[name] = [
             d
             for d in days
             if not (raw_dir / f"{name}_{d}.nc").exists() and d.isoformat() not in covered
         ]
-        for chunk in chunk_dates(missing):
-            spec = next(s for s in build_chunk_requests(chunk) if s.name == name)
-            state[spec.filename] = {
-                "id": submit(c, spec),
-                "name": name,
-                "days": [d.isoformat() for d in chunk],
-            }
-            _save_state(state_path, state)
+    # Oldest chunks first across the three statistics, so whole dates complete in order.
+    todo = sorted(
+        (chunk[0], name, chunk) for name in _COLLECTION for chunk in chunk_dates(missing[name])
+    )
+    for _, name, chunk in todo:
+        if sum(_COLLECTION[j["name"]] == _COLLECTION[name] for j in state.values()) >= max_queued:
+            continue
+        spec = next(s for s in build_chunk_requests(chunk) if s.name == name)
+        state[spec.filename] = {
+            "id": submit(c, spec),
+            "name": name,
+            "days": [d.isoformat() for d in chunk],
+        }
+        _save_state(state_path, state)
     _save_state(state_path, state)
     return sorted(state)
 

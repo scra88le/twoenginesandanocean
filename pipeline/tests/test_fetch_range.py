@@ -130,7 +130,7 @@ def client(tmp_path):
 
 def test_first_call_submits_one_request_per_statistic_per_chunk(tmp_path, client):
     raw = tmp_path / "raw"
-    pending = fetch_dates(client, days(date(2026, 7, 30), 4), raw)  # two chunks
+    pending = fetch_dates(client, days(date(2026, 7, 30), 4), raw, max_queued=10)  # two chunks
     assert len(client.requests) == 6 and len(pending) == 6
     state = json.loads((raw / "pending.json").read_text())
     covered = sorted(d for v in state.values() if v["name"] == "single_mean" for d in v["days"])
@@ -146,8 +146,8 @@ def test_queued_requests_are_not_resubmitted(tmp_path, client):
 
 def test_a_new_day_is_requested_without_repeating_queued_ones(tmp_path, client):
     raw = tmp_path / "raw"
-    fetch_dates(client, days(date(2026, 8, 1), 3), raw)
-    fetch_dates(client, days(date(2026, 8, 1), 4), raw)  # one more day became available
+    fetch_dates(client, days(date(2026, 8, 1), 3), raw, max_queued=10)
+    fetch_dates(client, days(date(2026, 8, 1), 4), raw, max_queued=10)  # one more day
     assert len(client.requests) == 6
     assert [r["day"] for r in list(client.requests.values())[3:]] == [["04"]] * 3
 
@@ -180,3 +180,30 @@ def test_dates_already_on_disk_are_not_requested(tmp_path, client):
         (raw / f"{name}_2026-08-01.nc").write_bytes(b"x")
     assert fetch_dates(client, [date(2026, 8, 1)], raw) == []
     assert client.requests == {}
+
+
+def test_queued_requests_are_capped_per_dataset_oldest_dates_first(tmp_path, client):
+    raw = tmp_path / "raw"
+    fetch_dates(client, days(date(2026, 7, 1), 92), raw, max_queued=2)  # July to September
+    by_name = {}
+    for k in json.loads((raw / "pending.json").read_text()):
+        by_name.setdefault(k.split("_2026")[0], []).append(k)
+    # both single-level statistics for July (so July can complete), pressure July and August
+    assert by_name == {
+        "single_mean": ["single_mean_2026-07-01_2026-07-31.nc"],
+        "single_sum": ["single_sum_2026-07-01_2026-07-31.nc"],
+        "pressure_mean": [
+            "pressure_mean_2026-07-01_2026-07-31.nc",
+            "pressure_mean_2026-08-01_2026-08-31.nc",
+        ],
+    }
+
+
+def test_rejected_requests_make_room_for_the_next(tmp_path, client):
+    raw = tmp_path / "raw"
+    ds = days(date(2026, 7, 1), 62)
+    fetch_dates(client, ds, raw, max_queued=2)
+    for rid in client.statuses:
+        client.statuses[rid] = "rejected"
+    fetch_dates(client, ds, raw, max_queued=2)
+    assert len(client.requests) == 8  # the same four again, not more

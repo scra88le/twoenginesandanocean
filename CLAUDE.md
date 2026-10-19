@@ -55,7 +55,7 @@ ruff check pipeline
 python -m pipeline.cli fetch --date YYYY-MM-DD [--wait]      # submit/collect CDS requests into ./raw
 python -m pipeline.cli tidy --date YYYY-MM-DD                # raw archives -> ./work/tidy_DATE.nc
 python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # tidy -> layers -> PNGs + manifest
-python -m pipeline.cli backfill --days 90 --out ./out
+python -m pipeline.cli backfill --days 90 --out ./out [--wait]  # fetch, build, validate and publish the last 90 days
 python -m pipeline.cli climatology --out ./out               # one-off, 1991–2020
 
 # Front end
@@ -120,6 +120,9 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 - **Result format.** Each CDS result is a zip holding one NetCDF per variable, whatever the file is named; each field has a length-1 `valid_time` dimension (and `pressure_level` for 250 hPa). `pipeline.load` treats the archive as untrusted, extracts it to a temporary directory, squeezes the extra dimensions and keys fields by the spec's names.
 - **Regridding.** ERA5's 0.25° grid is point-centred: 1440 × 721 points, lon 0 → 359.75, lat 90 → −90 including both poles. It does not split into 2×2 blocks. Treat each ERA5 point as the centre of a 0.25° cell (pole points are half-cells), roll longitude to −180…180, and remap conservatively to the cell-centred 0.5° grid. Each 0.5° cell then overlaps a 3 × 3 stencil of ERA5 points with weights [½, 1, ½] ⊗ [½, 1, ½], multiplied by cos(lat), and normalised. Test that the global area-weighted mean is preserved. Keep native files for 30 days.
 - Retry CDS requests with exponential backoff (queues can take hours). Each daily run attempts the most recent 10 days and skips dates already built.
+- **Request by month.** Runs of consecutive missing dates within one month go in one request per statistic (cost = variables × days, at most 9 × 31 against the CDS limit of 400), and the result is split into per-date archives `{name}_{date}.nc`. A 90-day backfill is about 12 requests instead of 270.
+- **Queue limit.** The CDS rejects requests beyond a small, undocumented number queued per dataset per user. Keep at most 2 queued per dataset (`fetch.MAX_QUEUED`), submit the oldest dates first across all three statistics, and resubmit rejected or failed requests on a later poll.
+- **Raw pruning.** A per-date raw archive is deleted after 30 days only once its date has a tidy file, so a date that is still waiting for its other archives is never re-fetched. Tidy files are kept for 90 days.
 - **Don't block on the CDS queue.** GitHub Actions kills jobs after 6 h. Submit requests without waiting, store their request IDs in `/state/pending.json` in object storage, and collect finished results on the next run.
 
 ## Layer catalogue
@@ -246,7 +249,7 @@ Point and series chunks are little-endian uint16 and use the same per-layer pack
   - `tp` 2.5–3.5 mm day⁻¹
 - ≤ 1% no-data cells (code 0) in any natural layer. Masked cells (code 1) don't count.
 - `carnot` within 0–40% after clamping.
-- Append the global means to `/logs/global_means.csv`.
+- Append the global means to `/logs/global_means.csv` (columns `date, tsr, olr, tp_mm_day, status, problems`; one row per date, rewritten when a date is rebuilt). Implemented in `pipeline.validate`; a date that fails is logged and not published.
 
 ### One-off jobs
 
@@ -279,6 +282,7 @@ Full-bleed dark map with four overlays:
 - Play / pause / step, plus arrow keys.
 - Shows the data date and the note "ERA5, about 6 days behind real time".
 - Pre-fetches ±3 days of the active layer.
+- Steps through the manifest's dates, so a date that failed or isn't built yet is skipped. Arrow keys step the date when nothing else has focus (or a time-bar button does); elsewhere they keep their usual job. Play advances every 800 ms, waits for each date to draw, starts again from the oldest date if it's at the newest, and stops at the newest.
 
 ### Legend
 
@@ -354,7 +358,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit. (**Done** 2026-10-18.)
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value. (**Done** 2026-10-18.)
 6. Layer menu with all scalar layers and info panels. (**Done** 2026-10-18.)
-7. Backfill 90 days. Time bar with play/step/pre-fetch.
+7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19. The code is complete; the backfill was still collecting the last 41 dates from a slow CDS queue at the time.)
 8. Wind particle layer (10 m, 100 m, 250 hPa).
 9. Point chunks, series chunks, readout panel, 90-day chart.
 10. Climatology job + anomaly switch.
