@@ -2,6 +2,12 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-19 — Milestone 11 skipped (human layers)
+
+- **Decision:** the human layers (`human_q`, `human_ratio`) are skipped entirely, not postponed: no dataset shortlist and no licence check. Milestone 12 and 13 don't need them to run.
+- **What stays as it is:** both layers remain in the catalogue, the manifest and the layer menu (disabled, "Not available yet", with their info text), and the readout's Humans row says "not available yet". Nothing in the pipeline or front end depends on them being built.
+- **What it affects:** story-mode step 9 ("Humans — `human_ratio`, Europe") and the acceptance item "All 24 layers render for each of the last 90 days", which can only reach 22 layers. Both need a decision when milestone 12 or the final acceptance check comes up: drop or replace the step, and amend the criterion.
+
 ## 2026-10-19 — Milestone 10: climatology and the anomaly switch
 
 - **No anomalies for the four vector layers** (`wind10`, `wind100`, `jet250`, `flux_e`), your decision. The spec says to apply each layer's formula to monthly-mean inputs, but the daily wind layers are the speed of the *daily-mean vector*, and ERA5's monthly means can only give the speed of the *monthly-mean vector*. Measured on August 2026 10 m wind: mean of the 31 daily layers 5.80 m/s, speed of the monthly-mean vector 4.01 m/s (bias +1.79 m/s on average, up to +5 m/s, over 57% of the globe by more than 1 m/s), so a wind anomaly would mostly show that bias. ERA5's monthly mean of hourly wind speed (6.30 m/s) is a different quantity again (−0.5 m/s against the daily layers). Left out: the switch shows the value, with a legend note and "Not for this layer", and the info panel says why. The acceptance item "anomaly mode works for every natural layer" is therefore met for the 18 non-vector natural layers (`pipeline.layers.ANOMALY`).

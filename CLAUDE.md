@@ -386,7 +386,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. Transport arrows for `flux_e` are not part of it and are still to do.)
 9. Point chunks, series chunks, readout panel, 90-day chart. (**Done** 2026-10-19.)
 10. Climatology job + anomaly switch. (**Done** 2026-10-19; no anomalies for the vector layers, see the layer catalogue.)
-11. Human layers: `human_q` static build and `human_ratio`.
+11. Human layers: `human_q` static build and `human_ratio`. (**Skipped** 2026-10-19 by decision: no dataset has been chosen and none is planned. `human_q` and `human_ratio` stay in the catalogue and show as "Not available yet"; story step 9 and the readout's Humans row need either them or a replacement if the tour is built.)
 12. Story mode with the 9 Markdown cards.
 13. Deploy:
     - daily GitHub Action
@@ -416,7 +416,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 
 | Item | Risk or question | Proposed handling |
 | --- | --- | --- |
-| Human energy data | Which gridded anthropogenic heat flux dataset, and is its licence compatible? | Shortlist published datasets (e.g. Varquez et al., 2021, *Scientific Data*). Fall back to OWID country totals. |
+| Human energy data | **Skipped 2026-10-19.** Which gridded anthropogenic heat flux dataset, and is its licence compatible? | Shortlist published datasets (e.g. Varquez et al., 2021, *Scientific Data*). Fall back to OWID country totals. |
 | `div_e` noise | Daily 0.5° `p86.162` is dominated by grid-scale noise | **Decided 2026-10-18:** smooth with implicit diffusion (see Derived quantities) |
 | `flux_e` content | Raw `p75.162`/`p76.162` are dominated by circulation that carries no energy poleward | **Decided 2026-10-18:** draw only the divergent part, from smoothed `div_e` |
 | KE generation | No direct ERA5 field; `bld` covers boundary-layer friction only | Later: check the definition of `p64.162`, or compute pressure-gradient work |
