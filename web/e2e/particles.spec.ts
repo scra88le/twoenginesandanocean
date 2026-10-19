@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Fixture winds: wind10 is a uniform 10 m/s westerly on 09-30 and 10-01 (none on 09-29), jet250
-// a uniform 30 m/s southerly on 10-01, and wind100 isn't built.
+// Fixture winds: wind10 is a uniform 10 m/s westerly and wind100 an 8 m/s easterly on 09-30 and
+// 10-01 (none on 09-29), and jet250 a uniform 30 m/s southerly on 10-01.
 const VIEW = '/?layer=t_emit&center=0.25,-30&zoom=4';
 
 // SwiftShader draws every frame on the CPU; a smaller map keeps the animated tests quick.
@@ -91,9 +91,12 @@ test('hover shows the wind speed and direction as text', async ({ page }) => {
   await expect(page.locator('.legend-value')).toHaveText(/^236\.00 K/); // the raster still reads out
 });
 
-test('the level selector switches level; unbuilt levels are disabled', async ({ page }) => {
+test('the level selector switches level and each level shows its own wind', async ({ page }) => {
   await open(page);
-  await expect(page.locator('.particles-level option[value="wind100"]')).toBeDisabled();
+  await page.locator('.particles-level').selectOption('wind100');
+  await expect(page.locator('body')).toHaveAttribute('data-particles', 'wind100');
+  await hoverCentre(page);
+  await expect(page.locator('.legend-wind')).toHaveText('Wind 100 m: 8.0 m/s from E');
   await page.locator('.particles-level').selectOption('jet250');
   await expect(page.locator('body')).toHaveAttribute('data-particles', 'jet250');
   await hoverCentre(page);

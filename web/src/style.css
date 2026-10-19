@@ -19,6 +19,8 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 .legend-ticks span:last-child { transform: translateX(-100%); }
 .legend-value { margin-top: 6px; font-variant-numeric: tabular-nums; }
 .legend-wind { margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend-arrows { margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend-arrows::before { content: '→'; margin-right: 6px; color: #fff; }
 .legend-wind::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: 6px; vertical-align: 3px; background: #fff; }
 #menu .overlays { padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 8px; }
 .overlay-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 2px; }
@@ -104,6 +106,39 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
+/* Guided tour: the card sits where the readout does; the readout moves below it. */
+#tour { left: 12px; top: 12px; width: min(340px, calc(100vw - 48px)); z-index: 2; }
+.tour-head { display: flex; justify-content: space-between; align-items: center; }
+.tour-count { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tour-close {
+  flex: none; width: 28px; height: 28px; border-radius: 6px; border: 1px solid #3a4252;
+  background: transparent; color: var(--text); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.tour-close:hover { border-color: var(--text); }
+.tour-title { font-size: 17px; margin: 2px 0 6px; }
+.tour-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
+.tour-body code { font-size: 12px; background: rgba(255, 255, 255, 0.08); padding: 0 3px; border-radius: 3px; }
+.tour-dots { display: flex; gap: 0; margin: 4px 0 8px; }
+.tour-dot { position: relative; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.tour-dot::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; border: 1px solid #5a6475; }
+.tour-dot.current::before { background: #7aa7ff; border-color: #7aa7ff; }
+.tour-nav { display: flex; justify-content: space-between; gap: 8px; }
+.tour-nav button {
+  min-width: 76px; height: 32px; border-radius: 6px; border: 1px solid #3a4252;
+  background: transparent; color: var(--text); font: inherit; cursor: pointer;
+}
+.tour-nav button:hover:not(:disabled) { border-color: var(--text); }
+.tour-nav button:disabled { opacity: 0.4; cursor: default; }
+.tour-nav .tour-next { background: #7aa7ff; border-color: #7aa7ff; color: #0b0e14; font-weight: 600; }
+.tour-start {
+  width: 100%; margin: 0 0 8px; padding: 7px 10px; border-radius: 6px; border: 1px solid #7aa7ff;
+  background: rgba(122, 167, 255, 0.12); color: var(--text); font: inherit; cursor: pointer;
+}
+.tour-start:hover { background: rgba(122, 167, 255, 0.24); }
+body.tour-active #readout {
+  top: calc(12px + var(--tour-h, 0px) + 12px); max-height: calc(100vh - 222px - var(--tour-h, 0px));
+}
+
 /* Time bar */
 #timebar {
   left: calc(12px + min(320px, calc(100vw - 48px)) + 36px); right: calc(300px + 36px); bottom: 44px;
@@ -128,6 +163,9 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   .tb-text { flex: 1 0 100%; flex-direction: row; gap: 8px; align-items: baseline; }
   #legend { bottom: 144px; }
   #readout { inset: 0; width: auto; max-height: none; border-radius: 0; z-index: 3; background: #11151e; padding-top: max(10px, env(safe-area-inset-top)); }
+  body.tour-active #readout { top: 0; max-height: none; }
+  /* Beside the Layers button; the card scrolls rather than covering the map. */
+  #tour { right: 84px; width: auto; max-height: 46vh; overflow-y: auto; }
   body.menu-open #menu { display: block; }
 }
 
@@ -135,4 +173,6 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   #timebar { left: 12px; right: 12px; bottom: auto; top: 12px; }
   #menu { top: 70px; }
   #readout { top: 70px; max-height: calc(100vh - 270px); }
+  #tour { top: 70px; width: min(340px, calc(100vw - 348px)); }
+  body.tour-active #readout { top: calc(70px + var(--tour-h, 0px) + 12px); max-height: calc(100vh - 282px - var(--tour-h, 0px)); }
 }

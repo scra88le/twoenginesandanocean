@@ -7,6 +7,7 @@ import { ticks, type DisplayScale } from './scale';
 export class Legend {
   private readonly value: HTMLElement;
   private readonly wind: HTMLElement;
+  private readonly arrows: HTMLElement;
   private meta?: LayerMeta;
   private signed = false;
 
@@ -17,9 +18,11 @@ export class Legend {
       <div class="legend-ticks"></div>
       <div class="legend-notes"></div>
       <div class="legend-value" aria-live="polite">Hover over the map for a value</div>
-      <div class="legend-wind" hidden></div>`;
+      <div class="legend-wind" hidden></div>
+      <div class="legend-arrows" hidden></div>`;
     this.value = root.querySelector('.legend-value')!;
     this.wind = root.querySelector('.legend-wind')!;
+    this.arrows = root.querySelector('.legend-arrows')!;
   }
 
   /** `extra` notes go after the standard ones; `signed` shows values with a sign (anomalies). */
@@ -58,6 +61,12 @@ export class Legend {
   showWind(text: string | null): void {
     this.wind.hidden = text === null;
     this.wind.textContent = text ?? '';
+  }
+
+  /** The arrows line: what they show and how long the longest one is. null hides it. */
+  showArrows(text: string | null): void {
+    this.arrows.hidden = text === null;
+    this.arrows.textContent = text ?? '';
   }
 
   showMessage(text: string): void {

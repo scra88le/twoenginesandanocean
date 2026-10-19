@@ -10,7 +10,10 @@
   longitude only); net_toa = latitude in W m-2; carnot = 15% in the north and 0 (clamped,
   hatched) in the south. Winds, for the particle layer: wind10 is a uniform 10 m/s westerly
   (u = 10, v = 0) on the two newest dates only, so the oldest date has no wind; jet250 is a
-  uniform 30 m/s southerly (u = 0, v = 30) on the newest date; wind100 isn't built.
+  uniform 30 m/s southerly (u = 0, v = 30) on the newest date; wind100 is a uniform 8 m/s
+  easterly (u = -8) and flux_e a uniform 5e8 W m-1 eastward flux, both on the two newest
+  dates only. The other layers the guided tour visits (j_ratio, evap_frac, diss_bl, precip,
+  div_e) are uniform scalars on every date: 1.0, 0.5, 2 W m-2, 3 mm/day and 0.
   Point chunks hold those layers plus the extras t_skin = 288 K (north) / 300 K (south) and
   j_opt = 100 W m-2 on land (the northern hemisphere) and masked at sea; series chunks are
   rebuilt from the PNGs, so t_emit at a cell steps by 5 K a day. Only the tiles in
@@ -103,8 +106,17 @@ def e2e_fixtures() -> None:
             "t_emit": 200 + 0.1 * i - 5.0 * older,
             "net_toa": lat,
             "carnot": np.where(lat > 0, 15.0, 0.0),
+            "j_ratio": np.full_like(lat, 1.0),
+            "evap_frac": np.full_like(lat, 0.5),
+            "diss_bl": np.full_like(lat, 2.0),
+            "precip": np.full_like(lat, 3.0),
+            "div_e": np.zeros_like(lat),
         }
-        winds = {"wind10": (10.0, 0.0)} if older <= 1 else {}
+        winds = (
+            {"wind10": (10.0, 0.0), "wind100": (-8.0, 0.0), "flux_e": (5e8, 0.0)}
+            if older <= 1
+            else {}
+        )
         if older == 0:
             winds["jet250"] = (0.0, 30.0)
         files, codes = {}, {}
@@ -123,7 +135,7 @@ def e2e_fixtures() -> None:
             e = EXTRAS[eid]
             codes[eid] = quantise(x, masked, *e.encode, step=e.resolution)[0]
         anomalies, _ = encode_anomalies(
-            {k: _Field(x) for k, x in fields.items()}, int(day[5:7]), climatology
+            {k: _Field(x) for k, x in fields.items() if k in CLIM}, int(day[5:7]), climatology
         )
         files.update(anomalies)
         points = {k: v for k, v in point_tiles(codes).items() if k in FIXTURE_TILES}

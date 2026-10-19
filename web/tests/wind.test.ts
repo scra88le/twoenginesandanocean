@@ -57,5 +57,5 @@ test('a wind at the top of the colour range moves at a fixed screen speed at any
 });
 
 test('only built wind levels with u, v files are offered', () => {
-  expect(builtLevels(manifest)).toEqual(['wind10', 'jet250']);
+  expect(builtLevels(manifest)).toEqual(['wind10', 'wind100', 'jet250']);
 });

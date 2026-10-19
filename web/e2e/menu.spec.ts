@@ -1,8 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { decodePng } from '../src/png';
 
-// Fixture data root: t_emit, net_toa and carnot are built (carnot = 15% north, 0 south), plus
-// the wind10 and jet250 overlays, which also have rasters.
+// Fixture data root: 12 layers are built (see make_web_fixtures.py); carnot = 15% north, 0 south.
 const ready = (page: Page) =>
   expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
 
@@ -11,7 +10,7 @@ test('menu lists all 24 layers in 9 groups, with unbuilt layers disabled', async
   await ready(page);
   await expect(page.locator('#menu fieldset:not(.overlays)')).toHaveCount(9);
   await expect(page.locator('#menu input[type=radio]')).toHaveCount(24);
-  await expect(page.locator('#menu input[type=radio]:enabled')).toHaveCount(5);
+  await expect(page.locator('#menu input[type=radio]:enabled')).toHaveCount(12); // the layers the fixtures build
   await expect(page.locator('#menu input[value=t_emit]')).toBeChecked();
   await expect(page.locator('#menu fieldset legend').first()).toHaveText('Overlays');
   await expect(page.locator('#menu fieldset:not(.overlays) legend').first()).toHaveText('1 · Fuel');

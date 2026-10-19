@@ -8,10 +8,17 @@
  ],
  "built_layers": [
   "carnot",
+  "diss_bl",
+  "div_e",
+  "evap_frac",
+  "flux_e",
+  "j_ratio",
   "jet250",
   "net_toa",
+  "precip",
   "t_emit",
-  "wind10"
+  "wind10",
+  "wind100"
  ],
  "grid": {
   "nlon": 720,
@@ -56,8 +63,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -112.5,
-    112.5
+    -100,
+    100
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -102,8 +109,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -87.5,
-    87.5
+    -150,
+    150
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -148,8 +155,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -100.0,
-    100.0
+    -100,
+    100
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -194,8 +201,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -55.0,
-    55.0
+    -100,
+    100
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -240,8 +247,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -22.5,
-    22.5
+    -25,
+    25
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -286,8 +293,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -7.5,
-    7.5
+    -10,
+    10
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -332,8 +339,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -3.75,
-    3.75
+    -7.5,
+    7.5
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -378,8 +385,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -75.0,
-    75.0
+    -150,
+    150
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -424,8 +431,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -0.5,
-    0.5
+    -1,
+    1
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -470,8 +477,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -75.0,
-    75.0
+    -150,
+    150
    ],
    "anomaly_colour": "BrBG",
    "encode": {
@@ -516,8 +523,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -50.0,
-    50.0
+    -100,
+    100
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -562,8 +569,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -0.25,
-    0.25
+    -0.5,
+    0.5
    ],
    "anomaly_colour": "BrBG",
    "encode": {
@@ -737,8 +744,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -1.5,
-    1.5
+    -3,
+    3
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -783,8 +790,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -4.9975,
-    4.9975
+    -8,
+    8
    ],
    "anomaly_colour": "balance",
    "encode": {
@@ -799,7 +806,7 @@
     "lo": -9.995,
     "hi": 9.995,
     "log": false,
-    "scale": 0.001,
+    "scale": 0.01,
     "offset": -9.995
    },
    "hatch_zero": false,
@@ -829,8 +836,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -17.5,
-    17.5
+    -20,
+    20
    ],
    "anomaly_colour": "BrBG",
    "encode": {
@@ -875,8 +882,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -24.975,
-    24.975
+    -20,
+    20
    ],
    "anomaly_colour": "BrBG",
    "encode": {
@@ -891,7 +898,7 @@
     "lo": -49.95,
     "hi": 49.95,
     "log": false,
-    "scale": 0.01,
+    "scale": 0.1,
     "offset": -49.95
    },
    "hatch_zero": false,
@@ -921,8 +928,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -2.4975,
-    2.4975
+    -4,
+    4
    ],
    "anomaly_colour": "BrBG",
    "encode": {
@@ -937,7 +944,7 @@
     "lo": -4.995,
     "hi": 4.995,
     "log": false,
-    "scale": 0.001,
+    "scale": 0.01,
     "offset": -4.995
    },
    "hatch_zero": false,
@@ -964,8 +971,8 @@
    "vector": false,
    "anomaly": true,
    "anomaly_display": [
-    -1000.0,
-    1000.0
+    -1000,
+    1000
    ],
    "anomaly_colour": "balance",
    "encode": {

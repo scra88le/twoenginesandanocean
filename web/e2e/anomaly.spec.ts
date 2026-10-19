@@ -4,7 +4,7 @@ import { decodePng } from '../src/png';
 
 // Fixture climatology: t_emit 230 K, net_toa 0, carnot 10% in every month. At the cell centred
 // on 0.25 E, t_emit is 236 K on 2026-10-01, so its anomaly is +6 K (and +1 K on 09-30).
-// t_emit's anomaly display range is +/-22.5 K on the balance scale.
+// t_emit's anomaly display range is +/-25 K on the balance scale (ANOMALY_DISPLAY).
 const VIEW = '/?layer=t_emit&center=0.25,-30&zoom=4&particles=off';
 
 async function open(page: Page, extra = '') {
@@ -31,12 +31,12 @@ test('the anomaly switch shows the difference from the monthly mean, centred on 
   await page.mouse.move(c.x, c.y);
   await expect(page.locator('.legend-value')).toHaveText('+6.00 K');
 
-  // +6 K on +/-22.5 K maps to 0.5 + 0.5 * 6 / 22.5 on the balance scale, at 85% opacity.
+  // +6 K on +/-25 K maps to 0.5 + 0.5 * 6 / 25 on the balance scale, at 85% opacity.
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);
   const shot = await decodePng(await page.screenshot({ clip: { x: c.x, y: c.y, width: 1, height: 1 } }));
   const bg = [11, 14, 20];
-  const want = colourAt('balance', 0.5 + (0.5 * 6) / 22.5).map((v, k) => v * 0.85 + bg[k]! * 0.15);
+  const want = colourAt('balance', 0.5 + (0.5 * 6) / 25).map((v, k) => v * 0.85 + bg[k]! * 0.15);
   for (let k = 0; k < 3; k++) expect(Math.abs(shot.data[k]! - want[k]!)).toBeLessThanOrEqual(3);
   expect(errors).toEqual([]);
 });

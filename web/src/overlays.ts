@@ -1,4 +1,5 @@
-// Overlay controls at the top of the layer menu: wind particles on or off, and their level.
+// Overlay controls at the top of the layer menu: wind particles (on or off, and their level),
+// transport arrows, and the anomaly switch.
 import type { Manifest } from './manifest';
 import { LEVEL_LABELS, WIND_LEVELS, type WindLevel } from './wind';
 
@@ -53,6 +54,41 @@ export class OverlayControls {
   get choice(): ParticleChoice {
     return { on: this.checkbox.checked, level: this.select.value as WindLevel };
   }
+
+  /** Set the controls (without firing onChange), for the tour. Unbuilt levels are ignored. */
+  set(choice: ParticleChoice): void {
+    if (!this.select.disabled && !this.select.querySelector<HTMLOptionElement>(`option[value="${choice.level}"]`)!.disabled) {
+      this.select.value = choice.level;
+    }
+    this.checkbox.checked = choice.on && !this.checkbox.disabled;
+  }
+}
+
+/** The transport arrows toggle (flux_e). */
+export class ArrowsSwitch {
+  readonly element: HTMLDivElement;
+  private readonly checkbox: HTMLInputElement;
+
+  constructor(m: Manifest, initial: boolean, onChange: (on: boolean) => void) {
+    this.element = document.createElement('div');
+    this.element.className = 'overlay-row arrows-row';
+    this.element.innerHTML = `
+      <label class="overlay-toggle"><input type="checkbox" class="arrows-on" /> Transport arrows</label>`;
+    this.checkbox = this.element.querySelector('.arrows-on')!;
+    const built = m.built_layers.includes('flux_e') && !!m.layers.flux_e?.uv_encode;
+    this.checkbox.checked = initial && built;
+    this.checkbox.disabled = !built;
+    if (!built) this.element.title = 'No transport data has been published yet';
+    this.checkbox.addEventListener('change', () => onChange(this.checkbox.checked));
+  }
+
+  get on(): boolean {
+    return this.checkbox.checked;
+  }
+
+  set(on: boolean): void {
+    this.checkbox.checked = on && !this.checkbox.disabled;
+  }
 }
 
 /** The anomaly switch: shows the active raster as the difference from its 1991-2020 mean. */
@@ -79,6 +115,10 @@ export class AnomalySwitch {
 
   get on(): boolean {
     return this.checkbox.checked;
+  }
+
+  set(on: boolean): void {
+    this.checkbox.checked = on && !this.checkbox.disabled;
   }
 
   /** Say when the switch is on but the active layer has no anomaly. */

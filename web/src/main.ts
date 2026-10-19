@@ -9,18 +9,22 @@ import { baseStyle } from './basemap';
 import { parseSeries, pointCodes, seriesCodes, tileOf } from './chunks';
 import { MASKED, decodeAll, scalarCodes, vectorCodes } from './codes';
 import { lutBytes } from './colormaps';
+import { formatValue } from './format';
 import { cellIndex } from './grid';
 import { InfoPanel } from './info';
+import { ArrowLayer, arrowReference } from './layers/arrows';
 import { ParticleLayer } from './layers/particles';
 import { RasterLayer } from './layers/raster';
 import { Legend } from './legend';
 import { anomalyUrl, fieldUrl, hasAnomaly, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
-import { AnomalySwitch, OverlayControls, type ParticleChoice } from './overlays';
+import { AnomalySwitch, ArrowsSwitch, OverlayControls, type ParticleChoice } from './overlays';
 import { decodePng, type DecodedPng } from './png';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
 import { displayScale } from './scale';
+import { parseCards, type StoryStep, type StoryView } from './story';
 import { TimeBar, nearbyDates } from './timebar';
+import { Tour } from './tour';
 import { LEVEL_LABELS, describeWind, isWindLevel, windAt } from './wind';
 
 setWorkerUrl(workerUrl);
@@ -74,6 +78,8 @@ class App {
   anomalySwitch: AnomalySwitch | null = null;
   private marker: Marker | null = null;
   private pinRequest = 0;
+  private arrowsOn = false;
+  private arrowRequest = 0;
   private chartRequest = 0;
   private codes: Uint16Array | null = null;
   private wind: WindCodes | null = null;
@@ -91,6 +97,7 @@ class App {
     private particleChoice: ParticleChoice,
     private readonly readout: ReadoutPanel,
     private readonly map: MapLibreMap,
+    private readonly arrows: ArrowLayer,
   ) {}
 
   private loadChunk(url: string): Promise<ArrayBuffer> {
@@ -223,7 +230,71 @@ class App {
 
   async setDate(date: string): Promise<void> {
     this.date = date;
-    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateReadout()]);
+    await Promise.all([
+      this.select(this.layerId || DEFAULT_LAYER),
+      this.updateParticles(),
+      this.updateArrows(),
+      this.updateReadout(),
+    ]);
+  }
+
+  /** Set the transport arrows on or off and (re)load their field. */
+  setArrows(on: boolean): Promise<void> {
+    this.arrowsOn = on;
+    return this.updateArrows();
+  }
+
+  setArrowsFlag(on: boolean): void {
+    this.arrowsOn = on;
+  }
+
+  async updateArrows(): Promise<void> {
+    const request = ++this.arrowRequest;
+    const meta = this.manifest.layers.flux_e;
+    const built = this.manifest.built_layers.includes('flux_e');
+    if (!this.arrowsOn || !meta?.uv_encode || !built) {
+      this.arrows.setField(null);
+      this.legend.showArrows(null);
+      document.body.dataset.arrows = 'off';
+      return;
+    }
+    const date = this.date;
+    let png: DecodedPng;
+    try {
+      png = await this.load(uvUrl(DATA, this.manifest, date, 'flux_e'));
+    } catch {
+      if (request !== this.arrowRequest) return;
+      this.arrows.setField(null);
+      this.legend.showArrows(`No transport arrows for ${date}`);
+      document.body.dataset.arrows = 'missing';
+      return;
+    }
+    if (request !== this.arrowRequest) return;
+    const { u, v } = vectorCodes(png);
+    const reference = arrowReference(u, v, meta.uv_encode);
+    this.arrows.setField({ u, v, encode: meta.uv_encode, grid: this.manifest.grid, reference });
+    this.legend.showArrows(
+      `Arrows: divergent energy transport; full length is ${formatValue(reference, meta.units, meta.encode)}`,
+    );
+    document.body.dataset.arrows = 'on';
+    this.prefetch((d) => uvUrl(DATA, this.manifest, d, 'flux_e'));
+  }
+
+  /**
+   * Show a story step: its layer with the anomaly off, its overlays, and fly to its view.
+   * (A step's overlays are exactly what it lists: anything not listed is switched off.)
+   */
+  async showStep(step: StoryStep, level: ParticleChoice['level']): Promise<void> {
+    this.anomalyOn = false;
+    this.particleChoice = { on: step.particles !== null, level: step.particles ?? level };
+    this.arrowsOn = step.arrows;
+    this.flyTo(step.view);
+    await Promise.all([this.select(step.layer), this.updateParticles(), this.updateArrows()]);
+  }
+
+  /** Move the map; reduced-motion users get a jump, as MapLibre does for non-essential moves. */
+  flyTo(view: StoryView): void {
+    this.map.flyTo({ center: [view.lng, view.lat], zoom: view.zoom, duration: 1800, essential: false });
   }
 
   /** Set the mode before the first draw, without drawing. */
@@ -384,17 +455,47 @@ async function start(): Promise<void> {
   const choice = parseParticles(params.get('particles'));
   const closers: { close: () => void } = { close: () => undefined };
   const readout = new ReadoutPanel(document.getElementById('readout')!, () => closers.close());
-  const app = new App(manifest, date, raster, particles, legend, menu, choice, readout, map);
+  const arrows = new ArrowLayer('arrows');
+  const app = new App(manifest, date, raster, particles, legend, menu, choice, readout, map, arrows);
   closers.close = () => app.unpin();
   handlers.select = (id) => void app.select(id);
   const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
   document.querySelector('#menu .menu-heading')!.after(overlays.element);
   // ?anom=1 starts in anomaly mode (temporary, until URL state lands in milestone 13).
   const anomaly = new AnomalySwitch(manifest, params.get('anom') === '1', (on) => void app.setAnomaly(on));
-  overlays.element.append(anomaly.element);
+  // ?arrows=1 starts with the transport arrows on (temporary, like ?anom).
+  const arrowSwitch = new ArrowsSwitch(manifest, params.get('arrows') === '1', (on) => void app.setArrows(on));
+  overlays.element.append(arrowSwitch.element, anomaly.element);
   app.anomalySwitch = anomaly;
   if (anomaly.on) app.setAnomalyFlag(true);
+  if (arrowSwitch.on) app.setArrowsFlag(true);
   void app.setParticles(overlays.choice);
+
+  // The guided tour: cards from story/*.md, each setting a layer, overlays and view.
+  const steps = parseCards(
+    import.meta.glob('../../story/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>,
+  );
+  const tour = new Tour(
+    document.getElementById('tour')!,
+    steps,
+    (step) => {
+      overlays.set({ on: step.particles !== null, level: step.particles ?? overlays.choice.level });
+      arrowSwitch.set(step.arrows);
+      anomaly.set(false);
+      void app.showStep(step, overlays.choice.level);
+    },
+    () => undefined, // closing keeps the map as the last step left it
+  );
+  const tourButton = document.createElement('button');
+  tourButton.type = 'button';
+  tourButton.className = 'tour-start';
+  tourButton.textContent = 'Take the tour';
+  tourButton.addEventListener('click', () => {
+    document.body.classList.remove('menu-open'); // on phones the menu would cover the card
+    document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'false');
+    tour.start(0);
+  });
+  document.querySelector('#menu .menu-heading')!.after(tourButton);
   new TimeBar(document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d));
 
   const toggle = document.getElementById('menu-toggle')!;
@@ -404,12 +505,14 @@ async function start(): Promise<void> {
   });
 
   // ?debug exposes the map and particle layer to the console and the Playwright tests.
-  if (params.has('debug')) Object.assign(window, { ehe: { map, particles } });
+  if (params.has('debug')) Object.assign(window, { ehe: { map, particles, arrows } });
 
   await new Promise((resolve) => map.once('load', resolve));
   map.addLayer(raster, 'coastline-halo');
-  map.addLayer(particles); // on top, over the coastlines
+  map.addLayer(arrows); // under the particles, over the coastlines
+  map.addLayer(particles);
   await app.select(first);
+  void app.updateArrows();
   map.on('mousemove', (e) => app.hover(e.lngLat.lng, e.lngLat.lat));
   map.on('mouseout', () => app.hoverEnd());
   map.on('click', (e) => app.pin(e.lngLat.lng, e.lngLat.lat));
@@ -417,6 +520,9 @@ async function start(): Promise<void> {
   const pin = parseCenter(params.get('pin'));
   if (pin) app.pin(pin[0], pin[1]);
   document.body.dataset.ready = 'true';
+  // ?tour=N opens the tour at step N (1-based), for links and tests.
+  const tourStep = Number(params.get('tour'));
+  if (Number.isInteger(tourStep) && tourStep >= 1 && tourStep <= steps.length) tour.start(tourStep - 1);
 }
 
 start().catch((e: unknown) => fail(`Could not load the map: ${e instanceof Error ? e.message : String(e)}`));

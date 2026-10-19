@@ -31,12 +31,12 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
-/web/src/layers        raster.ts, particles.ts (arrows.ts for flux_e still to come)
+/web/src/layers        raster.ts, particles.ts, arrows.ts
 /web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
 /web/tests/fixtures    PNGs from the real encoder, for decoder tests
 /web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds) for the Playwright tests
 /pipeline/scripts      export_colormaps.py (writes web/src/colormap-tables.json), make_web_fixtures.py
-/story                 01-fuel.md … 09-humans.md  (story-mode card text, 60–100 words each)
+/story                 01-fuel.md … 09-explore.md  (story-mode cards: front matter for the step's layer, overlays and view, then 60–100 words of text)
 /docs/DECISIONS.md     log of deviations and choices made during the build
 /.github/workflows/ci.yml       lint + tests for both stacks (milestone 1)
 /.github/workflows/daily.yml    scheduled build and upload (milestone 13)
@@ -283,7 +283,7 @@ Full-bleed dark map with four overlays:
 - One raster active at a time.
 - Overlay toggles:
   - Wind particles, with a level selector (10 m / 100 m / 250 hPa), usable over any raster.
-  - Transport arrows (`flux_e`).
+  - Transport arrows (`flux_e`): see **Transport arrows** below.
 - An anomaly switch applies to the active raster ("Anomaly vs 1991–2020" in the Overlays section; `?anom=1` until URL state lands). It is disabled until the climatology is published. On a layer without an anomaly the value is shown, with a legend note and "Not for this layer" by the switch. The legend says which month's mean the difference is from; hover values are signed. Each layer's info panel has an "Anomaly" section: exact for layers linear in their inputs, an approximation for `t_emit`, `carnot`, `g_max`, `j_ratio` and `evap_frac`, and why there is none for the others.
 - Layers listed in the manifest but not in `built_layers` are shown disabled ("Not available yet"). Radio buttons give keyboard navigation (Tab into the list, arrow keys select).
 
@@ -338,9 +338,15 @@ Source dataset and variable, units, sign convention, formula, one paragraph on i
 
 The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is published in the manifest. Config values the panels quote (`h_lift`, the smoothing length, the mask thresholds) are filled in from `pipeline.derived`, so they can't drift. Shown in a native `<dialog>` (Esc closes it and focus returns to the (i) button).
 
+### Transport arrows
+
+- A custom WebGL layer (`web/src/layers/arrows.ts`) draws the divergent energy flux (`flux_e_uv.png`) as arrows on a regular screen grid, 44 px apart (52 px on phones). Positions and directions are computed on the CPU each frame from the packed u, v codes (bilinear), which keeps the geometry unit-tested; the GPU draws them as instanced triangles with a dark halo so they read on any colour.
+- Direction is the flux direction on the map (east is right, north is up). Length is proportional to the flux up to a reference, the day's 98th percentile, at which an arrow fills 90 % of a grid cell; arrows shorter than 5 px are left out. The legend says what a full-length arrow is ("full length is 6.67 × 10⁸ W m⁻¹").
+- An "Transport arrows" checkbox in the Overlays section (`?arrows=1` until URL state lands), disabled until `flux_e` is published.
+
 ### Story mode
 
-"Take the tour" runs 9 steps. Each step sets the layer, overlays and view, and shows a card loaded from `/story/NN-*.md`.
+"Take the tour" (a button at the top of the layer menu; `?tour=N` opens it at step N) runs 9 steps. Each step sets the layer, overlays and view, and shows a card from `/story/NN-*.md`.
 
 1. Fuel — `net_toa`, global
 2. Exhaust — `t_emit`
@@ -348,9 +354,14 @@ The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is 
 4. The feedback — `j_ratio`, land
 5. The split — `evap_frac`
 6. Output — `diss_bl` + 100 m particles
-7. Water — `precip` / `p_lift`
+7. Water — `precip`
 8. Transport — `div_e` + arrows
-9. Humans — `human_ratio`, Europe
+9. Explore — `net_toa` + 10 m particles; click, time bar, anomaly (replaces "Humans — `human_ratio`, Europe", because milestone 11 was skipped)
+
+- **Cards** are Markdown files with a front matter block (`title`, `layer`, `particles` = `off` or a wind layer, `arrows` = `on`/`off`, `view` = `lng, lat, zoom`), then 60–100 words in paragraphs with `**bold**`, `*italic*` and `` `code` `` only. They are bundled at build time (`import.meta.glob`), so a card can't drift from the code that reads it, and are rendered as DOM text, never as HTML. Tests check each card's front matter, its word count and that its layer exists.
+- A step shows exactly what it lists: overlays it doesn't list are switched off, and the anomaly is always off. The map flies to the step's view (an instant jump for users who prefer reduced motion). Closing the tour, with × or Esc, or finishing it leaves the map as the last step left it.
+- The card sits top-left, where the readout opens, and the readout moves below it while the tour is open. On phones it sits at the top beside the Layers button (scrolling if long), and the menu closes when the tour starts.
+- Back / Next, progress dots that jump to a step, and ← → on the card (they step the tour, not the date, while the card has focus). The last step's button says Finish.
 
 ### URL state
 
@@ -383,11 +394,11 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value. (**Done** 2026-10-18.)
 6. Layer menu with all scalar layers and info panels. (**Done** 2026-10-18.)
 7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19. The code is complete; the backfill was still collecting the last 41 dates from a slow CDS queue at the time.)
-8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. Transport arrows for `flux_e` are not part of it and are still to do.)
+8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. The transport arrows for `flux_e` came with milestone 12, where the tour needs them.)
 9. Point chunks, series chunks, readout panel, 90-day chart. (**Done** 2026-10-19.)
 10. Climatology job + anomaly switch. (**Done** 2026-10-19; no anomalies for the vector layers, see the layer catalogue.)
 11. Human layers: `human_q` static build and `human_ratio`. (**Skipped** 2026-10-19 by decision: no dataset has been chosen and none is planned. `human_q` and `human_ratio` stay in the catalogue and show as "Not available yet"; story step 9 and the readout's Humans row need either them or a replacement if the tour is built.)
-12. Story mode with the 9 Markdown cards.
+12. Story mode with the 9 Markdown cards. (**Done** 2026-10-19, with the transport arrows; step 9 is "Explore", not "Humans".)
 13. Deploy:
     - daily GitHub Action
     - upload to object storage
@@ -400,13 +411,13 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 ## Acceptance criteria
 
 - [ ] The daily job runs unattended for 7 consecutive days, with a new date each day.
-- [ ] All 24 layers render for each of the last 90 days, with legend, units and info panel.
+- [ ] All 24 layers render for each of the last 90 days, with legend, units and info panel. (22 layers can; the two human layers were skipped, 2026-10-19, so reword this to 22 at the final check.)
 - [ ] Global-mean validation passes for every built date, and the log CSV exists.
 - [ ] Derived-layer tests pass, including the three fixtures.
 - [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s.
 - [ ] Anomaly mode works for every natural layer, on a diverging scale centred on zero. (Met for the 18 non-vector natural layers; the vector layers have none by decision, 2026-10-19.)
 - [x] Wind particles animate at all three levels over any raster.
-- [ ] Story mode runs through all 9 steps, forwards and back, and each step sets its layer and view.
+- [x] Story mode runs through all 9 steps, forwards and back, and each step sets its layer and view.
 - [ ] A copied URL restores layer, date, view and pinned point.
 - [ ] A deliberately failed run (bad API key) leaves yesterday's site intact.
 - [ ] Performance and payload targets are met.
