@@ -68,6 +68,42 @@ def test_backfill_builds_ready_dates_and_skips_published_ones(tmp_path):
     assert json.loads((out / "manifest.json").read_text())["dates"] == [str(d) for d in days[:2]]
 
 
+def test_backfill_rebuilds_series_only_after_a_pass_that_published(tmp_path):
+    out, raw, work = tmp_path / "out", tmp_path / "raw", tmp_path / "work"
+    days = run.target_dates(D, 2)
+    write_tidy(work, days[0])
+    rebuilt = []
+    passes = iter([["pending"], []])  # one pass waiting on CDS, then done
+
+    def fake_fetch(c, wanted, raw_dir):
+        return next(passes)
+
+    def series(out_dir):
+        rebuilt.append(out_dir)
+        return 0
+
+    run.backfill(
+        None, D, 2, raw, work, out, wait=True, fetch=fake_fetch, series=series,
+        sleep=lambda s: None,
+    )  # fmt: skip
+    assert rebuilt == [out]  # the first pass published days[0]; the second published nothing
+    assert (out / "points" / str(days[0])).is_dir()
+
+
+def test_rebuild_reruns_published_dates_and_the_series(tmp_path):
+    out, raw, work = tmp_path / "out", tmp_path / "raw", tmp_path / "work"
+    days = run.target_dates(D, 2)
+    for d in days:
+        write_tidy(work, d)
+        run.build_date(d, raw, work, out)
+    (work / f"tidy_{days[0]}.nc").unlink()  # this one can't be rebuilt
+    logs = []
+    assert run.rebuild(raw, work, out, log=logs.append) == {}
+    assert logs[0] == f"{days[0]}: no tidy file, skipped"
+    assert logs[1] == f"{days[1]}: rebuilt"
+    assert (out / "series" / "olr" / "0_0.bin").is_file()
+
+
 def test_old_raw_archives_and_tidy_files_are_pruned(tmp_path):
     raw, work = tmp_path / "raw", tmp_path / "work"
     raw.mkdir()

@@ -23,13 +23,13 @@ def encoded(layers):
 
 
 def test_every_natural_layer_gets_a_png_and_vectors_get_uv(encoded):
-    files, _ = encoded
+    files, _, _ = encoded
     expected = {f"{i}.png" for i in NATURAL} | {f"{i}_uv.png" for i in VECTOR}
     assert set(files) == expected
 
 
 def test_encoded_values_decode_back(encoded, layers):
-    files, _ = encoded
+    files, _, _ = encoded
     spec = LAYERS["carnot"]
     got = decode(png_to_ints(files["carnot.png"]), *spec.encode, step=spec.resolution)
     assert got[0, 0] == pytest.approx(15.0, abs=1e-3)
@@ -39,7 +39,7 @@ def test_encoded_values_decode_back(encoded, layers):
 
 
 def test_uv_png_decodes_to_components(encoded):
-    files, _ = encoded
+    files, _, _ = encoded
     u, v = png_to_ints(files["wind100_uv.png"])
     lo, hi = LAYERS["wind100"].uv_encode
     step = LAYERS["wind100"].uv_resolution
@@ -48,14 +48,14 @@ def test_uv_png_decodes_to_components(encoded):
 
 
 def test_stats_count_masked_nodata_and_clipped(encoded):
-    _, stats = encoded
+    _, stats, _ = encoded
     assert stats["g_max"]["masked_pct"] == pytest.approx(50.0)
     assert stats["carnot"]["nodata_pct"] == 0.0
     assert stats["carnot"]["clipped"] == 0
 
 
 def test_publish_writes_fields_and_manifest(tmp_path, encoded):
-    files, _ = encoded
+    files, _, _ = encoded
     publish.publish_date(tmp_path, D, files, built_at="2026-10-18T00:00:00Z")
     assert (tmp_path / "fields" / D / "carnot.png").is_file()
     m = json.loads((tmp_path / "manifest.json").read_text())
@@ -73,7 +73,7 @@ def test_publish_writes_fields_and_manifest(tmp_path, encoded):
 
 
 def test_republishing_a_date_replaces_it_cleanly(tmp_path, encoded):
-    files, _ = encoded
+    files, _, _ = encoded
     publish.publish_date(tmp_path, D, {"old.png": b"x", **files})
     publish.publish_date(tmp_path, D, files)
     assert not (tmp_path / "fields" / D / "old.png").exists()
@@ -82,7 +82,7 @@ def test_republishing_a_date_replaces_it_cleanly(tmp_path, encoded):
 
 
 def test_failed_write_leaves_the_published_site_untouched(tmp_path, encoded, monkeypatch):
-    files, _ = encoded
+    files, _, _ = encoded
     publish.publish_date(tmp_path, D, files)
     before = (tmp_path / "fields" / D / "carnot.png").read_bytes()
     manifest_before = (tmp_path / "manifest.json").read_text()
@@ -105,7 +105,7 @@ def test_failed_write_leaves_the_published_site_untouched(tmp_path, encoded, mon
 
 
 def test_failed_manifest_write_keeps_the_old_manifest(tmp_path, encoded, monkeypatch):
-    files, _ = encoded
+    files, _, _ = encoded
     publish.publish_date(tmp_path, D, files)
     manifest_before = (tmp_path / "manifest.json").read_text()
 
@@ -141,7 +141,7 @@ def test_rejects_bad_date_strings(tmp_path):
 
 
 def test_manifest_carries_info_hatching_and_built_layers(tmp_path, encoded):
-    files, _ = encoded
+    files, _, _ = encoded
     publish.publish_date(tmp_path, D, files)
     m = json.loads((tmp_path / "manifest.json").read_text())
     assert m["layers"]["carnot"]["hatch_zero"] is True

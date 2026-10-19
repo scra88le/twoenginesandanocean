@@ -12,8 +12,9 @@ from pathlib import Path
 
 import xarray as xr
 
-from .derived import compute_layers
+from .derived import compute_extras, compute_layers
 from .fetch import PRESSURE_DAILY, SINGLE_DAILY, build_requests, fetch_dates
+from .points import build_series
 from .publish import encode_date, publish_date
 from .tidy import build_tidy, write_tidy
 from .validate import check, global_means, write_log
@@ -38,11 +39,11 @@ def build_date(day: date, raw: Path, work: Path, out: Path) -> list[str]:
         tidy = build_tidy(day, raw)
         write_tidy(tidy, work)
     layers = compute_layers(tidy)
-    files, stats = encode_date(layers)
+    files, stats, points = encode_date(layers, compute_extras(tidy))
     problems = check(tidy, layers, stats)
     write_log(out, day.isoformat(), global_means(tidy), problems)
     if not problems:
-        publish_date(out, day.isoformat(), files)
+        publish_date(out, day.isoformat(), files, points=points)
     return problems
 
 
@@ -110,11 +111,13 @@ def backfill(
     build: Callable = build_date,
     log: Callable[[str], None] = lambda _msg: None,
     sleep: Callable[[float], None] = time.sleep,
+    series: Callable[[Path], int] = build_series,
 ) -> BackfillResult:
     """Make sure the last `days` dates up to `latest` are published.
 
     Each pass collects and queues CDS requests (without blocking), builds every date whose
-    archives are all there, and prunes old files. With `wait`, passes repeat with backoff
+    archives are all there, rebuilds the series chunks if anything was published, and prunes
+    old files. With `wait`, passes repeat with backoff
     until nothing is pending. Dates that fail validation are not retried in the same run.
     """
     result = BackfillResult()
@@ -124,6 +127,7 @@ def backfill(
         published = _published(out)
         todo = [d for d in targets if d.isoformat() not in published and d not in result.failed]
         result.pending = fetch(c, todo, raw) if todo else []
+        built_before = len(result.built)
         for d in todo:
             if not _ready(d, raw, work):
                 continue
@@ -134,9 +138,28 @@ def backfill(
             else:
                 result.built.append(d)
                 log(f"{d}: published")
+        if len(result.built) > built_before:
+            log(f"series: rebuilt {series(out)} files")
         prune(raw, work, latest)
         if not wait or not result.pending:
             return result
         log(f"waiting on {len(result.pending)} CDS request(s); next check in {delay:.0f} s")
         sleep(delay)
         delay = min(delay * 1.5, 600.0)
+
+
+def rebuild(raw: Path, work: Path, out: Path, log: Callable[[str], None] = lambda _m: None):
+    """Re-run every published date from its tidy file, then the series (for example after
+    the encoder or the point chunk layout changes). Returns {date: problems} for failures."""
+    failed: dict[str, list[str]] = {}
+    for d in sorted(_published(out)):
+        day = date.fromisoformat(d)
+        if not _tidy_path(work, day).is_file():
+            log(f"{d}: no tidy file, skipped")
+            continue
+        problems = build_date(day, raw, work, out)
+        if problems:
+            failed[d] = problems
+        log(f"{d}: {'not published: ' + '; '.join(problems) if problems else 'rebuilt'}")
+    log(f"series: rebuilt {build_series(out)} files")
+    return failed

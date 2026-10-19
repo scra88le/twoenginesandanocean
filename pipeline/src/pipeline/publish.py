@@ -19,22 +19,33 @@ import numpy as np
 from .derived import LayerField
 from .encode import FIRST_VALID, MASKED, NODATA, quantise, scalar_png, scale_offset, vector_png
 from .info import INFO
-from .layers import GROUPS, LAYERS, LayerSpec
+from .layers import EXTRAS, GROUPS, LAYERS, LayerSpec
+from .points import POINT_FIELDS, TILE, point_tiles
 
 MANIFEST_VERSION = 1
 KEEP_DAYS = 90
 
 
-def encode_date(layers: dict[str, LayerField]) -> tuple[dict[str, bytes], dict[str, dict]]:
-    """Layer fields -> ({filename: PNG bytes}, {layer: stats})."""
+def encode_date(
+    layers: dict[str, LayerField], extras: dict[str, LayerField] | None = None
+) -> tuple[dict[str, bytes], dict[str, dict], dict[str, bytes]]:
+    """Layer fields (and readout extras) -> ({PNG filename: bytes}, {layer: stats},
+    {point tile filename: bytes})."""
     files: dict[str, bytes] = {}
     stats: dict[str, dict] = {}
+    point_codes: dict[str, np.ndarray] = {}
+    for eid, field in (extras or {}).items():
+        spec = EXTRAS[eid]
+        point_codes[eid], _ = quantise(
+            field.values.values, field.masked.values, *spec.encode, step=spec.resolution
+        )
     for lid, field in layers.items():
         spec = LAYERS[lid]
         masked = field.masked.values
         codes, clipped = quantise(
             field.values.values, masked, *spec.encode, log=spec.log, step=spec.resolution
         )
+        point_codes[lid] = codes
         files[f"{lid}.png"] = scalar_png(codes)
         if spec.uv_encode is not None:
             u, cu = quantise(field.u.values, masked, *spec.uv_encode, step=spec.uv_resolution)
@@ -46,7 +57,7 @@ def encode_date(layers: dict[str, LayerField]) -> tuple[dict[str, bytes], dict[s
             "masked_pct": float(100 * np.mean(codes == MASKED)),
             "clipped": clipped,
         }
-    return files, stats
+    return files, stats, point_tiles(point_codes)
 
 
 def _range(lo: float, hi: float, step: float, log: bool = False) -> dict:
@@ -95,6 +106,20 @@ def build_manifest(dates: list[str], built_at: str, built_layers: list[str] | No
         "codes": {"nodata": NODATA, "masked": MASKED, "first_valid": FIRST_VALID},
         "files": {"field": "fields/{date}/{layer}.png", "uv": "fields/{date}/{layer}_uv.png"},
         "layers": {lid: _layer_meta(s) for lid, s in LAYERS.items()},
+        "points": {
+            "file": "points/{date}/{tx}_{ty}.bin",
+            "tile": TILE,
+            "fields": list(POINT_FIELDS),
+            "extras": {
+                e.id: {
+                    "title": e.title,
+                    "units": e.units,
+                    "encode": _range(*e.encode, e.resolution),
+                }
+                for e in EXTRAS.values()
+            },
+        },
+        "series": {"file": "series/{layer}/{tx}_{ty}.bin", "magic": "EHS1"},
         "credits": _credits(int(built_at[:4])),
     }
 
@@ -120,20 +145,10 @@ def _layer_ids(files: dict[str, bytes]) -> set[str]:
     return {s for s in stems if s in LAYERS}
 
 
-def publish_date(
-    out: Path,
-    day: str,
-    files: dict[str, bytes],
-    built_at: str | None = None,
-    keep_days: int = KEEP_DAYS,
-) -> None:
-    """Write one date's files, then the manifest, then delete dates beyond `keep_days`."""
-    day = date.fromisoformat(day).isoformat()  # also rejects anything path-like
-    built_at = built_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    fields = out / "fields"
-    fields.mkdir(parents=True, exist_ok=True)
-
-    tmp = fields / f".{day}.tmp"
+def _swap_in(parent: Path, day: str, files: dict[str, bytes]) -> None:
+    """Write `files` into a temporary directory, then swap it in as `parent/day`."""
+    parent.mkdir(parents=True, exist_ok=True)
+    tmp = parent / f".{day}.tmp"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir()
     try:
@@ -143,15 +158,33 @@ def publish_date(
         shutil.rmtree(tmp, ignore_errors=True)
         raise
 
-    final = fields / day
+    final = parent / day
     if final.exists():
-        old = fields / f".{day}.old"
+        old = parent / f".{day}.old"
         shutil.rmtree(old, ignore_errors=True)
         os.rename(final, old)
         os.rename(tmp, final)
         shutil.rmtree(old)
     else:
         os.rename(tmp, final)
+
+
+def publish_date(
+    out: Path,
+    day: str,
+    files: dict[str, bytes],
+    built_at: str | None = None,
+    keep_days: int = KEEP_DAYS,
+    points: dict[str, bytes] | None = None,
+) -> None:
+    """Write one date's point chunks and map files, then the manifest, then delete dates
+    beyond `keep_days`."""
+    day = date.fromisoformat(day).isoformat()  # also rejects anything path-like
+    built_at = built_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fields = out / "fields"
+    if points:
+        _swap_in(out / "points", day, points)
+    _swap_in(fields, day, files)
 
     old = _read_manifest(out)
     previous = old.get("dates", [])
@@ -160,3 +193,4 @@ def publish_date(
     _write_manifest(out, build_manifest(dates, built_at, built))
     for gone in set(previous) - set(dates):
         shutil.rmtree(fields / gone, ignore_errors=True)
+        shutil.rmtree(out / "points" / gone, ignore_errors=True)

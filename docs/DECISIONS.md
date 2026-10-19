@@ -2,6 +2,33 @@
 
 A log of deviations from the plan and choices made during the build. Newest first.
 
+## 2026-10-19 — Milestone 9: point and series chunks, readout and chart
+
+- **Readout extras in the point chunks.** Two of the readout's quantities aren't map layers: T_s (the hot side, ERA5 `skt`) and J_opt (R_s / 2). The front end must not compute formulas, so `pipeline.derived.compute_extras` computes both, and they're stored after the 24 layers as `t_skin` and `j_opt`, with their own encodings (`pipeline.layers.EXTRAS`, published in the manifest's `points.extras`). J_opt is land-only, like G_max. The spec's "all layers, ~19 kB" is now 26 fields, 20.8 kB.
+- **Fixed layout.** Every point chunk has all 26 fields in manifest order, and layers not built yet are code 0. The front end never has to guess which fields a date has, and a field added later doesn't move the others.
+- **Series files carry their dates** (`EHS1`, n, n × YYYYMMDD, then the codes). Published dates have gaps (September 2026 is still missing while CDS works through the queue), so "the last 90 days" can't be implied from the manifest. A series file also can't disagree with itself while the manifest is being replaced. Each file is replaced atomically.
+- **Series are rebuilt from the published PNGs**, not kept up to date incrementally, so they can't drift from the maps and a rebuild repairs anything. That's 648 × 22 built layers = 14 256 files in about 10 s locally. Rebuilds happen after a backfill pass that published something (not after every date), after `build`, and with the new `series` command. The new `rebuild` command re-runs every published date from its cached tidy file, which is how the 49 dates published before this milestone got point chunks. It took 11.6 minutes for 49 dates (about 14 s each).
+- **Sizes:** 13.5 MB of point chunks per date and up to ~1.2 GB of series for 90 days, so the whole data root will be about 3 GB. Gzip brings chunks to about 0.6 of their size, so serving them gzip-encoded from object storage is worth considering in milestone 13.
+- **Front end** (`web/src/chunks.ts`, `web/src/readout.ts`):
+  - A click opens the readout at the cell centre, with a marker on the world copy that was clicked. The table follows the date; the chart follows the active layer and marks the date.
+  - Masked values show "—", with the mask reason as a tooltip and accessible label.
+  - The chart uses uPlot 1.6.32 (one of the spec's two options, about 50 kB). It has one x per day, so missing dates break the line rather than being joined across, and dots, so a day with no neighbours still shows. Log layers get a log axis.
+  - Under 700 px the readout is a full-height opaque sheet.
+  - `?pin=lng,lat` opens it until URL state lands in milestone 13.
+- **Speed on real data:** readout and chart in under 0.8 s from a cold page load, and 41 ms for a click on another cell (local dev server), against the 1 s target. From object storage it still needs checking in milestone 13.
+- **Real-data sanity check, 2026-08-05:**
+  - Sahara (20.25° N, 10.25° E): LE 2 W m⁻², H 41 W m⁻², EF 0.05, η_C 12%, no rain.
+  - Amazon (3.25° S, 60.25° W): LE 124 W m⁻², EF 0.78, r_J 1.44.
+  - Both are physically sensible.
+- **Fixes found along the way:**
+  - The dev/preview data middleware passed missing files through to Vite's SPA fallback, which served `index.html` with a 200. It now returns a 404, as object storage will. The PNG paths only survived this because their decoder rejects HTML.
+  - `prettyUnits` turned `evap_frac`'s unit "0-1" into "0⁻¹". Exponents now only follow a letter, and dimensionless values ("0-1", "ratio") are shown without a unit.
+- **Tests:**
+  - pytest: tiling and byte order, series round trip with gaps, extras, publish and prune of points, series from PNGs, backfill rebuilding series only after a pass that published, and `rebuild`.
+  - Vitest: tile maths, decoding the real fixture chunks into readout text, chart gaps.
+  - Playwright: click to readout and chart within 1 s, following the date and layer, land values, close and Esc, and a missing tile.
+  - The e2e fixtures keep only two tiles, so they stay at 420 kB instead of 59 MB.
+
 ## 2026-10-19 — Milestone 8: wind particles
 
 - **GPU particles with transform feedback** (`web/src/layers/particles.ts`), not the original webgl-wind's float textures. WebGL2 has transform feedback built in, while rendering to float textures needs an extension, so state lives in a vertex buffer: position now, position one step ago, seconds left. The update shader decodes u and v from the packed `{layer}_uv.png` field with `texelFetch` and bilinear interpolation after decoding, as the raster does. Lines from the previous to the current position, drawn instanced (two vertices per particle), leave no gaps even in fast jets.

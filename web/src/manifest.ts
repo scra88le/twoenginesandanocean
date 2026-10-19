@@ -46,7 +46,23 @@ export interface Manifest {
   codes: { nodata: number; masked: number; first_valid: number };
   files: { field: string; uv: string };
   layers: Record<string, LayerMeta>;
+  points?: PointsMeta; // absent in manifests from before milestone 9
+  series?: { file: string; magic: string };
   credits: string;
+}
+
+/** A readout-only quantity in the point chunks (not a map layer). */
+export interface ExtraMeta {
+  title: string;
+  units: string;
+  encode: EncodeRange;
+}
+
+export interface PointsMeta {
+  file: string;
+  tile: number;
+  fields: string[]; // the 24 layers, then the extras
+  extras: Record<string, ExtraMeta>;
 }
 
 export async function loadManifest(base: string): Promise<Manifest> {
@@ -61,4 +77,8 @@ export function fieldUrl(base: string, m: Manifest, date: string, layer: string)
 
 export function uvUrl(base: string, m: Manifest, date: string, layer: string): string {
   return `${base}/${m.files.uv.replace('{date}', date).replace('{layer}', layer)}`;
+}
+
+export function tileUrl(base: string, template: string, vars: Record<string, string | number>): string {
+  return `${base}/${template.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k]))}`;
 }

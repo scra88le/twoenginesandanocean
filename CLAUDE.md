@@ -27,7 +27,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 
 ```
 /pipeline/pyproject.toml
-/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, publish.py, cli.py
+/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, publish.py, validate.py, run.py, cli.py
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
@@ -56,6 +56,8 @@ python -m pipeline.cli fetch --date YYYY-MM-DD [--wait]      # submit/collect CD
 python -m pipeline.cli tidy --date YYYY-MM-DD                # raw archives -> ./work/tidy_DATE.nc
 python -m pipeline.cli build --date YYYY-MM-DD --out ./out   # tidy -> layers -> PNGs + manifest
 python -m pipeline.cli backfill --days 90 --out ./out [--wait]  # fetch, build, validate and publish the last 90 days
+python -m pipeline.cli rebuild --out ./out                   # re-run every published date from ./work tidy files, then series
+python -m pipeline.cli series --out ./out                    # rebuild the series chunks from the published PNGs
 python -m pipeline.cli climatology --out ./out               # one-off, 1991–2020
 
 # Front end
@@ -231,15 +233,20 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 /fields/{YYYY-MM-DD}/{layer}.png
 /fields/{YYYY-MM-DD}/{layer}_uv.png        vector layers only: u, v components
 /fields/{YYYY-MM-DD}/{layer}_anom.png
-/points/{YYYY-MM-DD}/{tx}_{ty}.bin  all layers, one 10°×10° tile (20×20 cells), uint16 (~19 kB)
-/series/{layer}/{tx}_{ty}.bin       last 90 days, one tile, uint16 (~72 kB), rebuilt daily
+/points/{YYYY-MM-DD}/{tx}_{ty}.bin  all 24 layers + readout extras, one 10°×10° tile (20×20 cells), uint16 (20.8 kB)
+/series/{layer}/{tx}_{ty}.bin       the published dates (up to 90), one tile, uint16 (~72 kB), rebuilt daily
 /clim/{MM}/{layer}.png              monthly 1991–2020 climatology
 /static/human_q.png
 /logs/global_means.csv              daily validation log
 /state/pending.json                 in-flight CDS request IDs (pipeline-only, not read by the front end)
 ```
 
-Point and series chunks are little-endian uint16 and use the same per-layer packing and reserved codes as the PNGs.
+Point and series chunks are little-endian uint16 and use the same per-layer packing and reserved codes as the PNGs (`pipeline.points`).
+
+- Tiles: 36 × 18; tile (tx, ty) covers grid columns 20·tx … 20·tx + 19 and rows 20·ty … 20·ty + 19 (row 0 is the north). Within a tile, cells are row-major.
+- Point chunk: the fields in the manifest's `points.fields` order (the 24 layers, then the extras `t_skin` = T_s and `j_opt` = J_opt, which the readout needs but which aren't map layers), field-major. Layers not built yet are code 0. Extras are computed in `pipeline.derived` and their encodings are in the manifest's `points.extras`.
+- Series chunk: `EHS1`, uint32 n, n uint32 dates as YYYYMMDD, then n × 400 codes, date-major. The dates are in the file because published dates can have gaps, and so a series file is self-consistent whatever the manifest says at that moment. Each file is replaced atomically.
+- Series are rebuilt from the published PNGs after each backfill pass that published something, after `build`, and by `rebuild` / `series`.
 
 ### Validation (per date)
 
@@ -317,6 +324,10 @@ Fetch one point chunk on click, then show:
 
 Below the table, a 90-day chart of the active layer at that point, with the climatology as a dashed line.
 
+- Opens on a click on the map (or `?pin=lng,lat` until URL state lands), at the clicked cell's centre, with a marker. The close button or Esc closes it. Under 700 px it is a full-height sheet.
+- T_s and J_opt come from the point chunk's extras; everything else is a layer. Masked values show "—" with the mask reason as a tooltip and accessible label; unbuilt layers say "not available yet".
+- The table follows the date; the chart follows the active layer and marks the date. The chart has one point per day with gaps where a date has no value or isn't published, and a log axis for log layers (uPlot). The climatology line comes with milestone 10.
+
 ### Info panel
 
 Source dataset and variable, units, sign convention, formula, one paragraph on its meaning for the heat engine, caveats, what grey cells mean (if the layer masks any), and the data credit.
@@ -369,7 +380,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 6. Layer menu with all scalar layers and info panels. (**Done** 2026-10-18.)
 7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19. The code is complete; the backfill was still collecting the last 41 dates from a slow CDS queue at the time.)
 8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. Transport arrows for `flux_e` are not part of it and are still to do.)
-9. Point chunks, series chunks, readout panel, 90-day chart.
+9. Point chunks, series chunks, readout panel, 90-day chart. (**Done** 2026-10-19.)
 10. Climatology job + anomaly switch.
 11. Human layers: `human_q` static build and `human_ratio`.
 12. Story mode with the 9 Markdown cards.
@@ -409,7 +420,7 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 | Data lag | ~6 days | State it clearly; later add ECMWF open data / GFS for same-day winds |
 | CDS queue | Hours-long waits, outages; Actions jobs are killed after 6 h | Submit without waiting, track IDs in `/state/pending.json`, collect on the next run; 10-day rolling catch-up; never overwrite good data |
 | Cron shutdown | GitHub disables scheduled workflows after 60 days with no repo activity | Add a keepalive step (e.g. a monthly empty commit or the API "enable workflow" call), or check it during monthly maintenance |
-| Storage growth | 6.3 MB of field PNGs per date (2026-10-01), so ~570 MB for 90 days, about double with anomalies | Monitor against free tiers (R2: 10 GB) |
+| Storage growth | Per date: 6.3 MB of field PNGs plus 13.5 MB of point chunks (648 × 20.8 kB). For 90 days: ~570 MB of fields, ~1.2 GB of points and ~1.2 GB of series, about 3 GB, more with anomalies | Monitor against free tiers (R2: 10 GB). Gzip shrinks point and series chunks to about 0.6 of their size (measured 2026-10-19; all-masked ocean tiles of land-only layers to almost nothing), so serving them gzip-encoded is an option |
 | Write operations | Series rebuild is 648 tiles × 24 layers ≈ 15.5k objects/day (~470k/month), plus fields and points | Within R2's free tier for writes, but monitor; skip uploading unchanged objects |
 | PNG size | The low byte of a uint16 is noise when the step is finer than the data | **Resolved** with per-layer resolutions: 91–344 kB per file on 2026-10-01. Re-check on stormy winter dates |
 | Basemap | Licence and attribution | **Resolved:** Natural Earth (public domain), credited in the footer. Place labels are not included yet |

@@ -40,3 +40,9 @@ test('log layers read "less than" at the encode floor, where zero is stored', as
   expect(formatReading(0.05, 'mm day-1', precip)).toBe('0.05 mm day⁻¹');
   expect(formatReading(255.06, 'K', enc(0.02))).toBe('255.06 K (−18.1 °C)');
 });
+
+test('dimensionless layers show no unit, and "0-1" is not an exponent', () => {
+  expect(prettyUnits('0-1')).toBe('0-1');
+  expect(formatValue(0.531, '0-1', enc(0.001))).toBe('0.531');
+  expect(formatValue(1.2, 'ratio', enc(0.002))).toBe('1.200');
+});

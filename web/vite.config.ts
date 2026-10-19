@@ -24,8 +24,14 @@ function serveOut(): Plugin {
   ) => {
     const rel = normalize(decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/'));
     const file = join(OUT_DIR, rel);
-    if (!file.startsWith(OUT_DIR + sep) || !existsSync(file) || !statSync(file).isFile()) {
+    if (!file.startsWith(OUT_DIR + sep)) {
       next();
+      return;
+    }
+    // A real 404, as object storage gives; falling through would serve index.html with a 200.
+    if (!existsSync(file) || !statSync(file).isFile()) {
+      res.statusCode = 404;
+      res.end('Not found');
       return;
     }
     res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');

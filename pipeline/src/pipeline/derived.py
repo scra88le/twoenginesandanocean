@@ -220,9 +220,12 @@ def compute_layers(
     smooth_length_m: float = SMOOTH_LENGTH_M,
 ) -> dict[str, LayerField]:
     """Every natural layer for one date from a tidy dataset."""
-    coords, dims = {"latitude": tidy.latitude, "longitude": tidy.longitude}, (
-        "latitude",
-        "longitude",
+    coords, dims = (
+        {"latitude": tidy.latitude, "longitude": tidy.longitude},
+        (
+            "latitude",
+            "longitude",
+        ),
     )
     no_mask = np.zeros((NLAT, NLON), dtype=bool)
 
@@ -285,3 +288,30 @@ def compute_layers(
         u, v = get(un), get(vn)
         layers[name] = field(wind_speed(u, v), u=u, v=v)
     return layers
+
+
+def compute_extras(tidy: xr.Dataset) -> dict[str, LayerField]:
+    """Readout-only quantities that aren't map layers: the hot side T_s and J_opt (land only).
+
+    They go into the point chunks next to the layers, so the front end never computes them.
+    """
+    coords, dims = (
+        {"latitude": tidy.latitude, "longitude": tidy.longitude},
+        ("latitude", "longitude"),
+    )
+    skt = tidy["skt"].values.astype("float64")
+    ocean = tidy["lsm"].values < LAND_THRESHOLD
+    j_opt, _ = max_power(
+        tidy["ssr"].values.astype("float64"),
+        skt,
+        emission_temperature(tidy["olr"].values.astype("float64")),
+    )
+
+    def field(x, masked):
+        masked = np.asarray(masked, dtype=bool)
+        return LayerField(
+            xr.DataArray(np.where(masked, np.nan, x), coords=coords, dims=dims),
+            xr.DataArray(masked, coords=coords, dims=dims),
+        )
+
+    return {"t_skin": field(skt, np.zeros_like(ocean)), "j_opt": field(j_opt, ocean)}

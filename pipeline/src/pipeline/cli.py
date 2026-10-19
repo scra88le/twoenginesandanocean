@@ -34,6 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--raw", type=Path, default=Path("raw"))
     build.add_argument("--work", type=Path, default=Path("work"))
 
+    rebuild = sub.add_parser("rebuild", help="rebuild every published date from tidy files")
+    rebuild.add_argument("--out", type=Path, required=True)
+    rebuild.add_argument("--raw", type=Path, default=Path("raw"))
+    rebuild.add_argument("--work", type=Path, default=Path("work"))
+
+    series = sub.add_parser("series", help="rebuild the 90-day series chunks")
+    series.add_argument("--out", type=Path, required=True)
+
     backfill = sub.add_parser("backfill", help="fetch and build the last N available days")
     backfill.add_argument("--days", type=int, default=90)
     backfill.add_argument("--out", type=Path, required=True)
@@ -86,7 +94,23 @@ def _build(args: argparse.Namespace) -> int:
     if problems:
         print(f"{args.date}: not published: {'; '.join(problems)}", file=sys.stderr)
         return 1
-    print(f"published {args.date} to {args.out}")
+    from .points import build_series
+
+    print(f"published {args.date} to {args.out}; series: rebuilt {build_series(args.out)} files")
+    return 0
+
+
+def _rebuild(args: argparse.Namespace) -> int:
+    from .run import rebuild
+
+    failed = rebuild(args.raw, args.work, args.out, log=lambda msg: print(msg, flush=True))
+    return 1 if failed else 0
+
+
+def _series(args: argparse.Namespace) -> int:
+    from .points import build_series
+
+    print(f"series: rebuilt {build_series(args.out)} files")
     return 0
 
 
@@ -118,6 +142,10 @@ def main(argv: list[str] | None = None) -> int:
         return _build(args)
     if args.command == "backfill":
         return _backfill(args)
+    if args.command == "rebuild":
+        return _rebuild(args)
+    if args.command == "series":
+        return _series(args)
     print(f"{args.command}: not implemented yet", file=sys.stderr)
     return 1
 

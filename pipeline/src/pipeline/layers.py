@@ -65,14 +65,18 @@ _SPECS = [
     LayerSpec("lh", "Latent heat flux", 5, _W, "deep", (0, 300), (-200, 1200)),
     LayerSpec("sh", "Sensible heat flux", 5, _W, "amp", (-50, 150), (-300, 600)),
     LayerSpec("evap_frac", "Evaporative fraction", 5, "0-1", "BrBG", (0, 1), (-20, 20)),
-    LayerSpec(
-        "wind10", "Wind 10 m", 6, "m s-1", "viridis", (0, 25), (0, 90), uv_encode=(-60, 60)
-    ),
+    LayerSpec("wind10", "Wind 10 m", 6, "m s-1", "viridis", (0, 25), (0, 90), uv_encode=(-60, 60)),
     LayerSpec(
         "wind100", "Wind 100 m", 6, "m s-1", "viridis", (0, 30), (0, 120), uv_encode=(-80, 80)
     ),
     LayerSpec(
-        "jet250", "Jet stream 250 hPa", 6, "m s-1", "viridis", (0, 80), (0, 220),
+        "jet250",
+        "Jet stream 250 hPa",
+        6,
+        "m s-1",
+        "viridis",
+        (0, 80),
+        (0, 220),
         uv_encode=(-150, 150),
     ),  # fmt: skip
     LayerSpec("ke_col", "Column kinetic energy", 6, "MJ m-2", "magma", (0, 6), (0, 40)),
@@ -80,28 +84,59 @@ _SPECS = [
         "diss_bl", "Boundary-layer dissipation", 6, _W, "magma", (0.01, 20), (1e-4, 1e3), log=True
     ),
     LayerSpec("tcwv", "Column water vapour", 7, "kg m-2", "rain", (0, 70), (0, 120)),
+    LayerSpec("precip", "Precipitation", 7, "mm day-1", "rain", (0.1, 100), (1e-3, 1e3), log=True),
     LayerSpec(
-        "precip", "Precipitation", 7, "mm day-1", "rain", (0.1, 100), (1e-3, 1e3), log=True
-    ),
-    LayerSpec(
-        "p_lift", "Power lifting water (indicative)", 7, _W, "deep", (0.01, 10), (1e-5, 1e3),
+        "p_lift",
+        "Power lifting water (indicative)",
+        7,
+        _W,
+        "deep",
+        (0.01, 10),
+        (1e-5, 1e3),
         log=True,
     ),  # fmt: skip
     LayerSpec(
-        "div_e", "Divergence of total energy flux (smoothed)", 8, _W, "balance", None,
-        (-2000, 2000), centre=0,
+        "div_e",
+        "Divergence of total energy flux (smoothed)",
+        8,
+        _W,
+        "balance",
+        None,
+        (-2000, 2000),
+        centre=0,
     ),  # fmt: skip
     LayerSpec(
-        "flux_e", "Divergent energy transport", 8, "W m-1", "cividis", None, (0, 2.2e9),
+        "flux_e",
+        "Divergent energy transport",
+        8,
+        "W m-1",
+        "cividis",
+        None,
+        (0, 2.2e9),
         uv_encode=(-1.5e9, 1.5e9),
     ),  # fmt: skip
     LayerSpec(
-        "human_q", "Human energy use density", 9, _W, "magma", (0.001, 100), (1e-5, 1e4),
-        log=True, anomaly=False,
+        "human_q",
+        "Human energy use density",
+        9,
+        _W,
+        "magma",
+        (0.001, 100),
+        (1e-5, 1e4),
+        log=True,
+        anomaly=False,
     ),  # fmt: skip
     LayerSpec(
-        "human_ratio", "Human ÷ natural dissipation", 9, "ratio", "balance", (1e-4, 10),
-        (1e-7, 1e4), log=True, centre=1, anomaly=False,
+        "human_ratio",
+        "Human ÷ natural dissipation",
+        9,
+        "ratio",
+        "balance",
+        (1e-4, 10),
+        (1e-7, 1e4),
+        log=True,
+        centre=1,
+        anomaly=False,
     ),  # fmt: skip
 ]
 
@@ -134,3 +169,23 @@ def _complete(s: LayerSpec) -> LayerSpec:
 LAYERS: dict[str, LayerSpec] = {s.id: _complete(s) for s in _SPECS}
 NATURAL = tuple(i for i, s in LAYERS.items() if s.anomaly)
 VECTOR = tuple(i for i, s in LAYERS.items() if s.uv_encode is not None)
+
+
+@dataclass(frozen=True)
+class PointSpec:
+    """A readout-only quantity stored in the point chunks but not drawn as a map layer."""
+
+    id: str
+    title: str
+    units: str
+    encode: tuple[float, float]
+    resolution: float
+
+
+EXTRAS: dict[str, PointSpec] = {
+    s.id: s
+    for s in (
+        PointSpec("t_skin", "Surface (skin) temperature", "K", (150, 350), 0.02),
+        PointSpec("j_opt", "Max-power convective flux", "W m-2", (0, 300), 0.25),
+    )
+}

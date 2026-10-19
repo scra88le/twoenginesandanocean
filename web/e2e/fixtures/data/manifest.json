@@ -997,5 +997,65 @@
    }
   }
  },
+ "points": {
+  "file": "points/{date}/{tx}_{ty}.bin",
+  "tile": 20,
+  "fields": [
+   "asr_toa",
+   "asr_sfc",
+   "net_toa",
+   "olr",
+   "t_emit",
+   "carnot",
+   "g_max",
+   "j_conv",
+   "j_ratio",
+   "lh",
+   "sh",
+   "evap_frac",
+   "wind10",
+   "wind100",
+   "jet250",
+   "ke_col",
+   "diss_bl",
+   "tcwv",
+   "precip",
+   "p_lift",
+   "div_e",
+   "flux_e",
+   "human_q",
+   "human_ratio",
+   "t_skin",
+   "j_opt"
+  ],
+  "extras": {
+   "t_skin": {
+    "title": "Surface (skin) temperature",
+    "units": "K",
+    "encode": {
+     "lo": 150,
+     "hi": 350,
+     "log": false,
+     "scale": 0.02,
+     "offset": 150.0
+    }
+   },
+   "j_opt": {
+    "title": "Max-power convective flux",
+    "units": "W m-2",
+    "encode": {
+     "lo": 0,
+     "hi": 300,
+     "log": false,
+     "scale": 0.25,
+     "offset": 0.0
+    }
+   }
+  }
+ },
+ "series": {
+  "file": "series/{layer}/{tx}_{ty}.bin",
+  "magic": "EHS1"
+ },
  "credits": "Generated using Copernicus Climate Change Service information [2026]: ERA5 (Hersbach et al., 2020), via the Copernicus Climate Data Store. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains."
 }

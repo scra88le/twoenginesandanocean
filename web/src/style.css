@@ -75,6 +75,35 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 #info dt { font-weight: 600; margin-top: 10px; }
 #info dd { margin: 2px 0 0; }
 
+/* Point readout */
+#readout {
+  left: 12px; top: 12px; width: min(340px, calc(100vw - 48px)); max-height: calc(100vh - 210px);
+  overflow-y: auto; z-index: 1;
+}
+.ro-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ro-heading { font-size: 14px; margin: 0; }
+.ro-place { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.ro-close {
+  flex: none; width: 28px; height: 28px; border-radius: 6px; border: 1px solid #3a4252;
+  background: transparent; color: var(--text); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.ro-close:hover { border-color: var(--text); }
+.ro-table { width: 100%; border-collapse: collapse; margin: 8px 0 6px; font-size: 12px; }
+.ro-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 8px 4px 0; vertical-align: top; white-space: nowrap; }
+.ro-table td { padding: 3px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.ro-table tr:first-child td { border-top: 0; }
+.ro-item { display: flex; justify-content: space-between; gap: 8px; }
+.ro-name { color: var(--muted); }
+.ro-value { font-variant-numeric: tabular-nums; text-align: right; }
+.ro-message { color: var(--muted); padding: 6px 0; }
+.ro-chart-title { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.ro-chart { min-height: 150px; }
+.ro-chart-note { color: var(--muted); font-size: 11px; }
+.pin {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
 /* Time bar */
 #timebar {
   left: calc(12px + min(320px, calc(100vw - 48px)) + 36px); right: calc(300px + 36px); bottom: 44px;
@@ -98,10 +127,12 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   #timebar { top: auto; bottom: 60px; left: 12px; right: 12px; flex-wrap: wrap; }
   .tb-text { flex: 1 0 100%; flex-direction: row; gap: 8px; align-items: baseline; }
   #legend { bottom: 144px; }
+  #readout { inset: 0; width: auto; max-height: none; border-radius: 0; z-index: 3; background: #11151e; padding-top: max(10px, env(safe-area-inset-top)); }
   body.menu-open #menu { display: block; }
 }
 
 @media (min-width: 701px) and (max-width: 1100px) {
   #timebar { left: 12px; right: 12px; bottom: auto; top: 12px; }
   #menu { top: 70px; }
+  #readout { top: 70px; max-height: calc(100vh - 270px); }
 }

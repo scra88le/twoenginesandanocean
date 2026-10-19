@@ -1,8 +1,12 @@
 import type { EncodeRange } from './codes';
 import { superscript } from './scale';
 
+// Exponents follow a letter ("m s-1"); "0-1" is a range, not 0 to the power -1.
 export const prettyUnits = (units: string) =>
-  units.replace(/(\S)-(\d)/g, (_, c: string, d: string) => `${c}⁻${superscript(Number(d))}`);
+  units.replace(/([A-Za-z])-(\d)/g, (_, c: string, d: string) => `${c}⁻${superscript(Number(d))}`);
+
+/** Dimensionless layers: their values are shown without a unit. */
+const UNITLESS = new Set(['ratio', '0-1']);
 
 const minus = (s: string) => s.replace('-', '−');
 
@@ -18,7 +22,7 @@ function decimalsFor(step: number): number {
 /** A value for display, with precision from the layer's resolution. */
 export function formatValue(v: number, units: string, enc: EncodeRange): string {
   if (!Number.isFinite(v)) return 'no data';
-  const u = prettyUnits(units);
+  const u = UNITLESS.has(units) ? '' : ` ${prettyUnits(units)}`;
   let text: string;
   if (Math.abs(v) >= 1e5) {
     const [m, e] = v.toExponential(2).split('e');
@@ -29,12 +33,14 @@ export function formatValue(v: number, units: string, enc: EncodeRange): string 
     text = minus(v.toFixed(decimalsFor(enc.scale)));
   }
   const celsius = units === 'K' ? ` (${minus((v - 273.15).toFixed(1))} °C)` : '';
-  return `${text} ${u}${celsius}`;
+  return `${text}${u}${celsius}`;
 }
 
 /** A reading for the hover and point readout. Log layers store values below their floor
  * (including zero) as the floor, so all that is known there is "less than the floor". */
 export function formatReading(v: number, units: string, enc: EncodeRange): string {
-  if (enc.log && Number.isFinite(v) && v <= enc.lo * (1 + 1e-9)) return `< ${enc.lo} ${prettyUnits(units)}`;
+  if (enc.log && Number.isFinite(v) && v <= enc.lo * (1 + 1e-9)) {
+    return `< ${enc.lo}${UNITLESS.has(units) ? '' : ` ${prettyUnits(units)}`}`;
+  }
   return formatValue(v, units, enc);
 }

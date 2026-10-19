@@ -1,10 +1,11 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { Map as MapLibreMap, setWorkerUrl } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker, setWorkerUrl } from 'maplibre-gl';
 // MapLibre looks for its worker next to its own module, which a bundled build doesn't have;
 // importing the URL makes Vite emit the file in builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { baseStyle } from './basemap';
+import { parseSeries, pointCodes, seriesCodes, tileOf } from './chunks';
 import { MASKED, decodeAll, scalarCodes, vectorCodes } from './codes';
 import { lutBytes } from './colormaps';
 import { cellIndex } from './grid';
@@ -12,10 +13,11 @@ import { InfoPanel } from './info';
 import { ParticleLayer } from './layers/particles';
 import { RasterLayer } from './layers/raster';
 import { Legend } from './legend';
-import { fieldUrl, loadManifest, uvUrl, type Manifest } from './manifest';
+import { fieldUrl, loadManifest, tileUrl, uvUrl, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
 import { OverlayControls, type ParticleChoice } from './overlays';
 import { decodePng, type DecodedPng } from './png';
+import { ReadoutPanel, readoutItems } from './readout';
 import { displayScale } from './scale';
 import { TimeBar, nearbyDates } from './timebar';
 import { LEVEL_LABELS, describeWind, isWindLevel, windAt } from './wind';
@@ -48,6 +50,14 @@ function parseParticles(text: string | null): ParticleChoice {
   return { on: true, level: isWindLevel(text) ? text : 'wind10' };
 }
 
+interface Pin {
+  lng: number; // cell centre
+  lat: number;
+  tx: number;
+  ty: number;
+  k: number; // index within the tile
+}
+
 interface WindCodes {
   level: ParticleChoice['level'];
   u: Uint16Array;
@@ -56,6 +66,11 @@ interface WindCodes {
 
 class App {
   private readonly cache = new Map<string, Promise<DecodedPng>>(); // insertion order = LRU
+  private readonly chunks = new Map<string, Promise<ArrayBuffer>>(); // point and series chunks
+  private pinned: Pin | null = null;
+  private marker: Marker | null = null;
+  private pinRequest = 0;
+  private chartRequest = 0;
   private codes: Uint16Array | null = null;
   private wind: WindCodes | null = null;
   private layerId = '';
@@ -70,7 +85,99 @@ class App {
     private readonly legend: Legend,
     private readonly menu: LayerMenu,
     private particleChoice: ParticleChoice,
+    private readonly readout: ReadoutPanel,
+    private readonly map: MapLibreMap,
   ) {}
+
+  private loadChunk(url: string): Promise<ArrayBuffer> {
+    let p = this.chunks.get(url);
+    if (p) {
+      this.chunks.delete(url);
+    } else {
+      p = fetch(url).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      });
+      p.catch(() => this.chunks.delete(url));
+    }
+    this.chunks.set(url, p);
+    while (this.chunks.size > CACHE_SIZE) this.chunks.delete(this.chunks.keys().next().value!);
+    return p;
+  }
+
+  /** Open the readout for the cell under a point, or move it there. */
+  pin(lng: number, lat: number): void {
+    const g = this.manifest.grid;
+    const cell = cellIndex(lng, lat, g);
+    if (!cell) return;
+    const centre = { lng: g.lon0 + cell.i * g.step, lat: g.lat0 - cell.j * g.step };
+    this.pinned = { ...centre, ...tileOf(cell, this.manifest.points?.tile ?? 20) };
+    const el = document.createElement('div');
+    el.className = 'pin';
+    this.marker?.remove();
+    // Keep the marker on the world copy that was clicked.
+    const copy = 360 * Math.round((lng - centre.lng) / 360);
+    this.marker = new Marker({ element: el }).setLngLat([centre.lng + copy, centre.lat]).addTo(this.map);
+    this.readout.open();
+    void this.updateReadout();
+    void this.updateChart();
+  }
+
+  unpin(): void {
+    this.pinned = null;
+    this.marker?.remove();
+    this.marker = null;
+    this.readout.close();
+    delete document.body.dataset.readout;
+  }
+
+  private async updateReadout(): Promise<void> {
+    const pin = this.pinned;
+    const points = this.manifest.points;
+    if (!pin) return;
+    const request = ++this.pinRequest;
+    const date = this.date;
+    this.readout.showPlace(pin.lng, pin.lat, date);
+    if (!points) {
+      this.readout.showTable('Point data has not been published yet.');
+      return;
+    }
+    let codes: Map<string, number>;
+    try {
+      const buf = await this.loadChunk(tileUrl(DATA, points.file, { date, tx: pin.tx, ty: pin.ty }));
+      codes = pointCodes(buf, points.fields, points.tile, pin.k);
+    } catch {
+      if (request === this.pinRequest) this.readout.showTable(`No point data for ${date}.`);
+      return;
+    }
+    if (request !== this.pinRequest) return;
+    this.readout.showTable(readoutItems(this.manifest, codes));
+    document.body.dataset.readout = `${pin.tx}_${pin.ty}_${pin.k}@${date}`;
+  }
+
+  private async updateChart(): Promise<void> {
+    const pin = this.pinned;
+    const meta = this.manifest.layers[this.layerId];
+    const series = this.manifest.series;
+    const tile = this.manifest.points?.tile ?? 20;
+    if (!pin || !meta) return;
+    const request = ++this.chartRequest;
+    if (!series) {
+      this.readout.showChartMessage('The 90-day series has not been published yet.');
+      return;
+    }
+    const layer = this.layerId;
+    let s: ReturnType<typeof parseSeries>;
+    try {
+      s = parseSeries(await this.loadChunk(tileUrl(DATA, series.file, { layer, tx: pin.tx, ty: pin.ty })), tile);
+    } catch {
+      if (request === this.chartRequest) this.readout.showChartMessage(`No 90-day series for ${meta.title} yet.`);
+      return;
+    }
+    if (request !== this.chartRequest) return;
+    this.readout.showChart(meta, s.dates, seriesCodes(s, tile, pin.k), this.date);
+    document.body.dataset.chart = `${layer}:${s.dates.length}`;
+  }
 
   private load(url: string): Promise<DecodedPng> {
     let p = this.cache.get(url);
@@ -97,7 +204,7 @@ class App {
 
   async setDate(date: string): Promise<void> {
     this.date = date;
-    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles()]);
+    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateReadout()]);
   }
 
   setParticles(choice: ParticleChoice): Promise<void> {
@@ -172,6 +279,7 @@ class App {
     document.body.dataset.layer = layer;
     document.body.dataset.date = date;
     this.prefetch((d) => fieldUrl(DATA, this.manifest, d, layer));
+    void this.updateChart(); // the chart follows the active layer and marks the date
   }
 
   hover(lng: number, lat: number): void {
@@ -236,7 +344,10 @@ async function start(): Promise<void> {
     (id, opener) => info.open(manifest.layers[id]!, manifest.credits, opener),
   );
   const choice = parseParticles(params.get('particles'));
-  const app = new App(manifest, date, raster, particles, legend, menu, choice);
+  const closers: { close: () => void } = { close: () => undefined };
+  const readout = new ReadoutPanel(document.getElementById('readout')!, () => closers.close());
+  const app = new App(manifest, date, raster, particles, legend, menu, choice, readout, map);
+  closers.close = () => app.unpin();
   handlers.select = (id) => void app.select(id);
   const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
   document.querySelector('#menu .menu-heading')!.after(overlays.element);
@@ -258,6 +369,10 @@ async function start(): Promise<void> {
   await app.select(first);
   map.on('mousemove', (e) => app.hover(e.lngLat.lng, e.lngLat.lat));
   map.on('mouseout', () => app.hoverEnd());
+  map.on('click', (e) => app.pin(e.lngLat.lng, e.lngLat.lat));
+  // Temporary until URL state (milestone 13): ?pin=lng,lat opens the readout there.
+  const pin = parseCenter(params.get('pin'));
+  if (pin) app.pin(pin[0], pin[1]);
   document.body.dataset.ready = 'true';
 }
 

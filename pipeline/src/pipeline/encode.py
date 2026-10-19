@@ -63,9 +63,7 @@ def quantise(
     return codes, clipped
 
 
-def decode(
-    codes, lo: float, hi: float, log: bool = False, step: float | None = None
-) -> np.ndarray:
+def decode(codes, lo: float, hi: float, log: bool = False, step: float | None = None) -> np.ndarray:
     """uint16 codes -> values, NaN for no data and masked."""
     q = np.asarray(codes).astype("float64")
     scale, offset = scale_offset(lo, hi, log, step)
