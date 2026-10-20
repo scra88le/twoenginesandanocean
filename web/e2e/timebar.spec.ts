@@ -59,7 +59,8 @@ test('neighbouring days of the active layer and the particle level are pre-fetch
     if (m) fetched.add(`${m[1]}/${m[2]}`);
   });
   await page.goto(VIEW.replace('&particles=off', ''));
-  await expect.poll(() => [...fetched].sort()).toEqual([
+  // Pre-fetching starts after the first draw and the machine may be busy: allow it time.
+  await expect.poll(() => [...fetched].sort(), { timeout: 20_000 }).toEqual([
     '2026-09-29/t_emit', '2026-09-29/wind10_uv', // 09-29 has no wind; the miss is harmless
     '2026-09-30/t_emit', '2026-09-30/wind10_uv', '2026-10-01/t_emit', '2026-10-01/wind10_uv',
   ]);

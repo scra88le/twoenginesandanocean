@@ -2,12 +2,22 @@ import type { StyleSpecification } from 'maplibre-gl';
 
 // Dark background plus public-domain Natural Earth 1:50m coastlines and borders, drawn over
 // the data. No tile service or API key is needed.
+/**
+ * A file from /public as an absolute URL, wherever the site is hosted. MapLibre loads GeoJSON
+ * in a worker, which would resolve a relative URL against the worker's own location, so the
+ * URL must be absolute; and a hard-coded "/basemap/..." breaks when the site is served from a
+ * sub-path (GitHub project pages).
+ */
+export function assetUrl(path: string, base = import.meta.env.BASE_URL, page = document.baseURI): string {
+  return new URL(`${base}${path}`, page).href;
+}
+
 export function baseStyle(): StyleSpecification {
   return {
     version: 8,
     sources: {
-      coastline: { type: 'geojson', data: '/basemap/coastline.geojson' },
-      borders: { type: 'geojson', data: '/basemap/borders.geojson' },
+      coastline: { type: 'geojson', data: assetUrl('basemap/coastline.geojson') },
+      borders: { type: 'geojson', data: assetUrl('basemap/borders.geojson') },
     },
     layers: [
       { id: 'background', type: 'background', paint: { 'background-color': '#0b0e14' } },

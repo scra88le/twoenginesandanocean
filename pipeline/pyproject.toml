@@ -9,6 +9,7 @@ description = "Daily ERA5 batch pipeline for the Earth Heat Engine Map"
 requires-python = ">=3.12"
 dependencies = [
     "cdsapi",
+    "ecmwf-datastores-client",
     "xarray",
     "netCDF4",
     "numpy",
@@ -19,6 +20,10 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
+]
+# Publishing to object storage (the daily job)
+deploy = [
+    "boto3",
 ]
 # One-off tools: exporting colour maps for the front end (pipeline/scripts/)
 tools = [

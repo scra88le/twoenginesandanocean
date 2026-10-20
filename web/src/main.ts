@@ -25,12 +25,12 @@ import { displayScale } from './scale';
 import { parseCards, type StoryStep, type StoryView } from './story';
 import { TimeBar, nearbyDates } from './timebar';
 import { Tour } from './tour';
-import { LEVEL_LABELS, describeWind, isWindLevel, windAt } from './wind';
+import { DEFAULT_LAYER, readState, stateQuery, wrapLng, type ViewState } from './urlstate';
+import { LEVEL_LABELS, describeWind, windAt } from './wind';
 
 setWorkerUrl(workerUrl);
 
 const DATA = import.meta.env.VITE_DATA_URL ?? '/data';
-const DEFAULT_LAYER = 'net_toa';
 const PREFETCH_DAYS = 3;
 const CACHE_SIZE = 48; // decoded PNGs, 0.8 MB (scalar) or 1 MB (wind) each
 
@@ -41,18 +41,6 @@ function fail(message: string): void {
   p.className = 'fatal';
   p.textContent = message;
   app.append(p);
-}
-
-// Minimal view parameters until URL state lands (milestone 13): ?center=lng,lat&zoom=z
-function parseCenter(text: string | null): [number, number] | null {
-  const parts = text?.split(',').map(Number);
-  return parts?.length === 2 && parts.every(Number.isFinite) ? [parts[0]!, parts[1]!] : null;
-}
-
-// Particles are on unless ?particles=off; ?particles=wind100 (or jet250) picks the level.
-function parseParticles(text: string | null): ParticleChoice {
-  if (text === 'off') return { on: false, level: 'wind10' };
-  return { on: true, level: isWindLevel(text) ? text : 'wind10' };
 }
 
 interface Pin {
@@ -80,6 +68,8 @@ class App {
   private pinRequest = 0;
   private arrowsOn = false;
   private arrowRequest = 0;
+  /** Called after anything the URL records changes; main.ts writes the address bar. */
+  onStateChange: (() => void) | null = null;
   private chartRequest = 0;
   private codes: Uint16Array | null = null;
   private wind: WindCodes | null = null;
@@ -116,6 +106,21 @@ class App {
     return p;
   }
 
+  /** What the visitor is looking at, as the URL records it. */
+  state(): ViewState {
+    const c = this.map.getCenter();
+    return {
+      layer: this.layerId || DEFAULT_LAYER,
+      date: this.date,
+      anomaly: this.anomalyOn,
+      particles: this.particleChoice,
+      arrows: this.arrowsOn,
+      center: [wrapLng(c.lng), c.lat],
+      zoom: this.map.getZoom(),
+      pin: this.pinned ? [this.pinned.lng, this.pinned.lat] : null,
+    };
+  }
+
   /** Open the readout for the cell under a point, or move it there. */
   pin(lng: number, lat: number): void {
     const g = this.manifest.grid;
@@ -132,6 +137,7 @@ class App {
     this.readout.open();
     void this.updateReadout();
     void this.updateChart();
+    this.onStateChange?.();
   }
 
   unpin(): void {
@@ -140,6 +146,7 @@ class App {
     this.marker = null;
     this.readout.close();
     delete document.body.dataset.readout;
+    this.onStateChange?.();
   }
 
   private async updateReadout(): Promise<void> {
@@ -230,6 +237,7 @@ class App {
 
   async setDate(date: string): Promise<void> {
     this.date = date;
+    this.onStateChange?.();
     await Promise.all([
       this.select(this.layerId || DEFAULT_LAYER),
       this.updateParticles(),
@@ -241,6 +249,7 @@ class App {
   /** Set the transport arrows on or off and (re)load their field. */
   setArrows(on: boolean): Promise<void> {
     this.arrowsOn = on;
+    this.onStateChange?.();
     return this.updateArrows();
   }
 
@@ -288,6 +297,7 @@ class App {
     this.anomalyOn = false;
     this.particleChoice = { on: step.particles !== null, level: step.particles ?? level };
     this.arrowsOn = step.arrows;
+    this.onStateChange?.();
     this.flyTo(step.view);
     await Promise.all([this.select(step.layer), this.updateParticles(), this.updateArrows()]);
   }
@@ -304,11 +314,13 @@ class App {
 
   setAnomaly(on: boolean): Promise<void> {
     this.anomalyOn = on;
+    this.onStateChange?.();
     return this.select(this.layerId || DEFAULT_LAYER);
   }
 
   setParticles(choice: ParticleChoice): Promise<void> {
     this.particleChoice = choice;
+    this.onStateChange?.();
     return this.updateParticles();
   }
 
@@ -387,6 +399,7 @@ class App {
     document.body.dataset.layer = layer;
     document.body.dataset.date = date;
     document.body.dataset.anomaly = anom ? 'on' : this.anomalyOn ? 'unavailable' : 'off';
+    this.onStateChange?.();
     this.prefetch(url);
     void this.updateChart(); // the chart follows the active layer and marks the date
   }
@@ -420,19 +433,19 @@ async function start(): Promise<void> {
   }
   const manifest = await loadManifest(DATA);
   const params = new URLSearchParams(location.search);
-  const date = params.get('date') ?? manifest.dates.at(-1);
+  const initial = readState(params, manifest); // validated: a stale or edited link falls back to defaults
+  const date = initial.date;
   if (!date) {
     fail('No data has been published yet.');
     return;
   }
-  const wanted = params.get('layer') ?? DEFAULT_LAYER;
-  const first = manifest.built_layers.includes(wanted) ? wanted : (manifest.built_layers[0] ?? wanted);
+  const first = initial.layer;
 
   const map = new MapLibreMap({
     container: 'map',
     style: baseStyle(),
-    center: parseCenter(params.get('center')) ?? [0.25, 20],
-    zoom: Number(params.get('zoom') ?? 1.4),
+    center: initial.center,
+    zoom: initial.zoom,
     renderWorldCopies: true,
     maxPitch: 0, // the raster and particle layers draw on a flat map
     attributionControl: false, // credits are in the footer
@@ -452,7 +465,7 @@ async function start(): Promise<void> {
     (id) => handlers.select(id),
     (id, opener) => info.open(manifest.layers[id]!, manifest.credits, opener),
   );
-  const choice = parseParticles(params.get('particles'));
+  const choice = initial.particles;
   const closers: { close: () => void } = { close: () => undefined };
   const readout = new ReadoutPanel(document.getElementById('readout')!, () => closers.close());
   const arrows = new ArrowLayer('arrows');
@@ -460,11 +473,9 @@ async function start(): Promise<void> {
   closers.close = () => app.unpin();
   handlers.select = (id) => void app.select(id);
   const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
-  document.querySelector('#menu .menu-heading')!.after(overlays.element);
-  // ?anom=1 starts in anomaly mode (temporary, until URL state lands in milestone 13).
-  const anomaly = new AnomalySwitch(manifest, params.get('anom') === '1', (on) => void app.setAnomaly(on));
-  // ?arrows=1 starts with the transport arrows on (temporary, like ?anom).
-  const arrowSwitch = new ArrowsSwitch(manifest, params.get('arrows') === '1', (on) => void app.setArrows(on));
+  document.querySelector('#menu .menu-head')!.after(overlays.element);
+  const anomaly = new AnomalySwitch(manifest, initial.anomaly, (on) => void app.setAnomaly(on));
+  const arrowSwitch = new ArrowsSwitch(manifest, initial.arrows, (on) => void app.setArrows(on));
   overlays.element.append(arrowSwitch.element, anomaly.element);
   app.anomalySwitch = anomaly;
   if (anomaly.on) app.setAnomalyFlag(true);
@@ -491,18 +502,31 @@ async function start(): Promise<void> {
   tourButton.className = 'tour-start';
   tourButton.textContent = 'Take the tour';
   tourButton.addEventListener('click', () => {
-    document.body.classList.remove('menu-open'); // on phones the menu would cover the card
-    document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'false');
+    setMenuOpen(false); // on phones the sheet would cover the card
     tour.start(0);
   });
-  document.querySelector('#menu .menu-heading')!.after(tourButton);
+  document.querySelector('#menu .menu-head')!.after(tourButton);
   new TimeBar(document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d));
 
+  // On phones the menu is a bottom sheet: opened by the Layers button, closed by Done, Esc, or
+  // a tap on the map.
   const toggle = document.getElementById('menu-toggle')!;
-  toggle.addEventListener('click', () => {
-    const open = document.body.classList.toggle('menu-open');
+  const setMenuOpen = (open: boolean) => {
+    document.body.classList.toggle('menu-open', open);
     toggle.setAttribute('aria-expanded', String(open));
+  };
+  toggle.addEventListener('click', () => setMenuOpen(!document.body.classList.contains('menu-open')));
+  document.querySelector('#menu .menu-close')!.addEventListener('click', () => {
+    setMenuOpen(false);
+    toggle.focus();
   });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('menu-open') && !document.querySelector('dialog[open]')) {
+      setMenuOpen(false);
+      toggle.focus();
+    }
+  });
+  const onPhone = () => window.matchMedia('(max-width: 700px)').matches;
 
   // ?debug exposes the map and particle layer to the console and the Playwright tests.
   if (params.has('debug')) Object.assign(window, { ehe: { map, particles, arrows } });
@@ -515,11 +539,29 @@ async function start(): Promise<void> {
   void app.updateArrows();
   map.on('mousemove', (e) => app.hover(e.lngLat.lng, e.lngLat.lat));
   map.on('mouseout', () => app.hoverEnd());
-  map.on('click', (e) => app.pin(e.lngLat.lng, e.lngLat.lat));
-  // Temporary until URL state (milestone 13): ?pin=lng,lat opens the readout there.
-  const pin = parseCenter(params.get('pin'));
-  if (pin) app.pin(pin[0], pin[1]);
+  map.on('click', (e) => {
+    if (onPhone()) setMenuOpen(false);
+    app.pin(e.lngLat.lng, e.lngLat.lat);
+  });
+  if (initial.pin) app.pin(initial.pin[0], initial.pin[1]);
   document.body.dataset.ready = 'true';
+  // From here on the address bar follows the app: replaceState, so Back isn't filled with
+  // every pan; one write shortly after the last change.
+  let timer = 0;
+  const writeUrl = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      const query = stateQuery(location.search, app.state());
+      try {
+        history.replaceState(null, '', `?${query}${location.hash}`);
+      } catch {
+        // Some embedded or sandboxed contexts refuse; the map works without a URL.
+      }
+    }, 120);
+  };
+  app.onStateChange = writeUrl;
+  map.on('moveend', writeUrl);
+  writeUrl();
   // ?tour=N opens the tour at step N (1-based), for links and tests.
   const tourStep = Number(params.get('tour'));
   if (Number.isInteger(tourStep) && tourStep >= 1 && tourStep <= steps.length) tour.start(tourStep - 1);

@@ -1,0 +1,89 @@
+name: Site
+
+# Builds the front end and publishes it to GitHub Pages. The data is not part of the site: it
+# lives in the object store, and the build is told where (the DATA_URL variable). To host on
+# Cloudflare Pages instead, see docs/DEPLOY.md.
+#
+# Setup: Settings > Pages > Source: GitHub Actions; and the repository variables
+#   DATA_URL   the public address of the bucket, no trailing slash (e.g. https://data.example.org)
+#   SITE_URL   (optional) the Pages address; the smoke test runs against it after a deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "story/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      VITE_DATA_URL: ${{ vars.DATA_URL }}
+    steps:
+      - name: Check the configuration
+        run: |
+          if [ -z "$VITE_DATA_URL" ]; then
+            echo "::error::Set the DATA_URL repository variable to the bucket's public address (docs/DEPLOY.md)."
+            exit 1
+          fi
+        working-directory: .
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run smoke
+        env:
+          SITE_URL: ${{ needs.deploy.outputs.page_url || vars.SITE_URL }}

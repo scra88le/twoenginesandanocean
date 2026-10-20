@@ -35,6 +35,7 @@ function serveOut(): Plugin {
       return;
     }
     res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-cache'); // like the bucket's manifest; revalidated, not guessed
     createReadStream(file).pipe(res);
   };
   return {
@@ -45,6 +46,8 @@ function serveOut(): Plugin {
 }
 
 export default defineConfig({
+  // Relative asset URLs, so the build works from any path (a project Pages site is /<repo>/).
+  base: './',
   plugins: [serveOut()],
   test: {
     include: ['tests/**/*.test.ts'],

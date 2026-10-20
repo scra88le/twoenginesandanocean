@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 node_modules/
 web/dist/
+web/dist-sub/
 web/playwright-report/
 web/test-results/
 out/*

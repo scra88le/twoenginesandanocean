@@ -225,7 +225,9 @@ def split_archive(src: Path, name: str, raw_dir: Path) -> list[Path]:
     return written
 
 
-def fetch_dates(c, days, raw_dir: Path, max_queued: int = MAX_QUEUED) -> list[str]:
+def fetch_dates(
+    c, days, raw_dir: Path, max_queued: int = MAX_QUEUED, keep_collected: bool = False
+) -> list[str]:
     """Advance the downloads for some dates by one step, without waiting on the queue.
 
     First collects every queued request: a finished one is downloaded and split into
@@ -235,6 +237,12 @@ def fetch_dates(c, days, raw_dir: Path, max_queued: int = MAX_QUEUED) -> list[st
     CDS rejects more). Queued requests (with the dates they cover) live in
     `raw_dir/pending.json`, so later runs pick up where this one left off. Returns the chunk
     names still pending.
+
+    With `keep_collected`, a finished request stays in the state after it is collected, and a
+    result that can no longer be downloaded (CDS keeps results only for a while) is forgotten
+    so its dates are requested again. This is for a job whose `raw_dir` does not survive the
+    run (the daily GitHub Action): the archives vanish with the machine, so the request must
+    be collected again next time until its dates are published (see `settle_state`).
     """
     days = sorted(set(map(_check_date, days)))
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -246,11 +254,20 @@ def fetch_dates(c, days, raw_dir: Path, max_queued: int = MAX_QUEUED) -> list[st
         if st == "successful":
             chunk = raw_dir / key
             part = chunk.with_name(chunk.name + ".part")
-            c.get_remote(job["id"]).download(str(part))
+            try:
+                c.get_remote(job["id"]).download(str(part))
+            except Exception:
+                if not keep_collected:
+                    raise
+                part.unlink(missing_ok=True)
+                del state[key]  # expired at CDS: its dates are requested again below
+                _save_state(state_path, state)
+                continue
             os.replace(part, chunk)
             split_archive(chunk, job["name"], raw_dir)
             chunk.unlink()
-            del state[key]
+            if not keep_collected:
+                del state[key]
         elif st in _FAILED:
             del state[key]
         _save_state(state_path, state)
@@ -300,3 +317,21 @@ def download(c, request_id: str, target: Path) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     c.get_remote(request_id).download(str(target))
     return target
+
+
+def settle_state(raw_dir: Path, published: set[str], today: date, max_age_days: int = 30) -> int:
+    """Forget requests whose dates are all published, or are too old to matter (a date that
+    keeps failing validation must not keep its request forever). Returns how many were dropped.
+    """
+    state_path = raw_dir / "pending.json"
+    state = _load_state(state_path)
+    dropped = 0
+    for key, job in list(state.items()):
+        days = job["days"]
+        stale = (today - date.fromisoformat(max(days))).days > max_age_days
+        if stale or all(d in published for d in days):
+            del state[key]
+            dropped += 1
+    if dropped:
+        _save_state(state_path, state)
+    return dropped

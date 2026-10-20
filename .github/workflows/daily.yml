@@ -1,0 +1,91 @@
+name: Daily build
+
+# Collects finished CDS requests, submits new ones, builds and validates any new dates, and
+# publishes them to the object store (manifest last). Never waits on the CDS queue: requests are
+# remembered in the store (state/pending.json) and collected on a later run.
+#
+# Setup: docs/DEPLOY.md. Needs these in Settings > Secrets and variables > Actions:
+#   secrets   CDSAPI_URL, CDSAPI_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#   variables STORE_URL (s3://bucket[/prefix]), S3_ENDPOINT_URL (R2 or another S3-compatible
+#             service; leave empty for AWS S3), SITE_URL (optional: smoke-test the site after)
+
+on:
+  schedule:
+    - cron: "23 7 * * *" # daily; off the hour, when scheduled runs are delayed the most
+  workflow_dispatch:
+    inputs:
+      days:
+        description: How many recent dates to attempt
+        default: "10"
+
+concurrency:
+  group: daily-build
+  cancel-in-progress: false # never stop a run that is part-way through publishing
+
+permissions:
+  contents: read
+  actions: write # only for the keep-alive step at the end
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      STORE_URL: ${{ vars.STORE_URL }}
+      CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
+      CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
+      AWS_DEFAULT_REGION: auto
+      DAYS: ${{ inputs.days || '10' }}
+    steps:
+      - name: Check the configuration
+        run: |
+          missing=""
+          for name in STORE_URL CDSAPI_URL CDSAPI_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Not set:$missing. See docs/DEPLOY.md."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+      - run: pip install -e "./pipeline[deploy]"
+      - name: Build and publish
+        run: python -m pipeline.cli daily --days "$DAYS"
+      - name: Keep the schedule alive
+        # GitHub turns scheduled workflows off after 60 days without repository activity;
+        # enabling an already enabled workflow resets that clock.
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "/repos/${{ github.repository }}/actions/workflows/daily.yml/enable"
+
+  smoke:
+    # Is the site up, with data of today's vintage, and readable from the browser?
+    needs: build
+    if: ${{ vars.SITE_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run smoke
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}

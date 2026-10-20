@@ -27,7 +27,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 
 ```
 /pipeline/pyproject.toml
-/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, publish.py, validate.py, run.py, cli.py
+/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, climatology.py, publish.py, validate.py, run.py, store.py, deploy.py, daily.py, cli.py
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
@@ -38,8 +38,11 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /pipeline/scripts      export_colormaps.py (writes web/src/colormap-tables.json), make_web_fixtures.py
 /story                 01-fuel.md … 09-explore.md  (story-mode cards: front matter for the step's layer, overlays and view, then 60–100 words of text)
 /docs/DECISIONS.md     log of deviations and choices made during the build
-/.github/workflows/ci.yml       lint + tests for both stacks (milestone 1)
-/.github/workflows/daily.yml    scheduled build and upload (milestone 13)
+/.github/workflows/ci.yml       lint + tests for both stacks
+/.github/workflows/daily.yml    scheduled build, validate and upload; keep-alive; smoke test
+/.github/workflows/site.yml     build the front end and publish it to GitHub Pages; smoke test
+/docs/DEPLOY.md                 setting up the bucket, secrets and workflows; running it day to day
+/README.md                      what this is and where things are
 ```
 
 ## Commands
@@ -60,6 +63,8 @@ python -m pipeline.cli rebuild --out ./out                   # re-run every publ
 python -m pipeline.cli series --out ./out                    # rebuild the series chunks from the published PNGs
 python -m pipeline.cli climatology --out ./out [--wait]      # one-off: fetch ERA5 monthly means 1991–2020, publish clim/, refresh the manifest
 python -m pipeline.cli rebuild --out ./out                   # afterwards: adds {layer}_anom.png to the published dates
+python -m pipeline.cli upload --store s3://BUCKET --out ./out        # publish a data root (manifest last); file:///dir works too
+python -m pipeline.cli daily --store s3://BUCKET [--days 10]         # the daily job: collect/submit, build, validate, publish
 
 # Front end
 cd web && npm install
@@ -68,7 +73,8 @@ npm run lint
 npm run typecheck
 npm test             # Vitest
 npx playwright install chromium   # first time only
-npm run e2e          # Playwright: builds, then tests the production build against e2e/fixtures/data
+npm run e2e          # Playwright: builds, then tests the production build (also under /earth/) against e2e/fixtures/data
+SITE_URL=https://... npm run smoke   # Playwright smoke test of a deployed site (see docs/DEPLOY.md)
 
 # Regenerate committed front-end assets (only when the encoder or colour scales change)
 python pipeline/scripts/make_web_fixtures.py
@@ -203,14 +209,14 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 
 ## Pipeline: daily run order
 
-1. Read the manifest and `/state/pending.json`. List dates in the last 10 days not yet built.
-2. Collect any finished CDS requests. Submit new ones for dates still missing (one CDS request per dataset per date) and record their IDs. Don't wait on the queue.
-3. Convert units, flip signs, regrid to 0.5°.
-4. Compute derived layers and anomalies against the stored climatology.
-5. Encode and write map images, point chunks and series chunks.
-6. Validate. On failure, skip that date, log it, and never overwrite good files.
-7. Upload the manifest **last**.
-8. Delete map images older than 90 days.
+`pipeline.cli daily` (`pipeline.daily.run_daily`), on a runner that is gone afterwards, so everything it needs comes from the object store:
+
+1. Check the CDS credentials (`check_authentication`: collection metadata is public, so a bad key would otherwise only fail at the first request, and not at all on a day with nothing to request), then ask which date is newest. A failure here changes nothing.
+2. Download the state: `manifest.json`, `logs/global_means.csv`, `state/pending.json`, the climatology maps (`clim/clim.json`, `clim/MM/*.png`) and the scalar maps of the published dates (the series are rebuilt from them): about 425 MB in 1 957 files.
+3. One backfill pass over the last 10 dates, never waiting on the queue: collect finished requests, submit missing ones (one request per dataset per date, at most two queued per dataset) and build every date whose three archives are all there. A request stays in the state until its dates are published, because the downloaded archives vanish with the runner (`fetch_dates(keep_collected=True)`, `settle_state`); a result CDS has expired is forgotten and requested again.
+4. Per date: convert units, flip signs, regrid; derive the layers; anomalies against the climatology; encode maps, point chunks and anomaly maps; **validate**. A date that fails is skipped, logged and not published, and the run fails at the end; other dates still publish. Then rebuild the series.
+5. Upload (`pipeline.deploy.upload`): maps, points and climatology, then the series, then the log, then the **manifest last**; unchanged objects (same size and MD5) are skipped; only after the manifest are the files of dates beyond the 90-day window deleted. Then save `state/pending.json`.
+6. A failure before step 5's manifest leaves the published site exactly as it was. If the run crashes after submitting requests, their IDs are still saved.
 
 ### Encoding
 
@@ -365,13 +371,24 @@ The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is 
 
 ### URL state
 
-The query string holds layer, anomaly flag, overlays, date, centre, zoom and pinned point. It updates on every change.
+The query string holds layer, anomaly flag, overlays, date, centre, zoom and pinned point, and updates on every change (`web/src/urlstate.ts`):
+
+`?layer=t_emit&date=2026-10-01&center=0.25,-35.25&zoom=4&particles=wind100&anom=1&arrows=1&pin=0.25,-35.25`
+
+- `layer`, `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `anom=1`, `arrows=1` and `pin=lng,lat` only when on or set.
+- It is written with `history.replaceState` (so Back isn't filled with every pan), 120 ms after the last change and after every map move.
+- Reading validates each value and falls back to its default one by one: an unpublished or unbuilt layer, a date that isn't published, a bad number, a latitude beyond the map, a zoom outside 0–22. The page then rewrites the URL with the valid values. Longitudes wrap into −180…180.
+- Parameters the app doesn't own (`?debug`) are kept. `?tour=N` opens the tour at step N once and is then dropped.
 
 ### Mobile
 
-- Layer menu becomes a bottom sheet.
+Phone layout under 700 px:
+
+- Layer menu becomes a bottom sheet (opaque, rounded, at most 74 % of the height, scrolling inside), opened by the Layers button and closed by Done, Esc or a tap on the map.
 - Readout becomes a full-height sheet.
-- Particle count is halved.
+- Particle count is halved (one per 180 px² instead of one per 90 px²).
+- Touch targets are about 40 px (the small info button keeps its look and gets a 42 px tap area). Edges respect the safe-area insets. The tour card sits at the top beside the Layers button.
+- Between 701 and 1100 px the time bar moves to the top.
 
 ## Non-functional requirements
 
@@ -393,35 +410,35 @@ The query string holds layer, anomaly flag, overlays, date, centre, zoom and pin
 4. Encoding + local storage layout + manifest, written to `./out`. Round-trip test (linear, log and reserved codes). Check PNG sizes against the 400 kB limit. (**Done** 2026-10-18.)
 5. MapLibre basemap + WebGL raster layer from one local PNG, with legend and hover value. (**Done** 2026-10-18.)
 6. Layer menu with all scalar layers and info panels. (**Done** 2026-10-18.)
-7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19. The code is complete; the backfill was still collecting the last 41 dates from a slow CDS queue at the time.)
+7. Backfill 90 days. Time bar with play/step/pre-fetch. (**Done** 2026-10-19; the backfill finished on 2026-10-20: 90 dates, 2026-07-16 to 2026-10-13, none failed.)
 8. Wind particle layer (10 m, 100 m, 250 hPa). (**Done** 2026-10-19. The transport arrows for `flux_e` came with milestone 12, where the tour needs them.)
 9. Point chunks, series chunks, readout panel, 90-day chart. (**Done** 2026-10-19.)
 10. Climatology job + anomaly switch. (**Done** 2026-10-19; no anomalies for the vector layers, see the layer catalogue.)
 11. Human layers: `human_q` static build and `human_ratio`. (**Skipped** 2026-10-19 by decision: no dataset has been chosen and none is planned. `human_q` and `human_ratio` stay in the catalogue and show as "Not available yet"; story step 9 and the readout's Humans row need either them or a replacement if the tour is built.)
 12. Story mode with the 9 Markdown cards. (**Done** 2026-10-19, with the transport arrows; step 9 is "Explore", not "Humans".)
-13. Deploy:
-    - daily GitHub Action
-    - upload to object storage
-    - static hosting
+13. Deploy: (**Done** 2026-10-19, built and tested locally; **not yet run against a real bucket, Actions or Pages**: see `docs/DEPLOY.md`.)
+    - daily GitHub Action (`daily.yml`, with keep-alive)
+    - upload to object storage (`store.py`, `deploy.py`; any S3-compatible service)
+    - static hosting (`site.yml`, GitHub Pages; relocatable build)
     - URL state
     - mobile layout
-    - validation log
-    - Playwright smoke test
+    - validation log (`logs/global_means.csv` is uploaded with each run)
+    - Playwright smoke test (`web/e2e-live`)
 
 ## Acceptance criteria
 
-- [ ] The daily job runs unattended for 7 consecutive days, with a new date each day.
-- [ ] All 24 layers render for each of the last 90 days, with legend, units and info panel. (22 layers can; the two human layers were skipped, 2026-10-19, so reword this to 22 at the final check.)
-- [ ] Global-mean validation passes for every built date, and the log CSV exists.
-- [ ] Derived-layer tests pass, including the three fixtures.
-- [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s.
-- [ ] Anomaly mode works for every natural layer, on a diverging scale centred on zero. (Met for the 18 non-vector natural layers; the vector layers have none by decision, 2026-10-19.)
+- [ ] The daily job runs unattended for 7 consecutive days, with a new date each day. (**Open:** needs the deployed job, which has not been run yet. The job's logic is tested end to end against a local folder and fake CDS and S3 clients.)
+- [ ] All 24 layers render for each of the last 90 days, with legend, units and info panel. (**Partly:** 22 of 24, because the two human layers were skipped on 2026-10-19, so reword to 22. Checked 2026-10-20: all 22 layers, with their vector and anomaly files, info text and units, exist for each of the 90 published dates (2026-07-16 to 2026-10-13), and each has all 648 point tiles.)
+- [x] Global-mean validation passes for every built date, and the log CSV exists. (90 of 90 published dates have an `ok` row on 2026-10-20, plus the row of 2026-07-15, a date that has since left the window; the log is a history and is uploaded with every daily run.)
+- [x] Derived-layer tests pass, including the three fixtures.
+- [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s. (**Met locally:** under 0.8 s on a cold load and 41 ms for a click, from the local dev server. Recheck on the deployed site, with the bucket's latency.)
+- [x] Anomaly mode works for every natural layer, on a diverging scale centred on zero. (For the 18 non-vector natural layers; the vector layers have none by decision, 2026-10-19.)
 - [x] Wind particles animate at all three levels over any raster.
 - [x] Story mode runs through all 9 steps, forwards and back, and each step sets its layer and view.
-- [ ] A copied URL restores layer, date, view and pinned point.
-- [ ] A deliberately failed run (bad API key) leaves yesterday's site intact.
-- [ ] Performance and payload targets are met.
-- [ ] Data credits appear in the footer and info panels.
+- [x] A copied URL restores layer, date, view and pinned point. (Plus anomaly, overlays and arrows; Playwright restores a copied URL in a fresh browser context.)
+- [x] A deliberately failed run (bad API key) leaves yesterday's site intact. (Tested locally: a fake CDS client that fails its authentication check leaves the store byte-for-byte unchanged, as do failures while building or uploading. The real client rejects a dummy key with a 401 at that same check, verified 2026-10-19. Not yet tried on Actions.)
+- [x] Performance and payload targets are met. (Measured 2026-10-19 on this laptop, production build, real data: first map 2.0 s at 20 Mbit/s with 40 ms latency, uncompressed; date step 226 ms; first map 1 341 kB gzipped, 998 kB without the basemap; every PNG under 400 kB, the largest 344 kB; 60 fps panning with particles on an integrated Intel Arc GPU. **Not tested:** a 2020-era laptop, and the deployed host. The payload figure assumes the host compresses text, as GitHub Pages and Cloudflare do.)
+- [x] Data credits appear in the footer and info panels.
 
 ## Open questions and risks
 

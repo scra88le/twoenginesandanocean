@@ -219,6 +219,11 @@ export class ParticleLayer implements CustomLayerInterface {
     return !!this.wind;
   }
 
+  /** How many particles are being simulated (halved on phones, see wind.particleCount). */
+  get particleTotal(): number {
+    return this.count;
+  }
+
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
     this.update = link(gl, UPDATE_VERTEX, UPDATE_FRAGMENT, ['v_state', 'v_age']);

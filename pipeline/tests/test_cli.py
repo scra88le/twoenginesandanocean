@@ -59,3 +59,65 @@ def test_build_without_raw_or_tidy_fails_cleanly(tmp_path, capsys):
     assert code == 1
     assert "missing raw archives" in capsys.readouterr().err
     assert not (tmp_path / "out" / "manifest.json").exists()
+
+
+def _fake_daily(monkeypatch, failed):
+    """Run the CLI's `daily` against a stub job, so only its wiring and exit code are tested."""
+    from datetime import date
+
+    import pipeline.daily as daily_mod
+    import pipeline.fetch as fetch_mod
+    import pipeline.store as store_mod
+
+    seen = {}
+
+    def run_daily(store, c, raw, work, out, days, log):
+        seen.update(store=store, days=days, raw=raw, work=work, out=out)
+        return daily_mod.DailyResult(date(2026, 10, 3), failed=failed)
+
+    monkeypatch.setattr(daily_mod, "run_daily", run_daily)
+    monkeypatch.setattr(fetch_mod, "client", lambda: object())
+    monkeypatch.setattr(store_mod, "open_store", lambda url: f"store:{url}")
+    return seen
+
+
+def test_daily_needs_a_store(capsys, monkeypatch):
+    from pipeline.cli import main
+
+    monkeypatch.delenv("STORE_URL", raising=False)
+    assert main(["daily"]) == 2
+    assert "STORE_URL" in capsys.readouterr().err
+
+
+def test_daily_succeeds_with_a_store_from_the_flag_or_the_environment(monkeypatch, capsys):
+    from pipeline.cli import main
+
+    seen = _fake_daily(monkeypatch, failed={})
+    assert main(["daily", "--store", "s3://b/p", "--days", "4"]) == 0
+    assert seen["store"] == "store:s3://b/p" and seen["days"] == 4 and str(seen["out"]) == "out"
+    assert "built 0, failed 0" in capsys.readouterr().out
+    monkeypatch.setenv("STORE_URL", "file:///tmp/x")
+    assert build_parser().parse_args(["daily"]).store == "file:///tmp/x"
+
+
+def test_daily_fails_the_run_when_a_date_failed_validation(monkeypatch, capsys):
+    from datetime import date
+
+    from pipeline.cli import main
+
+    _fake_daily(monkeypatch, failed={date(2026, 10, 2): ["global mean tsr 300.00 outside 220-260"]})
+    assert main(["daily", "--store", "file:///x"]) == 1
+    assert (
+        "::error::2026-10-02 not published" in capsys.readouterr().err
+    )  # shows in the Actions log
+
+
+def test_upload_publishes_a_data_root(tmp_path, capsys):
+    from _store_helpers import make_out
+
+    from pipeline.cli import main
+
+    out = make_out(tmp_path / "out", ["2026-10-01"])
+    assert main(["upload", "--store", f"file://{tmp_path / 'bucket'}", "--out", str(out)]) == 0
+    assert (tmp_path / "bucket" / "manifest.json").is_file()
+    assert "uploaded" in capsys.readouterr().out

@@ -1,6 +1,7 @@
-"""Command-line entry point: build, backfill, climatology."""
+"""Command-line entry point: fetch, build, backfill, climatology, daily, upload."""
 
 import argparse
+import os
 import sys
 import time
 from datetime import date
@@ -41,6 +42,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     series = sub.add_parser("series", help="rebuild the 90-day series chunks")
     series.add_argument("--out", type=Path, required=True)
+
+    store_default = os.environ.get("STORE_URL")
+    daily = sub.add_parser(
+        "daily", help="collect and submit CDS requests, build new dates and publish them to a store"
+    )
+    daily.add_argument("--store", default=store_default, help="file:///dir or s3://bucket[/prefix]")
+    daily.add_argument("--days", type=int, default=10, help="how many recent dates to attempt")
+    daily.add_argument("--out", type=Path, default=Path("out"))
+    daily.add_argument("--raw", type=Path, default=Path("raw"))
+    daily.add_argument("--work", type=Path, default=Path("work"))
+
+    upload = sub.add_parser("upload", help="publish a local data root to a store")
+    upload.add_argument(
+        "--store", default=store_default, help="file:///dir or s3://bucket[/prefix]"
+    )
+    upload.add_argument("--out", type=Path, required=True)
 
     clim = sub.add_parser("climatology", help="fetch and publish the 1991-2020 climatology")
     clim.add_argument("--out", type=Path, required=True)
@@ -100,6 +117,46 @@ def _build(args: argparse.Namespace) -> int:
     from .points import build_series
 
     print(f"published {args.date} to {args.out}; series: rebuilt {build_series(args.out)} files")
+    return 0
+
+
+def _need_store(args: argparse.Namespace) -> str | None:
+    if not args.store:
+        print(
+            "no store: pass --store or set STORE_URL (file:///dir or s3://bucket[/prefix])",
+            file=sys.stderr,
+        )
+    return args.store
+
+
+def _daily(args: argparse.Namespace) -> int:
+    from .daily import run_daily
+    from .fetch import client
+    from .store import open_store
+
+    if not _need_store(args):
+        return 2
+    result = run_daily(
+        open_store(args.store), client(), args.raw, args.work, args.out, days=args.days,
+        log=lambda msg: print(msg, flush=True),
+    )  # fmt: skip
+    print(
+        f"built {len(result.built)}, failed {len(result.failed)}, "
+        f"{len(result.pending)} CDS request(s) still pending"
+    )
+    for day, problems in result.failed.items():
+        print(f"::error::{day} not published: {'; '.join(problems)}", file=sys.stderr)
+    return 1 if result.failed else 0
+
+
+def _upload(args: argparse.Namespace) -> int:
+    from .deploy import upload
+    from .store import open_store
+
+    if not _need_store(args):
+        return 2
+    result = upload(open_store(args.store), args.out, log=lambda msg: print(msg, flush=True))
+    print(f"{result.uploaded} uploaded, {result.skipped} unchanged, {result.deleted} deleted")
     return 0
 
 
@@ -175,6 +232,10 @@ def main(argv: list[str] | None = None) -> int:
         return _rebuild(args)
     if args.command == "series":
         return _series(args)
+    if args.command == "daily":
+        return _daily(args)
+    if args.command == "upload":
+        return _upload(args)
     if args.command == "climatology":
         return _climatology(args)
     print(f"{args.command}: not implemented yet", file=sys.stderr)

@@ -207,3 +207,57 @@ def test_rejected_requests_make_room_for_the_next(tmp_path, client):
         client.statuses[rid] = "rejected"
     fetch_dates(client, ds, raw, max_queued=2)
     assert len(client.requests) == 8  # the same four again, not more
+
+
+# ---- keep_collected: for a job whose raw directory vanishes after every run ---------------
+
+
+def test_keep_collected_leaves_finished_requests_in_the_state(tmp_path, client):
+    raw = tmp_path / "raw"
+    fetch_dates(client, days(date(2026, 8, 1), 2), raw)
+    for rid in client.statuses:
+        client.statuses[rid] = "successful"
+    pending = fetch_dates(client, days(date(2026, 8, 1), 2), raw, keep_collected=True)
+    assert len(pending) == 3  # still remembered, though collected
+    assert (raw / "single_mean_2026-08-02.nc").is_file()  # and its archives are there to build from
+    assert len(client.requests) == 3  # nothing was submitted again
+    # on a fresh machine the same state collects the same archives again
+    state = (raw / "pending.json").read_text()
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    (fresh / "pending.json").write_text(state)
+    fetch_dates(client, days(date(2026, 8, 1), 2), fresh, keep_collected=True)
+    assert (fresh / "pressure_mean_2026-08-01.nc").is_file() and len(client.requests) == 3
+
+
+def test_an_expired_result_is_forgotten_and_requested_again(tmp_path, client):
+    raw = tmp_path / "raw"
+    fetch_dates(client, [date(2026, 8, 1)], raw)
+    client.statuses["r1"] = "successful"
+
+    class Gone(Exception):
+        pass
+
+    original = client.get_remote
+    broken = {"r1"}
+
+    def expired(rid):
+        remote = original(rid)
+        if rid in broken:
+
+            def fail(target):
+                raise Gone("results have expired")
+
+            remote.download = fail
+        return remote
+
+    client.get_remote = expired
+    fetch_dates(client, [date(2026, 8, 1)], raw, keep_collected=True)
+    assert len(client.requests) == 4  # r1's statistic was requested again
+    # without keep_collected the failure is not hidden
+    raw2 = tmp_path / "raw2"
+    fetch_dates(client, [date(2026, 8, 5)], raw2)
+    broken.add("r5")
+    client.statuses["r5"] = "successful"
+    with pytest.raises(Gone):
+        fetch_dates(client, [date(2026, 8, 5)], raw2)

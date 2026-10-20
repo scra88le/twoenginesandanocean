@@ -34,7 +34,12 @@ export class LayerMenu {
     private readonly onSelect: (id: string) => void,
     onInfo: (id: string, opener: HTMLElement) => void,
   ) {
-    root.innerHTML = '<h2 class="menu-heading">Layers</h2>';
+    // "Done" is only shown on phones, where the menu is a bottom sheet.
+    root.innerHTML = `
+      <div class="menu-head">
+        <h2 class="menu-heading">Layers</h2>
+        <button type="button" class="menu-close">Done</button>
+      </div>`;
     for (const g of groups) {
       const fs = document.createElement('fieldset');
       const legend = document.createElement('legend');
