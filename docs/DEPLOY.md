@@ -33,21 +33,24 @@
 
 ## One-time setup
 
-### 1. The bucket
+### 1. The bucket (Cloudflare R2, the chosen provider)
 
-Either works; the code speaks the S3 API. Cloudflare R2 has no charge for reads, which suits a
-public map.
+Done on the Cloudflare dashboard, with your own account (R2 asks for a payment method even
+within its free tier; the code works the same with any S3-compatible service).
 
-1. Create a bucket (for example `earth-heat-engine`).
-2. Make it publicly readable: on R2, attach a custom domain or enable the `r2.dev` address; on
-   S3, a bucket policy allowing `s3:GetObject` (or put CloudFront in front).
-3. Allow the site to read it from the browser, with a CORS rule. Replace the origin with your
-   site's (for GitHub Pages: `https://<user>.github.io`; no path, no trailing slash):
+1. Sign up at cloudflare.com and open **R2 Object Storage**; enable it.
+2. **Create bucket** (for example `earth-heat-engine`, automatic location).
+3. **Public access.** In the bucket's *Settings*, either connect a **custom domain** (best for
+   a real site; the domain must be on Cloudflare) or enable the **`r2.dev` public address**
+   (quick to start; Cloudflare rate-limits it and says it is not meant for production). Note the
+   address: it is your `DATA_URL`.
+4. **CORS.** In the bucket's *Settings → CORS policy*, add (the origin is the site's address
+   without a path):
 
    ```json
    [
      {
-       "AllowedOrigins": ["https://<user>.github.io"],
+       "AllowedOrigins": ["https://scra88le.github.io"],
        "AllowedMethods": ["GET", "HEAD"],
        "AllowedHeaders": ["*"],
        "MaxAgeSeconds": 3600
@@ -56,24 +59,38 @@ public map.
    ```
 
    Without this the page loads but every data request is blocked, which shows as "No data for…"
-   and CORS errors in the browser console.
-4. Create an API token or access key that can read and write **only this bucket**.
+   and CORS errors in the browser console. Add `http://localhost:5173` while testing locally.
+5. **API token.** *R2 → Manage API tokens → Create API token*, permission **Object Read &
+   Write**, limited to this one bucket. Copy the **Access Key ID**, the **Secret Access Key**
+   and the account's S3 address (`https://<account-id>.r2.cloudflarestorage.com`); the secret is
+   shown only once.
 
 ### 2. The repository
 
-Push the repository to GitHub, then in **Settings → Secrets and variables → Actions**:
+The repository is `scra88le/twoenginesandanocean` (public), Pages is enabled with GitHub Actions
+as its source, and `SITE_URL` is already set to `https://scra88le.github.io/twoenginesandanocean/`.
+The rest, once the bucket exists (each `gh secret set` asks for the value, so it never appears in
+your shell history or in a chat):
+
+```bash
+gh secret set CDSAPI_URL        # https://cds.climate.copernicus.eu/api
+gh secret set CDSAPI_KEY        # your CDS personal access token
+gh secret set AWS_ACCESS_KEY_ID
+gh secret set AWS_SECRET_ACCESS_KEY
+gh variable set STORE_URL        --body "s3://earth-heat-engine"
+gh variable set S3_ENDPOINT_URL  --body "https://<account-id>.r2.cloudflarestorage.com"
+gh variable set DATA_URL         --body "https://<the bucket's public address>"
+```
 
 | Name | Kind | Value |
 | --- | --- | --- |
 | `CDSAPI_URL` | secret | `https://cds.climate.copernicus.eu/api` |
 | `CDSAPI_KEY` | secret | your CDS personal access token (the licences for both ERA5 daily-statistics datasets must already be accepted on the CDS website) |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | secrets | the bucket's access key (for R2: an S3 API token) |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | secrets | the R2 API token's key pair |
 | `STORE_URL` | variable | `s3://<bucket>` (optionally `s3://<bucket>/<prefix>`) |
-| `S3_ENDPOINT_URL` | variable | R2: `https://<account-id>.r2.cloudflarestorage.com`; AWS S3: leave empty |
-| `DATA_URL` | variable | the bucket's **public** address, no trailing slash (for example `https://data.example.org`) |
-| `SITE_URL` | variable | optional: the site's address, so the smoke test runs after each daily build |
-
-Then **Settings → Pages → Source: GitHub Actions**.
+| `S3_ENDPOINT_URL` | variable | `https://<account-id>.r2.cloudflarestorage.com` (AWS S3: leave empty) |
+| `DATA_URL` | variable | the bucket's **public** address, no trailing slash |
+| `SITE_URL` | variable | already set; the smoke test runs against it after each deploy and daily build |
 
 ### 3. Seed the data
 
