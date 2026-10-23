@@ -416,7 +416,7 @@ Phone layout under 700 px:
 10. Climatology job + anomaly switch. (**Done** 2026-10-19; no anomalies for the vector layers, see the layer catalogue.)
 11. Human layers: `human_q` static build and `human_ratio`. (**Skipped** 2026-10-19 by decision: no dataset has been chosen and none is planned. `human_q` and `human_ratio` stay in the catalogue and show as "Not available yet"; story step 9 and the readout's Humans row need either them or a replacement if the tour is built.)
 12. Story mode with the 9 Markdown cards. (**Done** 2026-10-19, with the transport arrows; step 9 is "Explore", not "Humans".)
-13. Deploy: (**Done** 2026-10-19, built and tested locally; **not yet run against a real bucket, Actions or Pages**: see `docs/DEPLOY.md`.)
+13. Deploy: (**Done** 2026-10-19 and **deployed 2026-10-23**: Cloudflare R2 bucket seeded (90 dates, 88 419 objects, 3.3 GB), site on GitHub Pages at https://scra88le.github.io/twoenginesandanocean/, Site and Daily workflows run green on GitHub's runners including the live smoke test. See `docs/DEPLOY.md`.)
     - daily GitHub Action (`daily.yml`, with keep-alive)
     - upload to object storage (`store.py`, `deploy.py`; any S3-compatible service)
     - static hosting (`site.yml`, GitHub Pages; relocatable build)
@@ -427,11 +427,11 @@ Phone layout under 700 px:
 
 ## Acceptance criteria
 
-- [ ] The daily job runs unattended for 7 consecutive days, with a new date each day. (**Open:** needs the deployed job, which has not been run yet. The job's logic is tested end to end against a local folder and fake CDS and S3 clients.)
+- [ ] The daily job runs unattended for 7 consecutive days, with a new date each day. (**Open:** one manual run on GitHub's runners succeeded on 2026-10-23 (credentials checked, state downloaded in 80 s, four new dates requested, state saved to the bucket), but the schedule has not yet run unattended for 7 days. Its logic is also tested end to end against a local folder and fake CDS and S3 clients.)
 - [ ] All 24 layers render for each of the last 90 days, with legend, units and info panel. (**Partly:** 22 of 24, because the two human layers were skipped on 2026-10-19, so reword to 22. Checked 2026-10-20: all 22 layers, with their vector and anomaly files, info text and units, exist for each of the 90 published dates (2026-07-16 to 2026-10-13), and each has all 648 point tiles.)
 - [x] Global-mean validation passes for every built date, and the log CSV exists. (90 of 90 published dates have an `ok` row on 2026-10-20, plus the row of 2026-07-15, a date that has since left the window; the log is a history and is uploaded with every daily run.)
 - [x] Derived-layer tests pass, including the three fixtures.
-- [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s. (**Met locally:** under 0.8 s on a cold load and 41 ms for a click, from the local dev server. Recheck on the deployed site, with the bucket's latency.)
+- [ ] Clicking any land cell shows the full readout and 90-day chart within 1 s. (**Met locally:** under 0.8 s on a cold load and 41 ms for a click, from the local dev server. The deployed site's smoke test clicks a point and waits for the readout and chart, but does not time it, so recheck the latency from the bucket by hand.)
 - [x] Anomaly mode works for every natural layer, on a diverging scale centred on zero. (For the 18 non-vector natural layers; the vector layers have none by decision, 2026-10-19.)
 - [x] Wind particles animate at all three levels over any raster.
 - [x] Story mode runs through all 9 steps, forwards and back, and each step sets its layer and view.

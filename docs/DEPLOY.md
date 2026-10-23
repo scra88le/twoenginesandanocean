@@ -1,10 +1,11 @@
 # Deploying the Earth Heat Engine Map
 
-> **Status:** everything here is written and tested locally (against a folder standing in for the
-> bucket, and fake CDS and S3 clients), but **has not been run against a real bucket, GitHub
-> Actions or Pages**: the repository had no GitHub remote when it was written. The provider steps
-> come from their documentation as of October 2026; check them against the current docs, and
-> expect to fix small things on the first real run.
+> **Status (2026-10-23):** deployed and verified once end to end. The site is live at
+> https://scra88le.github.io/twoenginesandanocean/, reading 90 dates from a Cloudflare R2 bucket;
+> the Site workflow and one manual Daily build run both passed on GitHub's runners, including the
+> live smoke test. **Not yet shown:** the schedule running unattended on its own for days, and the
+> keep-alive step doing its job over a real 60-day gap. Provider steps come from their
+> documentation; expect small differences in the dashboards.
 
 ## How it fits together
 
