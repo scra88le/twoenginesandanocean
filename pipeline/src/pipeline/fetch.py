@@ -192,7 +192,8 @@ def split_archive(src: Path, name: str, raw_dir: Path) -> list[Path]:
     """Split a multi-day CDS archive into per-date archives `{name}_{date}.nc`.
 
     Each member NetCDF keeps its file name and a length-1 `valid_time`, so the per-date
-    archives look exactly like single-day results. Existing per-date archives are kept.
+    archives look exactly like single-day results. A bare NetCDF (what CDS returns for a
+    single variable) is treated as a one-member archive. Existing per-date archives are kept.
     """
     import tempfile
     import zipfile
@@ -201,13 +202,21 @@ def split_archive(src: Path, name: str, raw_dir: Path) -> list[Path]:
 
     raw_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
-    with zipfile.ZipFile(src) as zf, tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp:
         members = []
-        for info in zf.infolist():
-            if info.filename.startswith("/") or ".." in info.filename or "/" in info.filename:
-                raise ValueError(f"unsafe member name in archive: {info.filename!r}")
-            if info.filename.endswith(".nc"):
-                members.append((info.filename, xr.load_dataset(zf.extract(info, tmp))))
+        if zipfile.is_zipfile(src):
+            with zipfile.ZipFile(src) as zf:
+                for info in zf.infolist():
+                    if (
+                        info.filename.startswith("/")
+                        or ".." in info.filename
+                        or "/" in info.filename
+                    ):
+                        raise ValueError(f"unsafe member name in archive: {info.filename!r}")
+                    if info.filename.endswith(".nc"):
+                        members.append((info.filename, xr.load_dataset(zf.extract(info, tmp))))
+        else:  # a request for a single variable comes back as a bare NetCDF file
+            members.append((f"{src.stem}.nc", xr.load_dataset(src)))
         times = sorted({t for _, ds in members for t in ds["valid_time"].values})
         for t in times:
             day = str(np.datetime_as_string(t, unit="D"))

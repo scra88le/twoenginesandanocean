@@ -65,6 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
     clim.add_argument("--work", type=Path, default=Path("work"))
     clim.add_argument("--wait", action="store_true", help="keep going until it is published")
 
+    lw = sub.add_parser("fetch-str", help="add surface net longwave (lw_up) to tidy files")
+    lw.add_argument("--raw", type=Path, default=Path("raw"))
+    lw.add_argument("--work", type=Path, default=Path("work"))
+    lw.add_argument("--wait", action="store_true", help="keep going until every date has it")
+
     backfill = sub.add_parser("backfill", help="fetch and build the last N available days")
     backfill.add_argument("--days", type=int, default=90)
     backfill.add_argument("--out", type=Path, required=True)
@@ -218,6 +223,17 @@ def _backfill(args: argparse.Namespace) -> int:
     return 1 if result.failed else 0
 
 
+def _fetch_str(args: argparse.Namespace) -> int:
+    from .fetch import client
+    from .lw_backfill import backfill_lw_up
+
+    updated, left = backfill_lw_up(
+        client(), args.work, args.raw, wait=args.wait, log=lambda msg: print(msg, flush=True)
+    )
+    print(f"lw_up added to {updated} tidy file(s); {left} still without")
+    return 0 if left == 0 else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "fetch":
@@ -228,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
         return _build(args)
     if args.command == "backfill":
         return _backfill(args)
+    if args.command == "fetch-str":
+        return _fetch_str(args)
     if args.command == "rebuild":
         return _rebuild(args)
     if args.command == "series":
