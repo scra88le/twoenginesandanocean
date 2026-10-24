@@ -5,11 +5,11 @@ import { decodePng } from '../src/png';
 const ready = (page: Page) =>
   expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
 
-test('menu lists all 24 layers in 9 groups, with unbuilt layers disabled', async ({ page }) => {
+test('menu lists all 25 layers in 10 groups, with unbuilt layers disabled', async ({ page }) => {
   await page.goto('/?layer=t_emit&particles=off');
   await ready(page);
-  await expect(page.locator('#menu fieldset:not(.overlays)')).toHaveCount(9);
-  await expect(page.locator('#menu input[type=radio]')).toHaveCount(24);
+  await expect(page.locator('#menu fieldset:not(.overlays)')).toHaveCount(10);
+  await expect(page.locator('#menu input[type=radio]')).toHaveCount(25);
   await expect(page.locator('#menu input[type=radio]:enabled')).toHaveCount(12); // the layers the fixtures build
   await expect(page.locator('#menu input[value=t_emit]')).toBeChecked();
   await expect(page.locator('#menu fieldset legend').first()).toHaveText('Overlays');

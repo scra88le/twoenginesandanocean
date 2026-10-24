@@ -14,7 +14,7 @@ D = "2026-10-01"
 
 @pytest.fixture(scope="module")
 def layers():
-    return derived.compute_layers(synthetic_tidy())
+    return derived.compute_layers(synthetic_tidy(lw_up=50.0))
 
 
 @pytest.fixture(scope="module")
@@ -158,3 +158,36 @@ def test_built_layers_accumulate_across_publishes(tmp_path):
     publish.publish_date(tmp_path, "2026-10-02", {"precip.png": b"x"})
     m = json.loads((tmp_path / "manifest.json").read_text())
     assert m["built_layers"] == ["olr", "precip", "wind10"]
+
+
+def test_the_manifest_carries_each_dates_radiative_temperature(tmp_path):
+    rad = {"asr": 240.0, "t_r": derived.radiative_temperature(240.0)}
+    publish.publish_date(tmp_path, "2026-10-01", {"olr.png": b"x"}, radiative=rad)
+    publish.publish_date(
+        tmp_path, "2026-10-02", {"olr.png": b"x"}, radiative={"asr": 239.0, "t_r": 254.8}
+    )
+    m = json.loads((tmp_path / "manifest.json").read_text())
+    assert m["radiative"]["2026-10-01"] == pytest.approx(rad)
+    assert m["radiative"]["2026-10-02"]["asr"] == 239.0
+    publish.refresh_manifest(tmp_path)  # keeps them
+    assert set(json.loads((tmp_path / "manifest.json").read_text())["radiative"]) == {
+        "2026-10-01",
+        "2026-10-02",
+    }
+
+
+def test_radiative_values_leave_with_their_dates(tmp_path):
+    start = date(2026, 7, 1)
+    for k in range(3):
+        day = (start + timedelta(days=k)).isoformat()
+        publish.publish_date(
+            tmp_path, day, {"x.png": b"x"}, keep_days=2, radiative={"asr": 240.0, "t_r": 255.0}
+        )
+    m = json.loads((tmp_path / "manifest.json").read_text())
+    assert sorted(m["radiative"]) == m["dates"] == ["2026-07-02", "2026-07-03"]
+
+
+def test_radiative_summary_is_the_global_mean_and_its_temperature():
+    t = synthetic_tidy(tsr=240.0)
+    asr, t_r = derived.radiative_summary(t["tsr"].values)
+    assert asr == pytest.approx(240.0) and t_r == pytest.approx(255.1, abs=0.05)

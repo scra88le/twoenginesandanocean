@@ -1,4 +1,4 @@
-// Layer menu: the 9 story groups, one radio button per layer (one raster at a time).
+// Layer menu: the story groups, one radio button per layer (one raster at a time).
 // Native radios give keyboard navigation: Tab into the group, arrow keys move and select.
 import type { Manifest } from './manifest';
 

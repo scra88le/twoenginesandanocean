@@ -105,27 +105,40 @@ _TEXT: dict[str, dict[str, str | None]] = {
     ),
     "carnot": dict(
         summary="The Carnot limit: the most work any engine could get from heat flowing to space.",
-        source=f"Derived. {_DAILY}. Variables: skin temperature (skt, 235), ttr (179).",
-        formula="η_C = (T_s − T_e) / T_s, clamped at 0. T_s is the skin temperature, T_e as in that layer.",
+        source=(
+            f"Derived. {_DAILY}. Variables: skin temperature (skt, 235), top net solar "
+            "radiation (tsr, 178)."
+        ),
+        formula=(
+            "η_C = (T_s − T_r) / T_s, clamped at 0. T_s is the skin temperature. T_r = "
+            "(⟨ASR⟩ / σ)^¼ is the radiative temperature of the whole Earth system, from the "
+            "area-weighted global mean of absorbed sunlight at the top of the atmosphere for the "
+            "same day (about 255 K)."
+        ),
         sign="Not applicable (an efficiency, in %).",
         meaning=(
-            "Typically 10–20%. It is a theoretical ceiling: the real atmosphere converts far less, "
-            "because carrying heat away reduces the temperature difference that drives the flow "
-            "(see the maximum-power layers)."
+            "About 12% on global average, and highest over hot tropical land and deserts. It is a "
+            "theoretical ceiling: the real atmosphere converts far less, because carrying heat "
+            "away reduces the temperature difference that drives the flow (see the maximum-power "
+            "layers). The cold side is the temperature at which the whole system radiates to "
+            "space, not the temperature of one height or of local cloud tops."
         ),
         caveats=(
-            "Hatched where the surface is colder than the emission temperature and the limit is "
-            "clamped at zero, as over cold ice sheets and in polar night. Assumes a reversible engine."
+            "Hatched where the surface is colder than T_r and the limit is clamped at zero, as "
+            "over cold ice sheets and in polar night. Assumes a reversible engine. The cold side "
+            "is one number for the whole map, so the local cloud signal is in the emission "
+            "temperature layer instead."
         ),
     ),
     "g_max": dict(
         summary="The most power convection could generate at this surface (maximum-power model).",
         source=(
-            f"Derived. {_DAILY}. Variables: ssr (176), skt (235), ttr (179). "
+            f"Derived. {_DAILY}. Variables: ssr (176), skt (235), tsr (178). "
             "Model: Kleidon & Renner (2013)."
         ),
         formula=(
-            "G_max = R_s² / (4 k_r T_s), with k_r = 4 σ T_e³ (T_e clipped to 230–290 K). "
+            "G_max = R_s² / (4 k_r T_s), with k_r = 4 σ T_r³ (T_r, the radiative temperature of "
+            "the whole system as in the Carnot layer, clipped to 230–290 K). "
             "Reached at J_opt = R_s / 2."
         ),
         sign="Positive: power available to drive motion.",
@@ -334,6 +347,30 @@ _TEXT: dict[str, dict[str, str | None]] = {
         caveats=(
             "The circulating part of the flux, which moves energy around but carries none across "
             "latitude circles, is left out."
+        ),
+    ),
+    "net_sfc": dict(
+        summary="Net heat into the surface: the ocean charging (positive) or discharging (negative).",
+        source=(
+            f"{_SUM}. Variables: ssr (176), str (177), slhf (147), sshf (146). "
+            "Same-day sums, so the four terms close exactly."
+        ),
+        formula="Q_net = ssr − lw_up − LE − H, with lw_up = −str, LE = −slhf and H = −sshf",
+        sign=(
+            "Positive: energy flowing into the surface (it warms or stores heat). Negative: the "
+            "surface gives energy up. The three loss terms are flipped from ECMWF's downward-positive "
+            "convention, as in the other flux layers."
+        ),
+        meaning=(
+            "The ocean is the engine's store and its second carrier of heat. It charges in the "
+            "tropics and in summer, and discharges at high latitudes and in winter, and currents "
+            "carry the difference between them. Over land the annual mean is near zero, because "
+            "land stores little heat."
+        ),
+        caveats=(
+            "Daily values swing with the seasons and the weather; the annual mean over the ocean "
+            "is a few W m⁻² and ERA5 does not close the budget exactly. Dates built before "
+            "longwave was added to the daily fetch have no value."
         ),
     ),
     "human_q": dict(

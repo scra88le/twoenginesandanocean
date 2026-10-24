@@ -72,7 +72,7 @@ export interface ExtraMeta {
 export interface PointsMeta {
   file: string;
   tile: number;
-  fields: string[]; // the 24 layers, then the extras
+  fields: string[]; // the 25 layers, then the extras
   extras: Record<string, ExtraMeta>;
 }
 

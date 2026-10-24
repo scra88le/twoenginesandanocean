@@ -2,12 +2,12 @@ import math
 
 import pytest
 
-from pipeline.layers import ANOMALY, LAYERS, NATURAL, VECTOR
+from pipeline.layers import ANOMALY, GROUPS, LAYERS, NATURAL, VECTOR
 
 SPEC_IDS = [
     "asr_toa", "asr_sfc", "net_toa", "olr", "t_emit", "carnot", "g_max", "j_conv", "j_ratio",
     "lh", "sh", "evap_frac", "wind10", "wind100", "jet250", "ke_col", "diss_bl", "tcwv",
-    "precip", "p_lift", "div_e", "flux_e", "human_q", "human_ratio",
+    "precip", "p_lift", "div_e", "flux_e", "human_q", "human_ratio", "net_sfc",
 ]  # fmt: skip
 
 
@@ -17,6 +17,7 @@ def test_ids_match_the_spec_exactly_and_in_order():
 
 def test_natural_layers_have_anomalies_and_human_layers_do_not():
     assert NATURAL == tuple(i for i in SPEC_IDS if not i.startswith("human_"))
+    assert NATURAL[-1] == "net_sfc"  # appended last, so earlier point-chunk fields keep their place
     for lid, spec in LAYERS.items():
         assert spec.anomaly == (lid in NATURAL)
 
@@ -29,8 +30,16 @@ def test_vector_layers():
         assert LAYERS[lid].uv_encode is None
 
 
-def test_groups_are_1_to_9():
-    assert sorted({s.group for s in LAYERS.values()}) == list(range(1, 10))
+def test_groups_are_1_to_10():
+    assert sorted({s.group for s in LAYERS.values()}) == list(range(1, 11))
+    assert LAYERS["net_sfc"].group == 10 and GROUPS[10] == "Ocean"
+
+
+def test_net_sfc_is_a_diverging_layer_centred_on_zero():
+    s = LAYERS["net_sfc"]
+    assert s.colour == "balance" and s.centre == 0 and s.display == (-200, 200)
+    assert s.encode[0] < -842 and s.encode[1] > 500  # the 2026-07 extremes fit
+    assert s.anomaly_encode is not None  # linear in its inputs: it has an anomaly
 
 
 def test_log_layers_match_the_catalogue():

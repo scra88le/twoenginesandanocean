@@ -23,9 +23,9 @@ test('cells map to their tile and the index within it', () => {
   expect(tileOf({ i: 719, j: 359 }, 20)).toEqual({ tx: 35, ty: 17, k: 399 });
 });
 
-test('the manifest describes the point chunks: 24 layers then the extras', () => {
+test('the manifest describes the point chunks: 25 layers then the extras', () => {
   expect(points.tile).toBe(20);
-  expect(points.fields.length).toBe(26);
+  expect(points.fields.length).toBe(27);
   expect(points.fields.slice(-2)).toEqual(['t_skin', 'j_opt']);
   expect(manifest.series!.file).toBe('series/{layer}/{tx}_{ty}.bin');
 });

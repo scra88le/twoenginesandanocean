@@ -13,7 +13,7 @@ from pathlib import Path
 import xarray as xr
 
 from .climatology import Climatology, encode_anomalies
-from .derived import compute_extras, compute_layers
+from .derived import compute_extras, compute_layers, radiative_summary
 from .fetch import PRESSURE_DAILY, SINGLE_DAILY, build_requests, fetch_dates
 from .points import build_series
 from .publish import encode_date, publish_date
@@ -48,7 +48,14 @@ def build_date(day: date, raw: Path, work: Path, out: Path) -> list[str]:
     problems = check(tidy, layers, stats)
     write_log(out, day.isoformat(), global_means(tidy), problems)
     if not problems:
-        publish_date(out, day.isoformat(), files, points=points)
+        asr, t_r = radiative_summary(tidy["tsr"].values)
+        publish_date(
+            out,
+            day.isoformat(),
+            files,
+            points=points,
+            radiative={"asr": round(asr, 2), "t_r": round(t_r, 2)},
+        )
     return problems
 
 

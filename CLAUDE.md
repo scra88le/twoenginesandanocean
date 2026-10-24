@@ -12,6 +12,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 
 ## Working rules for Claude
 
+- Current work: docs/PROPOSALS-v2.md, milestones 14–22. Where it conflicts with this file, the proposal wins
 - Work milestone by milestone (see **Milestones**). Finish one, run its tests, then stop and summarise before starting the next.
 - **Test-first** for `pipeline.derived`, unit/sign conversions and encoding round-trips.
 - All physics formulas live in **one module**, `pipeline.derived` (`pipeline/src/pipeline/derived.py`). Do not reimplement formulas in the front end. The front end only decodes and displays.
@@ -103,7 +104,7 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | ERA5 daily statistics | CDS `derived-era5-single-levels-daily-statistics` | All natural single-level layers | ~6 days |
 | ERA5 hourly single levels | CDS `reanalysis-era5-single-levels` | Fallback for variables missing from the daily product | ~5 days |
 | ERA5 pressure-level daily statistics | CDS `derived-era5-pressure-levels-daily-statistics` (ID confirmed 2026-10-17; `daily_mean` only) | 250 hPa winds | ~6 days |
-| ERA5 monthly means | CDS `reanalysis-era5-single-levels-monthly-means` | 1991–2020 monthly climatology | one-off |
+| ERA5 monthly means | CDS `reanalysis-era5-single-levels-monthly-means`, `reanalysis-era5-pressure-levels-monthly-means` (250 hPa winds) | 1991–2020 monthly climatology | one-off |
 | Anthropogenic heat flux | Gridded global dataset, **to be chosen** (see Open questions) | `human_q` | static |
 | Our World in Data energy | CSV, CC BY | Fallback human layer: country totals spread over land area | annual |
 | ENTSO-E Transparency | REST API, token | Later only: European daily wind/solar output | ~1 day |
@@ -136,7 +137,7 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 
 ## Layer catalogue
 
-24 layers in 9 story groups. Inputs are ERA5 short names, or the converted names `olr`, `le`, `h` and `lw_up` for the four sign-flipped fields. **Range** is the *display* range. The *encode* range is separate and fixed (see **Encoding**). "auto" means the display range is the day's 2nd–98th percentile, symmetric about zero for diverging scales; the encode range is still fixed.
+25 layers in 10 groups (the 9 story groups and Ocean). Inputs are ERA5 short names, or the converted names `olr`, `le`, `h` and `lw_up` for the four sign-flipped fields. **Range** is the *display* range. The *encode* range is separate and fixed (see **Encoding**). "auto" means the display range is the day's 2nd–98th percentile, symmetric about zero for diverging scales; the encode range is still fixed.
 
 | ID | Layer | Group | Inputs | Units | Colour scale | Range |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -145,8 +146,8 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | `net_toa` | Net radiation, TOA | 1 Fuel | `tsr` − `olr` | W m⁻² | balance | −200 to 200 |
 | `olr` | Outgoing longwave | 2 Exhaust | `olr` | W m⁻² | thermal | 100–320 |
 | `t_emit` | Effective emission temperature | 2 Exhaust | derived (`olr`) | K | thermal | 200–290 |
-| `carnot` | Local Carnot limit | 3 Limits | derived (`skt`, `olr`) | % | viridis | 0–30 |
-| `g_max` | Maximum convective power | 3 Limits | derived (`ssr`, `skt`, `olr`) | W m⁻² | magma | 0–15 |
+| `carnot` | Carnot limit | 3 Limits | derived (`skt`, `tsr`) | % | viridis | 0–30 |
+| `g_max` | Maximum convective power | 3 Limits | derived (`ssr`, `skt`, `tsr`) | W m⁻² | magma | 0–15 |
 | `j_conv` | Actual convective heat flux | 4 Max power | `le` + `h` | W m⁻² | magma | 0–300 |
 | `j_ratio` | Actual ÷ max-power flux | 4 Max power | derived | ratio | balance, centred on 1 | 0–2 |
 | `lh` | Latent heat flux | 5 Surface split | `le` | W m⁻² | deep | 0–300 |
@@ -164,8 +165,9 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | `flux_e` | Divergent energy transport (arrows) | 8 Transport | derived (`div_e`) | W m⁻¹ | cividis | auto |
 | `human_q` | Human energy use density | 9 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
 | `human_ratio` | Human ÷ natural dissipation | 9 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
+| `net_sfc` | Net heat into the surface | 10 Ocean | `ssr` − `lw_up` − `le` − `h` | W m⁻² | balance | −200 to 200 |
 
-- Every natural layer has an anomaly variant (`{layer}_anom`), **except the four vector layers** (`wind10`, `wind100`, `jet250`, `flux_e`): monthly means only give the speed of the mean vector, far below the mean of daily speeds (+1.8 m/s bias at 10 m, August 2026), so there is no honest climatology for them (decided 2026-10-19). Human layers have none either. That leaves 18 layers with anomalies (`pipeline.layers.ANOMALY`).
+- Every natural layer has an anomaly variant (`{layer}_anom`; `net_sfc` once the `str` climatology is in), **except the four vector layers** (`wind10`, `wind100`, `jet250`, `flux_e`): monthly means only give the speed of the mean vector, far below the mean of daily speeds (+1.8 m/s bias at 10 m, August 2026), so there is no honest climatology for them (decided 2026-10-19). Human layers have none either. That leaves 19 layers with anomalies (`pipeline.layers.ANOMALY`).
 - `p_lift` must be labelled "indicative" in the UI.
 - Colour scales must be perceptually uniform and colour-blind safe (matplotlib / cmocean equivalents).
 
@@ -180,9 +182,10 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 | Layer | Formula | Notes |
 | --- | --- | --- |
 | `t_emit` | T_e = (OLR / σ)^(1/4) | |
-| `carnot` | η_C = (T_s − T_e) / T_s | Clamp < 0 to 0 and render clamped cells hatched. Clamped cells are exactly 0 (the lowest valid code), which is how the front end finds them |
-| `g_max` | J_opt = R_s / 2; G_max = R_s² / (4 k_r T_s); k_r = 4σT_e³ | Clip T_e to 230–290 K in k_r. Kleidon & Renner single-column model. Land only. |
+| `carnot` | η_C = (T_s − T_r) / T_s; T_r = (⟨ASR_TOA⟩ / σ)^¼ | T_r is Kleidon's radiative temperature of the whole system (about 255 K): ⟨ASR_TOA⟩ is the area-weighted global mean of `tsr` for the same frame (day, month or year), published in the manifest (`radiative`, `clim.radiative`). Never use local ASR. Clamp < 0 to 0 and render clamped cells hatched. Clamped cells are exactly 0 (the lowest valid code), which is how the front end finds them |
+| `g_max` | J_opt = R_s / 2; G_max = R_s² / (4 k_r T_s); k_r = 4σT_r³ | Clip T_r to 230–290 K in k_r (a no-op). Kleidon & Renner single-column model. Land only. |
 | `j_ratio` | r_J = (LE + H) / J_opt | Land only; grey out ocean and sea ice (the model ignores heat storage). Also masked where R_s < 10 W m⁻², where J_opt → 0 and the ratio is meaningless |
+| `net_sfc` | Q = R_s − lw_up − LE − H | No mask. Needs `lw_up` (`str`); a date without it has no `net_sfc` |
 | `evap_frac` | EF = LE / (LE + H) | Mask where LE + H < 10 W m⁻² |
 | `p_lift` | P_lift = P · g · h_lift | P in kg m⁻² s⁻¹; `h_lift` is a config value, default 3000 m, shown in the info panel |
 | wind speed | √(u² + v²) | Keep u, v for the particle texture |
@@ -237,13 +240,15 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 ### Storage layout
 
 ```
-/manifest.json                      dates, built_layers, layers (metadata, encoding, info text), credits, build time
+/manifest.json                      dates, built_layers, layers (metadata, encoding, info text), radiative (⟨ASR⟩ and T_r per date), credits, build time
 /fields/{YYYY-MM-DD}/{layer}.png
 /fields/{YYYY-MM-DD}/{layer}_uv.png        vector layers only: u, v components
 /fields/{YYYY-MM-DD}/{layer}_anom.png
 /points/{YYYY-MM-DD}/{tx}_{ty}.bin  all 24 layers + readout extras, one 10°×10° tile (20×20 cells), uint16 (20.8 kB)
 /series/{layer}/{tx}_{ty}.bin       the published dates (up to 90), one tile, uint16 (~72 kB), rebuilt daily
 /clim/{MM}/{layer}.png              monthly 1991–2020 climatology, the layer's own packing
+/clim/year/{layer}.png              annual-mean frame: formulas applied to the day-weighted annual-mean inputs, not the mean of 12 derived maps
+/clim/year/series/{layer}/{tx}_{ty}.bin  the annual value of one tile (400 codes); apart from clim/series so those keep 12 months
 /clim/series/{layer}/{tx}_{ty}.bin  the 12 monthly means of one tile (12 × 20 × 20 codes, month-major), for the readout chart
 /clim/clim.json                     period, layers and file templates; copied into the manifest's `clim` (null until published)
 /static/human_q.png
@@ -270,7 +275,7 @@ Point and series chunks are little-endian uint16 and use the same per-layer pack
 
 ### One-off jobs
 
-- Monthly climatology from ERA5 monthly means (`reanalysis-era5-single-levels-monthly-means`), 1991–2020, for every raw input of the 18 anomaly layers (`pipeline.climatology`). Six requests of five years × 12 inputs (cost 2 880 each, limit 20 000; ~1 GB each), at most two queued. Each is reduced on arrival to per-calendar-month sums on the 0.5° grid through the same conversion as the daily data (`work/clim/sums_*.nc`, ~220 MB) and the download deleted. Accumulated fields are stamped 06:00 on the 1st, others 00:00, so fields are matched by month. Derived climatologies apply the layer formulas to the monthly means. Accumulated fields in the monthly-means product are **mean daily accumulations** (J m⁻² per day, `GRIB_stepType=avgad`; checked 2026-10-17: October 2025 `tsr` ÷ 86 400 = 245.4 W m⁻²), so the daily conversions apply unchanged.
+- Monthly climatology from ERA5 monthly means (`reanalysis-era5-single-levels-monthly-means`), 1991–2020, for every raw input of the anomaly layers (`pipeline.climatology`). Since 2026-10-24 a second set of requests, merged by key (`climatology.Part`: `SURFACE` = `str` and the 10/100 m winds, `PRESSURE` = 250 hPa `u`, `v` from `reanalysis-era5-pressure-levels-monthly-means`), adds `lw_up` and the winds without re-fetching the first 12 keys; `climatology --partial` publishes from the parts that have arrived. Six requests of five years × 12 inputs (cost 2 880 each, limit 20 000; ~1 GB each), at most two queued. Each is reduced on arrival to per-calendar-month sums on the 0.5° grid through the same conversion as the daily data (`work/clim/sums_*.nc`, ~220 MB) and the download deleted. Accumulated fields are stamped 06:00 on the 1st, others 00:00, so fields are matched by month. Derived climatologies apply the layer formulas to the monthly means. Accumulated fields in the monthly-means product are **mean daily accumulations** (J m⁻² per day, `GRIB_stepType=avgad`; checked 2026-10-17: October 2025 `tsr` ÷ 86 400 = 245.4 W m⁻²), so the daily conversions apply unchanged.
 - `human_q` from the chosen dataset, regridded to 0.5° by area-weighted averaging.
 
 ## Front end behaviour
@@ -424,6 +429,7 @@ Phone layout under 700 px:
     - mobile layout
     - validation log (`logs/global_means.csv` is uploaded with each run)
     - Playwright smoke test (`web/e2e-live`)
+14. Pipeline foundations (docs/PROPOSALS-v2.md): (**Code and tests done** 2026-10-24, see `docs/DECISIONS.md`. **Open, waiting on the CDS:** the `str` backfill (16 of 90 dates), the `SURFACE` and `PRESSURE` climatology parts, then `climatology`, `fetch-str` and `rebuild` to publish `net_sfc`, its anomaly, the annual frame and the T_r-based `carnot` and `g_max` for the 90 dates. Nothing has been uploaded to the bucket.)
 
 ## Acceptance criteria
 

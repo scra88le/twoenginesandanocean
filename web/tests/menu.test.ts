@@ -9,12 +9,13 @@ const manifest = JSON.parse(
   readFileSync(new URL('../e2e/fixtures/data/manifest.json', import.meta.url), 'utf8'),
 ) as Manifest;
 
-test('menu has the 9 story groups in order, with all 24 layers', () => {
+test('menu has the story groups in order, with all 25 layers', () => {
   const groups = menuGroups(manifest);
   expect(groups.map((g) => g.name)).toEqual([
     'Fuel', 'Exhaust', 'Limits', 'Max power', 'Surface split', 'Output', 'Water', 'Transport', 'Humans',
+    'Ocean',
   ]);
-  expect(groups.flatMap((g) => g.layers).length).toBe(24);
+  expect(groups.flatMap((g) => g.layers).length).toBe(25);
   expect(groups[0]!.layers.map((l) => l.id)).toEqual(['asr_toa', 'asr_sfc', 'net_toa']);
 });
 

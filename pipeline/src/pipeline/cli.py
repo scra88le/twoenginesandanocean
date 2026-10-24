@@ -64,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
     clim.add_argument("--raw", type=Path, default=Path("raw"))
     clim.add_argument("--work", type=Path, default=Path("work"))
     clim.add_argument("--wait", action="store_true", help="keep going until it is published")
+    clim.add_argument(
+        "--partial",
+        action="store_true",
+        help="don't wait for every request: publish from the parts that have arrived "
+        "(still queues what is missing)",
+    )
 
     lw = sub.add_parser("fetch-str", help="add surface net longwave (lw_up) to tidy files")
     lw.add_argument("--raw", type=Path, default=Path("raw"))
@@ -175,7 +181,7 @@ def _climatology(args: argparse.Namespace) -> int:
     while not chunks_done(args.work):
         c = c or client()
         pending = fetch_chunks(c, args.raw, args.work)
-        if chunks_done(args.work):
+        if chunks_done(args.work) or args.partial:
             break
         print(
             f"waiting on {len(pending)} climatology request(s); next check in {delay:.0f} s",

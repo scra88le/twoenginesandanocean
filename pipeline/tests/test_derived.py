@@ -19,6 +19,11 @@ def test_fixture_emission_temperature():
     assert d.emission_temperature(240.0) == pytest.approx(255.1, abs=0.05)
 
 
+def test_fixture_radiative_temperature():
+    # <ASR_TOA> = 240 W m-2 -> T_r = (240 / sigma)^(1/4) = 255.1 K
+    assert d.radiative_temperature(240.0) == pytest.approx(255.1, abs=0.05)
+
+
 def test_fixture_carnot():
     eta, clamped = d.carnot_efficiency(300.0, 255.0)
     assert eta == pytest.approx(0.15)
@@ -243,15 +248,16 @@ NATURAL = {
 
 
 def test_compute_layers_returns_every_natural_layer():
-    assert set(d.compute_layers(tidy())) == NATURAL
+    assert set(d.compute_layers(tidy(lw_up=50.0))) == NATURAL | {"net_sfc"}
+    assert set(d.compute_layers(tidy())) == NATURAL  # net_sfc needs lw_up
 
 
 def test_layers_are_in_catalogue_units():
-    lay = d.compute_layers(tidy())
+    lay = d.compute_layers(tidy(tsr=d.SIGMA * 255.0**4))  # T_r = 255 K
     north = (0, 0)
     assert lay["carnot"].values[north] == pytest.approx(15.0)  # percent
     assert lay["t_emit"].values[north] == pytest.approx(255.0)
-    assert lay["net_toa"].values[north] == pytest.approx(300.0 - d.SIGMA * 255.0**4)
+    assert lay["net_toa"].values[north] == pytest.approx(0.0, abs=1e-9)
     assert lay["ke_col"].values[north] == pytest.approx(2.0)  # MJ m-2
     assert lay["precip"].values[north] == pytest.approx(3.0)  # mm/day
     assert lay["j_conv"].values[north] == pytest.approx(80.0)
@@ -287,6 +293,47 @@ def test_flux_e_is_zero_for_a_uniform_divergence():
     lay = d.compute_layers(tidy(**{"p86.162": 12.0}))
     np.testing.assert_allclose(lay["flux_e"].values, 0.0, atol=1e-6)
     np.testing.assert_allclose(lay["div_e"].values, 12.0)
+
+
+def test_carnot_and_g_max_use_the_global_radiative_temperature():
+    # ASR_TOA is 240 in the north and 0 (polar night) in the south: T_r comes from the global
+    # mean (120 W m-2 -> 214.5 K), not from each cell, so no cell reaches 100 %.
+    t = tidy()
+    tsr = np.full((NLAT, NLON), 240.0)
+    tsr[NLAT // 2 :] = 0.0
+    t["tsr"] = (("latitude", "longitude"), tsr)
+    t_r = d.radiative_temperature(d.global_mean(tsr))
+    lay = d.compute_layers(t)
+    assert lay["carnot"].values[0, 0] == pytest.approx(100 * (300.0 - t_r) / 300.0)
+    assert lay["carnot"].values[-1, 0] == lay["carnot"].values[0, 0]  # same T_s everywhere
+    assert float(lay["carnot"].values.max()) < 40.0
+    assert lay["g_max"].values[0, 0] == pytest.approx(d.max_power(200.0, 300.0, t_r)[1])
+
+
+def test_carnot_on_the_fixture_day_is_15_percent():
+    lay = d.compute_layers(tidy(tsr=d.SIGMA * 255.0**4))
+    assert lay["carnot"].values[0, 0] == pytest.approx(15.0)
+    assert lay["g_max"].values[0, 0] == pytest.approx(8.86, abs=0.005)
+
+
+def test_t_emit_stays_local():
+    t = tidy()
+    olr = np.full((NLAT, NLON), d.SIGMA * 255.0**4)
+    olr[0] = d.SIGMA * 220.0**4
+    t["olr"] = (("latitude", "longitude"), olr)
+    lay = d.compute_layers(t)
+    assert lay["t_emit"].values[0, 0] == pytest.approx(220.0)
+    assert lay["t_emit"].values[5, 0] == pytest.approx(255.0)
+
+
+def test_net_sfc_is_absorbed_solar_minus_the_three_losses():
+    lay = d.compute_layers(tidy(lw_up=50.0))
+    assert lay["net_sfc"].values[0, 0] == pytest.approx(200.0 - 50.0 - 60.0 - 20.0)
+    assert not lay["net_sfc"].masked.values.any()  # no mask, land or ocean
+
+
+def test_net_sfc_needs_lw_up():
+    assert "net_sfc" not in d.compute_layers(tidy())
 
 
 def test_layers_are_dataarrays_on_the_grid():

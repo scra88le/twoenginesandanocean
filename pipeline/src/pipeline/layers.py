@@ -43,6 +43,7 @@ GROUPS = {
     7: "Water",
     8: "Transport",
     9: "Humans",
+    10: "Ocean",
 }
 
 _W = "W m-2"
@@ -140,6 +141,17 @@ _SPECS = [
         centre=1,
         anomaly=False,
     ),  # fmt: skip
+    # Appended, so the point-chunk field order of the layers above doesn't change.
+    LayerSpec(
+        "net_sfc",
+        "Net heat into the surface",
+        10,
+        _W,
+        "balance",
+        (-200, 200),
+        (-1000, 700),  # daily values reach -842 over the ocean (2026-07)
+        centre=0,
+    ),  # fmt: skip
 ]
 
 
@@ -150,7 +162,7 @@ RESOLUTION = {
     "carnot": 0.02, "g_max": 0.01, "j_conv": 0.25, "j_ratio": 0.002, "lh": 0.25, "sh": 0.1,
     "evap_frac": 0.001, "wind10": 0.02, "wind100": 0.02, "jet250": 0.05, "ke_col": 0.005,
     "diss_bl": 0.002, "tcwv": 0.05, "precip": 0.002, "p_lift": 0.002, "div_e": 1.0,
-    "flux_e": 1e6, "human_q": 0.002, "human_ratio": 0.002,
+    "flux_e": 1e6, "human_q": 0.002, "human_ratio": 0.002, "net_sfc": 0.25,
 }  # fmt: skip
 UV_RESOLUTION = {"wind10": 0.1, "wind100": 0.1, "jet250": 0.1, "flux_e": 1e6}
 

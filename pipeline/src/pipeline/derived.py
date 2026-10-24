@@ -34,20 +34,36 @@ def emission_temperature(olr):
     return (olr / SIGMA) ** 0.25
 
 
-def carnot_efficiency(t_s, t_e):
-    """eta_C = (T_s - T_e) / T_s as a fraction, clamped at 0. Returns (eta, clamped)."""
-    eta = (t_s - t_e) / t_s
+def radiative_temperature(asr_mean):
+    """T_r = (<ASR_TOA> / sigma)^(1/4), K: the radiative temperature of the whole system, from
+    the area-weighted global mean of absorbed solar at the top of the atmosphere for the same
+    frame (day, month or year). Kleidon's cold side; about 255 K."""
+    return (asr_mean / SIGMA) ** 0.25
+
+
+def radiative_summary(tsr) -> tuple[float, float]:
+    """(<ASR_TOA>, T_r) of a frame: the area-weighted global mean of `tsr`, W m-2, and the
+    radiative temperature it gives, K. What the manifest publishes and the panels quote."""
+    asr = global_mean(np.asarray(tsr, dtype="float64"))
+    return asr, float(radiative_temperature(asr))
+
+
+def carnot_efficiency(t_s, t_cold):
+    """eta_C = (T_s - T_cold) / T_s as a fraction, clamped at 0. Returns (eta, clamped).
+    The cold side is the radiative temperature T_r."""
+    eta = (t_s - t_cold) / t_s
     clamped = eta < 0
     return np.where(clamped, 0.0, eta), clamped
 
 
-def max_power(r_s, t_s, t_e):
+def max_power(r_s, t_s, t_r):
     """Kleidon & Renner single-column maximum power. Returns (J_opt, G_max), W m-2.
 
     R_s = k_r (T_s - T_a) + J and G = J (T_s - T_a) / T_s give G = J (R_s - J) / (k_r T_s),
-    which peaks at J_opt = R_s / 2 with G_max = R_s^2 / (4 k_r T_s), where k_r = 4 sigma T_e^3.
+    which peaks at J_opt = R_s / 2 with G_max = R_s^2 / (4 k_r T_s), where k_r = 4 sigma T_r^3
+    and T_r is the radiative temperature (clipped to 230-290 K, a no-op for the real one).
     """
-    k_r = 4 * SIGMA * np.clip(t_e, *T_E_CLIP_K) ** 3
+    k_r = 4 * SIGMA * np.clip(t_r, *T_E_CLIP_K) ** 3
     return r_s / 2, r_s**2 / (4 * k_r * t_s)
 
 
@@ -250,8 +266,9 @@ def compute_layers(
     ocean = get("lsm") < LAND_THRESHOLD
 
     t_e = emission_temperature(olr)
-    eta, _ = carnot_efficiency(skt, t_e)
-    j_opt, g_max = max_power(ssr, skt, t_e)
+    t_r = radiative_summary(tsr)[1]  # one cold side for the whole frame
+    eta, _ = carnot_efficiency(skt, t_r)
+    j_opt, g_max = max_power(ssr, skt, t_r)
     with np.errstate(divide="ignore", invalid="ignore"):
         r_j = (le + h) / j_opt
     ef, ef_masked = evaporative_fraction(le, h)
@@ -280,6 +297,8 @@ def compute_layers(
         "div_e": field(div_e),
         "flux_e": field(wind_speed(fu, fv), u=fu, v=fv),
     }
+    if "lw_up" in tidy:  # dates built before `str` was fetched have no ocean layer
+        layers["net_sfc"] = field(ssr - get("lw_up") - le - h)
     for name, (un, vn) in {
         "wind10": ("u10", "v10"),
         "wind100": ("u100", "v100"),
@@ -301,11 +320,8 @@ def compute_extras(tidy: xr.Dataset) -> dict[str, LayerField]:
     )
     skt = tidy["skt"].values.astype("float64")
     ocean = tidy["lsm"].values < LAND_THRESHOLD
-    j_opt, _ = max_power(
-        tidy["ssr"].values.astype("float64"),
-        skt,
-        emission_temperature(tidy["olr"].values.astype("float64")),
-    )
+    t_r = radiative_temperature(global_mean(tidy["tsr"].values.astype("float64")))
+    j_opt, _ = max_power(tidy["ssr"].values.astype("float64"), skt, t_r)
 
     def field(x, masked):
         masked = np.asarray(masked, dtype=bool)

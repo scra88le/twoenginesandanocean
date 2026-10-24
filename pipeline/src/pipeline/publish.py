@@ -103,6 +103,7 @@ def build_manifest(
     built_at: str,
     built_layers: list[str] | None = None,
     clim: dict | None = None,
+    radiative: dict[str, dict[str, float]] | None = None,
 ) -> dict:
     return {
         "version": MANIFEST_VERSION,
@@ -117,6 +118,9 @@ def build_manifest(
             "anomaly": "fields/{date}/{layer}_anom.png",
         },
         "clim": clim,  # null until the climatology job has run
+        # <ASR_TOA> (W m-2) and the radiative temperature T_r (K) of each published date: the
+        # cold side of `carnot` and `g_max`. The climate frames' are in `clim.radiative`.
+        "radiative": radiative or {},
         "layers": {lid: _layer_meta(s) for lid, s in LAYERS.items()},
         "points": {
             "file": "points/{date}/{tx}_{ty}.bin",
@@ -164,7 +168,11 @@ def refresh_manifest(out: Path, built_at: str | None = None) -> None:
     _write_manifest(
         out,
         build_manifest(
-            old.get("dates", []), built_at, old.get("built_layers", []), _clim_index(out)
+            old.get("dates", []),
+            built_at,
+            old.get("built_layers", []),
+            _clim_index(out),
+            old.get("radiative", {}),
         ),
     )
 
@@ -206,9 +214,10 @@ def publish_date(
     built_at: str | None = None,
     keep_days: int = KEEP_DAYS,
     points: dict[str, bytes] | None = None,
+    radiative: dict[str, float] | None = None,
 ) -> None:
     """Write one date's point chunks and map files, then the manifest, then delete dates
-    beyond `keep_days`."""
+    beyond `keep_days`. `radiative` is the date's {"asr", "t_r"} for the manifest."""
     day = date.fromisoformat(day).isoformat()  # also rejects anything path-like
     built_at = built_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     fields = out / "fields"
@@ -220,7 +229,10 @@ def publish_date(
     previous = old.get("dates", [])
     dates = sorted(set(previous) | {day})[-keep_days:]
     built = sorted(set(old.get("built_layers", [])) | _layer_ids(files))
-    _write_manifest(out, build_manifest(dates, built_at, built, _clim_index(out)))
+    kept = {d: v for d, v in old.get("radiative", {}).items() if d in dates}
+    if radiative is not None:
+        kept[day] = radiative
+    _write_manifest(out, build_manifest(dates, built_at, built, _clim_index(out), kept))
     for gone in set(previous) - set(dates):
         shutil.rmtree(fields / gone, ignore_errors=True)
         shutil.rmtree(out / "points" / gone, ignore_errors=True)

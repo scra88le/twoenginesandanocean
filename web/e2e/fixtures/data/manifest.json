@@ -47,6 +47,7 @@
   "file": "clim/{MM}/{layer}.png",
   "series": "clim/series/{layer}/{tx}_{ty}.bin"
  },
+ "radiative": {},
  "layers": {
   "asr_toa": {
    "title": "Absorbed solar, TOA",
@@ -315,11 +316,11 @@
    "hatch_zero": true,
    "info": {
     "summary": "The Carnot limit: the most work any engine could get from heat flowing to space.",
-    "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: skin temperature (skt, 235), ttr (179).",
-    "formula": "\u03b7_C = (T_s \u2212 T_e) / T_s, clamped at 0. T_s is the skin temperature, T_e as in that layer.",
+    "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: skin temperature (skt, 235), top net solar radiation (tsr, 178).",
+    "formula": "\u03b7_C = (T_s \u2212 T_r) / T_s, clamped at 0. T_s is the skin temperature. T_r = (\u27e8ASR\u27e9 / \u03c3)^\u00bc is the radiative temperature of the whole Earth system, from the area-weighted global mean of absorbed sunlight at the top of the atmosphere for the same day (about 255 K).",
     "sign": "Not applicable (an efficiency, in %).",
-    "meaning": "Typically 10\u201320%. It is a theoretical ceiling: the real atmosphere converts far less, because carrying heat away reduces the temperature difference that drives the flow (see the maximum-power layers).",
-    "caveats": "Hatched where the surface is colder than the emission temperature and the limit is clamped at zero, as over cold ice sheets and in polar night. Assumes a reversible engine.",
+    "meaning": "About 12% on global average, and highest over hot tropical land and deserts. It is a theoretical ceiling: the real atmosphere converts far less, because carrying heat away reduces the temperature difference that drives the flow (see the maximum-power layers). The cold side is the temperature at which the whole system radiates to space, not the temperature of one height or of local cloud tops.",
+    "caveats": "Hatched where the surface is colder than T_r and the limit is clamped at zero, as over cold ice sheets and in polar night. Assumes a reversible engine. The cold side is one number for the whole map, so the local cloud signal is in the emission temperature layer instead.",
     "mask": null,
     "anomaly": "Daily value minus the 1991\u20132020 mean for the same calendar month, from ERA5 monthly means (reanalysis-era5-single-levels-monthly-means). The climatology applies this layer's formula to the monthly-mean inputs. The formula is nonlinear, so that is an approximation: it differs from the mean of daily values, most where the inputs vary a lot within a month. Read small anomalies with care."
    }
@@ -361,8 +362,8 @@
    "hatch_zero": false,
    "info": {
     "summary": "The most power convection could generate at this surface (maximum-power model).",
-    "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: ssr (176), skt (235), ttr (179). Model: Kleidon & Renner (2013).",
-    "formula": "G_max = R_s\u00b2 / (4 k_r T_s), with k_r = 4 \u03c3 T_e\u00b3 (T_e clipped to 230\u2013290 K). Reached at J_opt = R_s / 2.",
+    "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: ssr (176), skt (235), tsr (178). Model: Kleidon & Renner (2013).",
+    "formula": "G_max = R_s\u00b2 / (4 k_r T_s), with k_r = 4 \u03c3 T_r\u00b3 (T_r, the radiative temperature of the whole system as in the Carnot layer, clipped to 230\u2013290 K). Reached at J_opt = R_s / 2.",
     "sign": "Positive: power available to drive motion.",
     "meaning": "Rising air carries heat away from the surface, which shrinks the temperature difference that drives it. So there is an optimum heat flux, J_opt, at which the power generated peaks. Kleidon argues that convection over land runs close to this maximum.",
     "caveats": "Single-column model without heat storage, so land only. Absolute values are illustrative and model-based.",
@@ -1115,6 +1116,52 @@
     "mask": "Where boundary-layer dissipation is below 0.01 W m\u207b\u00b2.",
     "anomaly": "No anomaly: this layer is not from ERA5 and has no 1991\u20132020 climatology."
    }
+  },
+  "net_sfc": {
+   "title": "Net heat into the surface",
+   "group": 10,
+   "group_name": "Ocean",
+   "units": "W m-2",
+   "colour": "balance",
+   "display": [
+    -200,
+    200
+   ],
+   "log": false,
+   "centre": 0,
+   "vector": false,
+   "anomaly": true,
+   "anomaly_display": [
+    -100.0,
+    100.0
+   ],
+   "anomaly_colour": "balance",
+   "encode": {
+    "lo": -1000,
+    "hi": 700,
+    "log": false,
+    "scale": 0.25,
+    "offset": -1000.0
+   },
+   "uv_encode": null,
+   "anomaly_encode": {
+    "lo": -200.0,
+    "hi": 200.0,
+    "log": false,
+    "scale": 0.25,
+    "offset": -200.0
+   },
+   "hatch_zero": false,
+   "info": {
+    "summary": "Net heat into the surface: the ocean charging (positive) or discharging (negative).",
+    "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variables: ssr (176), str (177), slhf (147), sshf (146). Same-day sums, so the four terms close exactly.",
+    "formula": "Q_net = ssr \u2212 lw_up \u2212 LE \u2212 H, with lw_up = \u2212str, LE = \u2212slhf and H = \u2212sshf",
+    "sign": "Positive: energy flowing into the surface (it warms or stores heat). Negative: the surface gives energy up. The three loss terms are flipped from ECMWF's downward-positive convention, as in the other flux layers.",
+    "meaning": "The ocean is the engine's store and its second carrier of heat. It charges in the tropics and in summer, and discharges at high latitudes and in winter, and currents carry the difference between them. Over land the annual mean is near zero, because land stores little heat.",
+    "caveats": "Daily values swing with the seasons and the weather; the annual mean over the ocean is a few W m\u207b\u00b2 and ERA5 does not close the budget exactly. Dates built before longwave was added to the daily fetch have no value.",
+    "mask": null,
+    "anomaly": "Daily value minus the 1991\u20132020 mean for the same calendar month, from ERA5 monthly means (reanalysis-era5-single-levels-monthly-means). Exact: the layer is linear in its inputs, so the mean of the layer is the layer of the means."
+   }
   }
  },
  "points": {
@@ -1145,6 +1192,7 @@
    "flux_e",
    "human_q",
    "human_ratio",
+   "net_sfc",
    "t_skin",
    "j_opt"
   ],

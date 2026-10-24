@@ -63,7 +63,7 @@ def test_pressure_request_is_250_hpa_winds_daily_mean():
 
 
 def test_accumulated_set_matches_ingestion_rules():
-    assert {"tsr", "ttr", "ssr", "slhf", "sshf", "bld", "tp"} == set(ACCUMULATED)
+    assert {"tsr", "ttr", "ssr", "str", "slhf", "sshf", "bld", "tp"} == set(ACCUMULATED)
 
 
 def test_filenames_are_unique_and_dated():

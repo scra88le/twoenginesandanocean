@@ -48,6 +48,7 @@ VARIABLES: dict[str, Variable] = dict(
         _v("tsr", "top_net_solar_radiation", "sum"),
         _v("ttr", "top_net_thermal_radiation", "sum"),
         _v("ssr", "surface_net_solar_radiation", "sum"),
+        _v("str", "surface_net_thermal_radiation", "sum"),
         _v("slhf", "surface_latent_heat_flux", "sum"),
         _v("sshf", "surface_sensible_heat_flux", "sum"),
         _v("bld", "boundary_layer_dissipation", "sum"),
