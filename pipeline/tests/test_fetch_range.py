@@ -261,3 +261,22 @@ def test_an_expired_result_is_forgotten_and_requested_again(tmp_path, client):
     client.statuses["r5"] = "successful"
     with pytest.raises(Gone):
         fetch_dates(client, [date(2026, 8, 5)], raw2)
+
+
+def test_collected_requests_do_not_hold_up_new_ones_but_waiting_ones_still_count(tmp_path, client):
+    raw = tmp_path / "raw"
+    fetch_dates(client, days(date(2026, 8, 1), 2), raw)  # three requests for days 1-2
+    for rid in client.statuses:
+        client.statuses[rid] = "successful"
+    # Day 3 appears. The three finished requests are kept (keep_collected) but are done at CDS,
+    # so they must not fill the cap of two per dataset: all three statistics are requested now.
+    fetch_dates(client, days(date(2026, 8, 1), 3), raw, keep_collected=True)
+    assert len(client.requests) == 6
+    state = json.loads((raw / "pending.json").read_text())
+    assert sorted(v["days"] == ["2026-08-03"] for v in state.values()).count(True) == 3
+    assert sum(bool(v.get("collected")) for v in state.values()) == 3  # remembered in the state
+
+    # A request that is still waiting does count: with day 3's still queued, day 4 only gets
+    # what fits under the cap (nothing for the single-level dataset, one for the pressure one).
+    fetch_dates(client, days(date(2026, 8, 1), 4), raw, keep_collected=True)
+    assert len(client.requests) == 6 + 1  # single_mean and single_sum for day 3 still waiting

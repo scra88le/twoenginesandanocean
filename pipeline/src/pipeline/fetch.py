@@ -242,7 +242,9 @@ def fetch_dates(
     result that can no longer be downloaded (CDS keeps results only for a while) is forgotten
     so its dates are requested again. This is for a job whose `raw_dir` does not survive the
     run (the daily GitHub Action): the archives vanish with the machine, so the request must
-    be collected again next time until its dates are published (see `settle_state`).
+    be collected again next time until its dates are published (see `settle_state`). Such a
+    request is marked `collected` and stops counting against `max_queued`: the cap is about what
+    is waiting at CDS, and counting finished requests held up the next date by a whole run.
     """
     days = sorted(set(map(_check_date, days)))
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -268,6 +270,8 @@ def fetch_dates(
             chunk.unlink()
             if not keep_collected:
                 del state[key]
+            else:
+                job["collected"] = True  # finished at CDS: no longer counts against the queue cap
         elif st in _FAILED:
             del state[key]
         _save_state(state_path, state)
@@ -285,7 +289,11 @@ def fetch_dates(
         (chunk[0], name, chunk) for name in _COLLECTION for chunk in chunk_dates(missing[name])
     )
     for _, name, chunk in todo:
-        if sum(_COLLECTION[j["name"]] == _COLLECTION[name] for j in state.values()) >= max_queued:
+        waiting = sum(
+            _COLLECTION[j["name"]] == _COLLECTION[name] and not j.get("collected")
+            for j in state.values()
+        )  # CDS limits requests that are queued or running, not finished ones we still remember
+        if waiting >= max_queued:
             continue
         spec = next(s for s in build_chunk_requests(chunk) if s.name == name)
         state[spec.filename] = {
