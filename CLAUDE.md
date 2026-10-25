@@ -429,7 +429,7 @@ Phone layout under 700 px:
     - mobile layout
     - validation log (`logs/global_means.csv` is uploaded with each run)
     - Playwright smoke test (`web/e2e-live`)
-14. Pipeline foundations (docs/PROPOSALS-v2.md): (**Code and tests done** 2026-10-24, see `docs/DECISIONS.md`. **Open, waiting on the CDS:** the `str` backfill (16 of 90 dates), the `SURFACE` and `PRESSURE` climatology parts, then `climatology`, `fetch-str` and `rebuild` to publish `net_sfc`, its anomaly, the annual frame and the T_r-based `carnot` and `g_max` for the 90 dates. Nothing has been uploaded to the bucket.)
+14. Pipeline foundations (docs/PROPOSALS-v2.md): (**Code and tests done** 2026-10-24, see `docs/DECISIONS.md`. **Data, 2026-10-25:** the `str` backfill is finished (90 of 90 tidy files have `lw_up`); `climatology --partial` and `rebuild` ran on the local `./out`, so the 90 dates (2026-07-16 to 10-13) have `net_sfc`, the T_r-based `carnot` and `g_max` and `manifest.radiative`, all validated `ok`. **Open, waiting on the CDS:** 10 of the 12 `SURFACE` and `PRESSURE` climatology requests (`poll_cds.py` collects them), then `climatology` and `rebuild` again for `net_sfc_anom`, the 10/100 m wind climatology and a complete annual frame. Nothing has been uploaded to the bucket, whose manifest runs to 2026-10-17: rebuild or sync the four newer dates before uploading `./out`.)
 
 ## Acceptance criteria
 
