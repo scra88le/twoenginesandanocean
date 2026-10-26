@@ -286,3 +286,9 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 ### Still open
 
 - Nothing from milestone 2. (Milestone 3 raised one optional choice: a running mean for `div_e` and `flux_e`.)
+
+## Milestone 14 complete, 2026-10-26
+
+- All climatology parts arrived; `climatology` and a second `rebuild` of `./out` finished (35 min). 90 of 90 dates `ok`, 19 anomaly files per date (`net_sfc_anom` new), annual frame `clim/year` with 19 layers, annual `radiative` ASR 242.7 W m⁻², T_r 255.78 K, largest PNG 345 kB.
+- Winds are in the climatology sums but publish no vector layers (decision of 2026-10-19).
+- Not uploaded. `./out` ends at 2026-10-13, the bucket at 2026-10-17: sync those four dates first, or the upload deletes them from the window.
