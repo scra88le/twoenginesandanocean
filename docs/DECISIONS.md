@@ -292,3 +292,9 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - All climatology parts arrived; `climatology` and a second `rebuild` of `./out` finished (35 min). 90 of 90 dates `ok`, 19 anomaly files per date (`net_sfc_anom` new), annual frame `clim/year` with 19 layers, annual `radiative` ASR 242.7 W m⁻², T_r 255.78 K, largest PNG 345 kB.
 - Winds are in the climatology sums but publish no vector layers (decision of 2026-10-19).
 - Not uploaded. `./out` ends at 2026-10-13, the bucket at 2026-10-17: sync those four dates first, or the upload deletes them from the window.
+
+## Sync of the newest dates, 2026-10-27
+
+- The bucket manifest (built 2026-10-24) ran to 2026-10-18, five dates beyond `./out` (10-13), all on the old layer set. They were fetched and built into `./out`, which now covers 2026-07-21 to 10-18, 90 of 90 `ok`, with `net_sfc`, `radiative` and 19 anomaly files per date.
+- CDS: from 08:45 to 14:27 on 2026-10-26 every request for these dates was accepted and then rejected ("Maximum number queued requests for this dataset has been reached"), though no job of ours was queued; `fetch` reports a rejected request as "waiting". One request at a time worked (50 min to 2 h 10 min each). A future `fetch` should log rejections as such.
+- Not uploaded.
