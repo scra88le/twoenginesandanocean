@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
-import type { Manifest } from '../src/manifest';
+import { climUvUrl, type ClimMeta, type Manifest } from '../src/manifest';
 import {
-  FRAMES, availableModes, defaultMode, playFrame, resolveMode, stepFrame, timescaleText,
+  FRAMES, availableModes, defaultMode, meanFlowText, playFrame, resolveMode, stepFrame, timescaleText,
 } from '../src/modes';
 
 type M = ('climate' | 'today' | 'anom')[];
@@ -87,4 +87,21 @@ test('there are 13 frames, stepping stops at the ends, and play loops January to
   expect(playFrame('01')).toBe('02');
   expect(playFrame('12')).toBe('01');
   expect(playFrame('year')).toBe('01');
+});
+
+test('overlay captions name the frame after the period', () => {
+  expect(meanFlowText('01')).toBe('January');
+  expect(meanFlowText('year')).toBe('annual mean');
+});
+
+test('climate vector files are found only for layers that have them', () => {
+  const clim = {
+    uv_file: 'clim/{frame}/{layer}_uv.png',
+    uv_layers: ['flux_e', 'wind10'],
+  } as unknown as ClimMeta;
+  expect(climUvUrl('/data', clim, '07', 'wind10')).toBe('/data/clim/07/wind10_uv.png');
+  expect(climUvUrl('/data', clim, 'year', 'flux_e')).toBe('/data/clim/year/flux_e_uv.png');
+  expect(climUvUrl('/data', clim, '07', 'jet250')).toBeNull();
+  expect(climUvUrl('/data', null, '07', 'wind10')).toBeNull();
+  expect(climUvUrl('/data', { ...clim, uv_file: undefined }, '07', 'wind10')).toBeNull();
 });

@@ -20,6 +20,8 @@
   FIXTURE_TILES are kept (around 0.25 E, 35.25 S and 35.25 N), so the fixtures stay small; other
   tiles are missing on purpose. A climatology for t_emit (230 K), net_toa (0) and carnot
   (10%), the same every month, gives anomalies of t_emit - 230 K, the latitude, and +5 / -10.
+  Climate vectors (clim/{frame}/*_uv.png): wind10 -4 m/s (+4 in July), wind100 +3, jet250 v = -20,
+  flux_e 1e8 W m-1 eastward, with a shared arrow reference of 4e8.
 """
 
 from pathlib import Path
@@ -66,6 +68,17 @@ def _uv_codes(lid: str, x: np.ndarray) -> np.ndarray:
     return quantise(x, np.zeros_like(x, bool), *s.uv_encode, step=s.uv_resolution)[0]
 
 
+# Climate vectors, the same in every frame (wind10 reverses in July): a mean easterly at 10 m,
+# a mean westerly at 100 m, a mean northerly jet and an eastward energy flux of a quarter of
+# the shared arrow reference.
+CLIM_UV = {
+    "wind10": (-4.0, 0.0),
+    "wind100": (3.0, 0.0),
+    "jet250": (0.0, -20.0),
+    "flux_e": (1e8, 0.0),
+}
+CLIM_FLUX_REF = 4e8
+
 CLIM = {"t_emit": 230.0, "net_toa": 0.0, "carnot": 10.0, "j_ratio": 1.0}
 
 
@@ -100,7 +113,18 @@ def clim_fixtures(data: Path) -> None:
         "year_file": "clim/year/{layer}.png",
         "year_series": "clim/year/series/{layer}/{tx}_{ty}.bin",
         "points": "clim/points/{frame}/{tx}_{ty}.bin",
+        "uv_file": "clim/{frame}/{layer}_uv.png",
+        "uv_layers": [*CLIM_UV],
+        "flux_ref": CLIM_FLUX_REF,
     }
+    for frame in index["frames"]:
+        ones = np.ones((360, 720))
+        for lid, (u, v) in CLIM_UV.items():
+            if lid == "wind10" and frame == "07":
+                u = -u  # a reversal, so a test can tell the frames apart
+            path = data / "clim" / frame / f"{lid}_uv.png"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(vector_png(_uv_codes(lid, u * ones), _uv_codes(lid, v * ones)))
     (data / "clim" / "clim.json").write_text(json.dumps(index, indent=1))
     clim_points(data)
 

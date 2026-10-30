@@ -16,9 +16,9 @@ import { ArrowLayer, arrowReference } from './layers/arrows';
 import { ParticleLayer } from './layers/particles';
 import { RasterLayer } from './layers/raster';
 import { Legend } from './legend';
-import { anomalyUrl, climUrl, fieldUrl, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
+import { anomalyUrl, climUrl, climUvUrl, fieldUrl, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
-import { FRAMES, frameName, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
+import { FRAMES, frameName, meanFlowText, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
 import { ArrowsSwitch, ModeSwitch, OverlayControls, type ParticleChoice } from './overlays';
 import { decodePng, type DecodedPng } from './png';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
@@ -54,6 +54,7 @@ interface Pin {
 
 interface WindCodes {
   level: ParticleChoice['level'];
+  mean: boolean; // the 1991–2020 mean flow of a climate frame, not a day
   u: Uint16Array;
   v: Uint16Array;
 }
@@ -258,6 +259,14 @@ class App {
     return p;
   }
 
+  /** Pre-fetch all frames of a climate file (null where none is published). */
+  private prefetchFrames(url: (frame: string) => string | null): void {
+    for (const f of FRAMES) {
+      const u = url(f);
+      if (u) this.load(u).catch(() => undefined);
+    }
+  }
+
   private prefetch(url: (date: string) => string): void {
     const i = this.manifest.dates.indexOf(this.date);
     for (const d of nearbyDates(this.manifest.dates, i, PREFETCH_DAYS)) {
@@ -291,39 +300,46 @@ class App {
     const request = ++this.arrowRequest;
     const meta = this.manifest.layers.flux_e;
     const built = this.manifest.built_layers.includes('flux_e');
-    if (this.mode === 'climate' && this.arrowsOn) {
-      // Climate arrows come with milestone 17; daily arrows would be the wrong timescale.
-      this.arrows.setField(null);
-      this.legend.showArrows('Arrows: shown for a day (switch to Today)');
-      document.body.dataset.arrows = 'off';
-      return;
-    }
     if (!this.arrowsOn || !meta?.uv_encode || !built) {
       this.arrows.setField(null);
       this.legend.showArrows(null);
       document.body.dataset.arrows = 'off';
       return;
     }
+    const climate = this.mode === 'climate';
+    const clim = this.manifest.clim;
+    const frame = this.frame;
     const date = this.date;
-    let png: DecodedPng;
-    try {
-      png = await this.load(uvUrl(DATA, this.manifest, date, 'flux_e'));
-    } catch {
-      if (request !== this.arrowRequest) return;
+    const url = climate ? climUvUrl(DATA, clim, frame, 'flux_e') : uvUrl(DATA, this.manifest, date, 'flux_e');
+    const when = climate ? frameName(frame) : date;
+    let png: DecodedPng | null = null;
+    if (url) {
+      try {
+        png = await this.load(url);
+      } catch {
+        png = null;
+      }
+    }
+    if (request !== this.arrowRequest) return;
+    if (!png) {
       this.arrows.setField(null);
-      this.legend.showArrows(`No transport arrows for ${date}`);
+      this.legend.showArrows(climate ? `No climate transport arrows for ${when}` : `No transport arrows for ${date}`);
       document.body.dataset.arrows = 'missing';
       return;
     }
-    if (request !== this.arrowRequest) return;
     const { u, v } = vectorCodes(png);
-    const reference = arrowReference(u, v, meta.uv_encode);
+    // Climate frames share one reference so lengths compare across months; a day uses its own.
+    const reference = climate && clim?.flux_ref ? clim.flux_ref : arrowReference(u, v, meta.uv_encode);
     this.arrows.setField({ u, v, encode: meta.uv_encode, grid: this.manifest.grid, reference });
+    const full = `full length is ${formatValue(reference, meta.units, meta.encode)}`;
     this.legend.showArrows(
-      `Arrows: divergent energy transport; full length is ${formatValue(reference, meta.units, meta.encode)}`,
+      climate
+        ? `Arrows: divergent energy transport, ${clim!.period.replace('-', '–')} ${meanFlowText(frame)}; ${full}`
+        : `Arrows: divergent energy transport; ${full}`,
     );
     document.body.dataset.arrows = 'on';
-    this.prefetch((d) => uvUrl(DATA, this.manifest, d, 'flux_e'));
+    if (climate) this.prefetchFrames((f) => climUvUrl(DATA, clim, f, 'flux_e'));
+    else this.prefetch((d) => uvUrl(DATA, this.manifest, d, 'flux_e'));
   }
 
   /**
@@ -362,7 +378,12 @@ class App {
   async setFrame(frame: Frame): Promise<void> {
     this.frame = frame;
     this.onStateChange?.();
-    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateReadout()]);
+    await Promise.all([
+      this.select(this.layerId || DEFAULT_LAYER),
+      this.updateParticles(),
+      this.updateArrows(),
+      this.updateReadout(),
+    ]);
   }
 
   setParticles(choice: ParticleChoice): Promise<void> {
@@ -376,14 +397,6 @@ class App {
     const request = ++this.windRequest;
     const { on, level } = this.particleChoice;
     const meta = this.manifest.layers[level];
-    if (on && this.mode === 'climate') {
-      // Mean-flow particles come with milestone 17; daily wind would be the wrong timescale.
-      this.wind = null;
-      this.particles.setWind(null);
-      this.legend.showWind('Particles: shown for a day (switch to Today)');
-      document.body.dataset.particles = 'off';
-      return;
-    }
     if (!on || !meta?.uv_encode || !this.manifest.built_layers.includes(level)) {
       this.wind = null;
       this.particles.setWind(null);
@@ -391,29 +404,44 @@ class App {
       document.body.dataset.particles = 'off';
       return;
     }
+    const climate = this.mode === 'climate';
+    const clim = this.manifest.clim;
+    const frame = this.frame;
     const date = this.date;
-    let png: DecodedPng;
-    try {
-      png = await this.load(uvUrl(DATA, this.manifest, date, level));
-    } catch {
-      if (request !== this.windRequest) return;
+    const url = climate ? climUvUrl(DATA, clim, frame, level) : uvUrl(DATA, this.manifest, date, level);
+    let png: DecodedPng | null = null;
+    if (url) {
+      try {
+        png = await this.load(url);
+      } catch {
+        png = null;
+      }
+    }
+    if (request !== this.windRequest) return; // a later change won
+    if (!png) {
       this.wind = null;
       this.particles.setWind(null);
-      this.legend.showWind(`No ${LEVEL_LABELS[level]} wind for ${date}`);
+      this.legend.showWind(
+        climate ? `No mean flow at ${LEVEL_LABELS[level]} for ${frameName(frame)}` : `No ${LEVEL_LABELS[level]} wind for ${date}`,
+      );
       document.body.dataset.particles = 'missing';
       return;
     }
-    if (request !== this.windRequest) return; // a later change won
     const speedHi = meta.display === 'auto' ? meta.encode.hi : meta.display[1];
     this.particles.setWind({ width: png.width, height: png.height, rgba: png.data, encode: meta.uv_encode, speedHi });
-    this.wind = { level, ...vectorCodes(png) };
+    this.wind = { level, mean: climate, ...vectorCodes(png) };
     this.legend.showWind(this.windCaption());
     document.body.dataset.particles = level;
-    this.prefetch((d) => uvUrl(DATA, this.manifest, d, level));
+    if (climate) this.prefetchFrames((f) => climUvUrl(DATA, clim, f, level));
+    else this.prefetch((d) => uvUrl(DATA, this.manifest, d, level));
   }
 
   private windCaption(): string {
-    return this.wind ? `Particles: wind at ${LEVEL_LABELS[this.wind.level]} (daily mean)` : '';
+    if (!this.wind) return '';
+    const level = LEVEL_LABELS[this.wind.level];
+    if (!this.wind.mean) return `Particles: wind at ${level} (daily mean)`;
+    const period = (this.manifest.clim?.period ?? '1991-2020').replace('-', '–');
+    return `Particles: mean flow at ${level}, ${period} ${meanFlowText(this.frame)}`;
   }
 
   async select(layer: string): Promise<void> {
@@ -487,7 +515,8 @@ class App {
     const enc = this.wind && this.manifest.layers[this.wind.level]?.uv_encode;
     if (!this.wind || !enc) return;
     const w = windAt(this.wind.u, this.wind.v, enc, this.manifest.grid, lng, lat);
-    this.legend.showWind(w ? `Wind ${LEVEL_LABELS[this.wind.level]}: ${describeWind(w)}` : this.windCaption());
+    const label = `${this.wind.mean ? 'Mean wind' : 'Wind'} ${LEVEL_LABELS[this.wind.level]}`;
+    this.legend.showWind(w ? `${label}: ${describeWind(w)}` : this.windCaption());
   }
 
   hoverEnd(): void {

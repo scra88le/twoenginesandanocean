@@ -66,6 +66,9 @@ export interface ClimMeta {
   year_file?: string; // clim/year/{layer}.png
   year_series?: string; // clim/year/series/{layer}/{tx}_{ty}.bin: one value per cell
   points?: string; // clim/points/{frame}/{tx}_{ty}.bin, the daily point-chunk layout
+  uv_file?: string; // clim/{frame}/{layer}_uv.png: divergent flux and mean-flow vectors
+  uv_layers?: string[]; // layers that have a climate uv file
+  flux_ref?: number; // arrow reference (W m-1) shared by all frames: 98th percentile of |F|
 }
 
 /** A readout-only quantity in the point chunks (not a map layer). */
@@ -113,4 +116,10 @@ export function hasAnomaly(m: Manifest, layer: string): boolean {
 export function climUrl(base: string, clim: ClimMeta, frame: string, layer: string): string {
   if (frame === 'year') return tileUrl(base, clim.year_file ?? 'clim/year/{layer}.png', { layer });
   return tileUrl(base, clim.file, { MM: frame, layer });
+}
+
+/** The climate vector file of a layer (`flux_e` or a wind level) for a frame; null if none is published. */
+export function climUvUrl(base: string, clim: ClimMeta | null | undefined, frame: string, layer: string): string | null {
+  if (!clim?.uv_file || !clim.uv_layers?.includes(layer)) return null;
+  return tileUrl(base, clim.uv_file, { frame, layer });
 }

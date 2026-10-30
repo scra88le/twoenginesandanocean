@@ -412,6 +412,16 @@ _ANOM_VECTOR = (
     "below the average of daily speeds where the direction changes (by about 1.8 m/s on average "
     "for the 10 m wind in August 2026), so the difference would show that bias, not the weather."
 )
+_CLIM_WIND = (
+    " In Climate mode the particles show the 1991–2020 mean flow of the frame. The speed of the "
+    "mean wind is lower than the typical speed, and the difference is the weather: the "
+    "day-to-day swings that the average cancels."
+)
+_CLIM_FLUX = (
+    " In Climate mode the arrows come from the 1991–2020 mean of the divergence of the total "
+    "energy flux, which is exact because the flux is linear in it. All frames share one arrow "
+    "length reference, so lengths compare across months."
+)
 _ANOM_HUMAN = "No anomaly: this layer is not from ERA5 and has no 1991–2020 climatology."
 _NONLINEAR = ("t_emit", "carnot", "g_max", "j_ratio", "evap_frac")
 _VECTOR_IDS = ("wind10", "wind100", "jet250", "flux_e")
@@ -422,7 +432,7 @@ def _anomaly_text(lid: str) -> str:
     if lid in _HUMAN_IDS:
         return _ANOM_HUMAN
     if lid in _VECTOR_IDS:
-        return _ANOM_VECTOR
+        return _ANOM_VECTOR + (_CLIM_FLUX if lid == "flux_e" else _CLIM_WIND)
     return _ANOM_APPROX if lid in _NONLINEAR else _ANOM_EXACT
 
 

@@ -64,6 +64,9 @@ export function timescaleText(mode: Mode, frame: Frame, date: string, period: st
   return date;
 }
 
+/** The frame as it follows the period in an overlay caption: "January" or "annual mean". */
+export const meanFlowText = (f: Frame) => (f === 'year' ? 'annual mean' : frameName(f));
+
 /** One line when a layer was switched to a mode other than the one asked for. */
 export function switchNote(mode: Mode): string {
   if (mode === 'climate') return "Shown as the 1991–2020 average: daily values aren't meaningful for this layer.";

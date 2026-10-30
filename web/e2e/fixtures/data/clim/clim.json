@@ -25,5 +25,13 @@
  "series": "clim/series/{layer}/{tx}_{ty}.bin",
  "year_file": "clim/year/{layer}.png",
  "year_series": "clim/year/series/{layer}/{tx}_{ty}.bin",
- "points": "clim/points/{frame}/{tx}_{ty}.bin"
+ "points": "clim/points/{frame}/{tx}_{ty}.bin",
+ "uv_file": "clim/{frame}/{layer}_uv.png",
+ "uv_layers": [
+  "wind10",
+  "wind100",
+  "jet250",
+  "flux_e"
+ ],
+ "flux_ref": 400000000.0
 }
