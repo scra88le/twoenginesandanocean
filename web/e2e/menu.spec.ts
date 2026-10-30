@@ -8,12 +8,13 @@ const ready = (page: Page) =>
 test('menu lists all 25 layers in 10 groups, with unbuilt layers disabled', async ({ page }) => {
   await page.goto('/?layer=t_emit&particles=off');
   await ready(page);
-  await expect(page.locator('#menu fieldset:not(.overlays)')).toHaveCount(10);
-  await expect(page.locator('#menu input[type=radio]')).toHaveCount(25);
-  await expect(page.locator('#menu input[type=radio]:enabled')).toHaveCount(12); // the layers the fixtures build
+  await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch)')).toHaveCount(10);
+  await expect(page.locator('#menu input[name=layer]')).toHaveCount(25);
+  await expect(page.locator('#menu input[name=layer]:enabled')).toHaveCount(12); // the layers the fixtures build
   await expect(page.locator('#menu input[value=t_emit]')).toBeChecked();
-  await expect(page.locator('#menu fieldset legend').first()).toHaveText('Overlays');
-  await expect(page.locator('#menu fieldset:not(.overlays) legend').first()).toHaveText('1 · Fuel');
+  await expect(page.locator('#menu fieldset.overlays legend')).toHaveText('Overlays');
+  await expect(page.locator('#menu fieldset.mode-switch legend')).toHaveText('Timescale');
+  await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch) legend').first()).toHaveText('1 · Fuel');
 });
 
 test('selecting a layer switches the raster and legend', async ({ page }) => {
@@ -60,7 +61,7 @@ async function distinctColours(page: Page, x: number, y: number): Promise<number
 
 test('carnot cells clamped at zero are hatched, others are not', async ({ page }) => {
   // Open ocean at 30 S (clamped) and 30 N (15%), away from coastlines.
-  await page.goto('/?layer=carnot&center=-30,0&zoom=3&particles=off');
+  await page.goto('/?layer=carnot&mode=today&center=-30,0&zoom=3&particles=off');
   await ready(page);
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);

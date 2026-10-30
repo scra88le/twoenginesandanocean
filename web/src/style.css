@@ -202,3 +202,15 @@ body.tour-active #readout {
   #tour { top: 70px; width: min(340px, calc(100vw - 348px)); }
   body.tour-active #readout { top: calc(70px + var(--tour-h, 0px) + 12px); max-height: calc(100vh - 282px - var(--tour-h, 0px)); }
 }
+
+/* Timescale switch and the Climate time bar */
+.mode-switch { border: 0; margin: 0 0 10px; padding: 0; }
+.mode-switch legend { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 0; }
+.mode-row { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
+.mode-row label { white-space: nowrap; }
+.mode-row label:has(input:disabled) { opacity: 0.45; }
+.legend-timescale { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.legend-timescale:empty { display: none; }
+#timebar .tb-year { width: auto; margin-left: 6px; padding: 0 12px; }
+#timebar .tb-year[aria-pressed='true'] { border-color: #7aa7ff; color: #7aa7ff; }
+.tb-range.inactive { opacity: 0.5; }

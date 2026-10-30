@@ -144,8 +144,9 @@ export class ReadoutPanel {
     return !this.root.hidden;
   }
 
-  showPlace(lng: number, lat: number, date: string): void {
-    this.title.textContent = `${formatPlace(lng, lat)} · ${date}`;
+  /** `when` is the date, or the Climate frame ("July, 1991–2020"). */
+  showPlace(lng: number, lat: number, when: string): void {
+    this.title.textContent = `${formatPlace(lng, lat)} · ${when}`;
   }
 
   showTable(rows: { label: string; items: ReadoutItem[] }[] | string): void {
@@ -225,6 +226,40 @@ export class ReadoutPanel {
     this.chart = new uPlot(opts, [xs, ys, marker, climYs], this.chartBox);
     this.chartBox.setAttribute('role', 'img');
     this.chartBox.setAttribute('aria-label', `${meta.title} at this point: ${valid.length} of ${dates.length} days have values`);
+  }
+
+  /**
+   * The 12-month cycle of the active layer at this point (Climate mode), with a marker on the
+   * frame's month; the Year frame marks nothing.
+   */
+  showClimateChart(meta: LayerMeta, byMonth: (number | null)[], month: number | null, period: string): void {
+    const xs = Array.from({ length: 12 }, (_, k) => k + 1);
+    const marker = byMonth.map((y, k) => (k + 1 === month ? y : null));
+    const valid = byMonth.filter((y) => y !== null);
+    this.chartTitle.textContent = `${meta.title} (${prettyUnits(meta.units)}), ${period.replace('-', '–')} monthly means`;
+    this.chartNote.textContent = valid.length ? 'One value per calendar month.' : 'No values here (masked or no data).';
+    const axis = { stroke: '#a3a9b4', grid: { stroke: 'rgba(255,255,255,0.06)' }, ticks: { stroke: 'rgba(255,255,255,0.1)' } };
+    const opts: uPlot.Options = {
+      width: Math.max(200, this.chartBox.clientWidth || 300),
+      height: 150,
+      legend: { show: false },
+      cursor: { drag: { x: false, y: false } },
+      scales: { x: { time: false, range: [0.5, 12.5] }, y: meta.log ? { distr: 3, log: 10 } : { auto: true } },
+      axes: [
+        { ...axis, size: 30, splits: () => xs, values: (_u, v) => v.map((m) => 'JFMAMJJASOND'[m - 1] ?? '') },
+        { ...axis, size: 52 },
+      ],
+      series: [
+        {},
+        { stroke: '#7aa7ff', width: 1.5, spanGaps: false, points: { show: true, size: 4, fill: '#7aa7ff' } },
+        { stroke: '#ffffff', fill: '#ffffff', width: 0, points: { show: true, size: 8, fill: '#ffffff' } },
+      ],
+    };
+    this.chart?.destroy();
+    this.chartBox.innerHTML = '';
+    this.chart = new uPlot(opts, [xs, byMonth, marker], this.chartBox);
+    this.chartBox.setAttribute('role', 'img');
+    this.chartBox.setAttribute('aria-label', `${meta.title} at this point: ${valid.length} of 12 months have values`);
   }
 
   showChartMessage(text: string): void {

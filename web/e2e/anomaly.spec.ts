@@ -21,12 +21,12 @@ test('the anomaly switch shows the difference from the monthly mean, centred on 
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await open(page);
-  await expect(page.locator('.anomaly-on')).toBeEnabled();
-  await expect(page.locator('.anomaly-row')).toContainText('Anomaly vs 1991–2020');
-  await page.locator('.anomaly-on').check();
-  await expect(page.locator('body')).toHaveAttribute('data-anomaly', 'on');
+  await expect(page.locator('.mode-anom')).toBeEnabled();
+  await expect(page.locator('.mode-switch')).toContainText('Today vs normal');
+  await page.locator('.mode-anom').check();
+  await expect(page.locator('body')).toHaveAttribute('data-mode', 'anom');
   await expect(page.locator('.legend-title')).toHaveText('Effective emission temperature, anomaly (K)');
-  await expect(page.locator('.note-extra')).toHaveText('Difference from the 1991–2020 October mean');
+  await expect(page.locator('.legend-timescale')).toHaveText('2026-10-01 minus the October 1991–2020 mean');
   const c = await centre(page);
   await page.mouse.move(c.x, c.y);
   await expect(page.locator('.legend-value')).toHaveText('+6.00 K');
@@ -41,28 +41,29 @@ test('the anomaly switch shows the difference from the monthly mean, centred on 
   expect(errors).toEqual([]);
 });
 
-test('the anomaly follows the date and starts on with ?anom=1', async ({ page }) => {
+test('the anomaly follows the date and starts on with the legacy ?anom=1', async ({ page }) => {
   await open(page, '&anom=1');
-  await expect(page.locator('.anomaly-on')).toBeChecked();
-  await expect(page.locator('body')).toHaveAttribute('data-anomaly', 'on');
+  await expect(page.locator('.mode-anom')).toBeChecked();
+  await expect(page.locator('body')).toHaveAttribute('data-mode', 'anom');
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-date', '2026-09-30');
   const c = await centre(page);
   await page.mouse.move(c.x, c.y);
   await expect(page.locator('.legend-value')).toHaveText('+1.00 K');
-  await expect(page.locator('.note-extra')).toHaveText('Difference from the 1991–2020 September mean');
+  await expect(page.locator('.legend-timescale')).toHaveText('2026-09-30 minus the September 1991–2020 mean');
 });
 
-test('a layer without an anomaly shows its value and says why', async ({ page }) => {
+test('a layer without an anomaly switches to Today and says why', async ({ page }) => {
   await open(page, '&anom=1');
   await page.locator('#menu input[value=wind10]').check();
-  await expect(page.locator('body')).toHaveAttribute('data-anomaly', 'unavailable');
-  await expect(page.locator('.anomaly-note')).toHaveText('Not for this layer');
-  await expect(page.locator('.note-extra')).toHaveText('No anomaly for this layer (see its info): showing the value');
+  await expect(page.locator('body')).toHaveAttribute('data-mode', 'today');
+  await expect(page.locator('.mode-anom')).toBeDisabled();
+  await expect(page.locator('.mode-climate')).toBeDisabled();
+  await expect(page.locator('.note-extra')).toHaveText('Shown for the day: this layer has no climate or anomaly view.');
   await expect(page.locator('.legend-title')).toHaveText('Wind 10 m (m s⁻¹)');
   await page.locator('#menu input[value=t_emit]').check();
-  await expect(page.locator('body')).toHaveAttribute('data-anomaly', 'on');
-  await expect(page.locator('.anomaly-note')).toHaveText('');
+  await expect(page.locator('body')).toHaveAttribute('data-mode', 'today'); // the mode isn't brought back
+  await expect(page.locator('.mode-anom')).toBeEnabled();
 });
 
 test('the info panel explains how the anomaly is made', async ({ page }) => {

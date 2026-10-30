@@ -37,6 +37,8 @@ export interface LayerMeta {
   uv_encode: EncodeRange | null;
   anomaly_encode: EncodeRange | null;
   hatch_zero: boolean;
+  modes?: ('climate' | 'today' | 'anom')[]; // absent in manifests from before milestone 16
+  default_mode?: 'climate' | 'today' | 'anom' | null;
   info: LayerInfo;
 }
 
@@ -60,6 +62,10 @@ export interface ClimMeta {
   layers: string[];
   file: string; // clim/{MM}/{layer}.png
   series: string; // clim/series/{layer}/{tx}_{ty}.bin: 12 months x tile x tile codes
+  frames?: string[]; // "01".."12", "year"
+  year_file?: string; // clim/year/{layer}.png
+  year_series?: string; // clim/year/series/{layer}/{tx}_{ty}.bin: one value per cell
+  points?: string; // clim/points/{frame}/{tx}_{ty}.bin, the daily point-chunk layout
 }
 
 /** A readout-only quantity in the point chunks (not a map layer). */
@@ -101,4 +107,10 @@ export function anomalyUrl(base: string, m: Manifest, date: string, layer: strin
 /** Whether the anomaly of a layer can be shown: it has one and the climatology is published. */
 export function hasAnomaly(m: Manifest, layer: string): boolean {
   return !!m.layers[layer]?.anomaly && !!m.clim?.layers.includes(layer);
+}
+
+/** The climate map of a layer for a frame ("01".."12" or "year"). */
+export function climUrl(base: string, clim: ClimMeta, frame: string, layer: string): string {
+  if (frame === 'year') return tileUrl(base, clim.year_file ?? 'clim/year/{layer}.png', { layer });
+  return tileUrl(base, clim.file, { MM: frame, layer });
 }

@@ -318,3 +318,18 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - **Two-box, Year frame:** R_s,t = 304.6, R_s,p = 180.8 W m⁻² → J_opt 31.0 W m⁻², ΔT 28.5 K, G_max 1.45 W m⁻². ERA5: J_obs = 40.7 W m⁻² (transport across ±30°, divided by half the Earth's area), box-mean skin temperature 298.9 / 277.7 K, so ΔT = 21.1 K. The model's tropics are hotter than ERA5's, because it has no ocean heat storage and the Budyko line is global.
 - **Column budget residual** (net_toa − div_e raw − net_sfc, Year frame): mean −4.51 W m⁻², rms 117 W m⁻² (grid-scale noise in the unsmoothed `p86.162`), rms of the zonal means 6.7 W m⁻². The mean comes from the surface: global means are net_toa +0.49, div_e −0.03 and net_sfc **+5.03 W m⁻²**; ERA5's net surface flux does not close against the TOA imbalance. Say so in the net_sfc info panel in a later milestone (not done).
 - Open for the next milestones: the daily `zonal/{date}.json` exist only for dates built after this change until the final `rebuild`, which also needs the re-synced dates (see the previous section). Nothing from this milestone is uploaded yet.
+
+## Milestone 16: mode switch, 2026-10-30
+
+- **Manifest**: each layer has `modes` (subset of `climate`, `today`, `anom`) and `default_mode` (`pipeline.layers._modes`, test-first). Concept layers (`net_toa`, `carnot`, `g_max`, `div_e`, `net_sfc`) open in Climate; `j_ratio` is Climate-only; wind layers and the human layers follow the v2 table.
+- **Deviation: `flux_e` is Today-only for now.** The v2 table lists it with Climate, but climate frames publish only `clim/{frame}/flux_e_uv.png` (arrows), no magnitude raster. It becomes Climate-capable in milestone 17, with the Climate arrows.
+- **Front end** (`web/src/modes.ts`, pure and unit-tested): `availableModes` drops Climate and Anomaly where the layer has no published climatology; a Climate-only layer without one falls back to Today. Selecting a layer keeps the mode unless the layer can't show it, then uses its default and adds a legend note. Switching mode never changes the layer.
+- **Time bar**: Climate shows a 12-month slider plus a separate Year button; play loops January to December and skips Year; the Year frame is the URL default. Switching back to Today restores the same date (the date is always kept). All 13 frames of the active layer are pre-fetched.
+- **URL**: `mode` and `frame` are always written; legacy `anom=1` reads as `mode=anom`; `mode` wins if both are present.
+- **Readout in Climate**: the table reads `clim/points/{frame}`; the chart is the 12-month cycle from `clim/series` with a marker on the frame's month (none for Year). The Year value is not charted (decision of milestone 15: it lives in `clim/year/series`).
+- **Interim**: in Climate mode wind particles and arrows say "shown for a day (switch to Today)" instead of drawing daily data; milestone 17 replaces that with mean-flow particles and Climate arrows.
+- **The tour** still sets Today for every step (story-mode rewrite is milestone 19); `j_ratio` (step 4) switches to Climate by the rule above.
+
+## Mobile front end paused, 2026-10-30
+
+- By decision of the user, no further work on the mobile (phone, under 700 px) front end for now. New features in milestones 17 onward are built and tested for desktop only; the existing phone layout and its e2e tests (`web/e2e/mobile.spec.ts`) stay as they are and are not extended or fixed. The v2 items that ask for phone behaviour (for example the overview infographic's phone SVG in F13 and the phone viewport runs) are deferred until this is lifted.

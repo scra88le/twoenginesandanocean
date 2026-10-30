@@ -1,6 +1,7 @@
 // Overlay controls at the top of the layer menu: wind particles (on or off, and their level),
-// transport arrows, and the anomaly switch.
+// transport arrows, and the timescale switch.
 import type { Manifest } from './manifest';
+import { MODES, MODE_LABELS, type Mode } from './modes';
 import { LEVEL_LABELS, WIND_LEVELS, type WindLevel } from './wind';
 
 export interface ParticleChoice {
@@ -91,39 +92,41 @@ export class ArrowsSwitch {
   }
 }
 
-/** The anomaly switch: shows the active raster as the difference from its 1991-2020 mean. */
-export class AnomalySwitch {
-  readonly element: HTMLDivElement;
-  private readonly checkbox: HTMLInputElement;
-  private readonly note: HTMLElement;
+/** The timescale switch: Climate, Today or Today vs normal. Unavailable modes are disabled. */
+export class ModeSwitch {
+  readonly element: HTMLFieldSetElement;
+  private readonly radios = new Map<Mode, HTMLInputElement>();
 
-  constructor(m: Manifest, initial: boolean, onChange: (on: boolean) => void) {
-    this.element = document.createElement('div');
-    this.element.className = 'overlay-row anomaly-row';
-    const period = m.clim?.period.replace('-', '–') ?? '1991–2020';
-    this.element.innerHTML = `
-      <label class="overlay-toggle"><input type="checkbox" class="anomaly-on" /> Anomaly vs ${period}</label>
-      <span class="anomaly-note"></span>`;
-    this.checkbox = this.element.querySelector('.anomaly-on')!;
-    this.note = this.element.querySelector('.anomaly-note')!;
-    const published = !!m.clim;
-    this.checkbox.checked = initial && published;
-    this.checkbox.disabled = !published;
-    if (!published) this.note.textContent = 'Climatology not published yet';
-    this.checkbox.addEventListener('change', () => onChange(this.checkbox.checked));
+  constructor(initial: Mode, onChange: (mode: Mode) => void) {
+    this.element = document.createElement('fieldset');
+    this.element.className = 'mode-switch';
+    this.element.innerHTML = '<legend>Timescale</legend><div class="mode-row"></div>';
+    const row = this.element.querySelector('.mode-row')!;
+    for (const mode of MODES) {
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'mode';
+      input.value = mode;
+      input.className = `mode-${mode}`;
+      input.checked = mode === initial;
+      input.addEventListener('change', () => input.checked && onChange(mode));
+      label.append(input, ` ${MODE_LABELS[mode]}`);
+      row.append(label);
+      this.radios.set(mode, input);
+    }
   }
 
-  get on(): boolean {
-    return this.checkbox.checked;
+  get mode(): Mode {
+    return MODES.find((m) => this.radios.get(m)!.checked) ?? 'today';
   }
 
-  set(on: boolean): void {
-    this.checkbox.checked = on && !this.checkbox.disabled;
-  }
-
-  /** Say when the switch is on but the active layer has no anomaly. */
-  setLayerHasAnomaly(has: boolean): void {
-    if (this.checkbox.disabled) return;
-    this.note.textContent = this.on && !has ? 'Not for this layer' : '';
+  /** Show the mode in use and disable the ones the active layer can't show. */
+  update(mode: Mode, available: Mode[]): void {
+    for (const [m, input] of this.radios) {
+      input.checked = m === mode;
+      input.disabled = !available.includes(m);
+      input.parentElement!.title = input.disabled ? 'Not available for this layer' : '';
+    }
   }
 }

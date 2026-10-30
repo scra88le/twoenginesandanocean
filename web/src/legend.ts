@@ -14,6 +14,7 @@ export class Legend {
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
       <div class="legend-title"></div>
+      <div class="legend-timescale"></div>
       <div class="legend-bar" role="img"></div>
       <div class="legend-ticks"></div>
       <div class="legend-notes"></div>
@@ -25,8 +26,9 @@ export class Legend {
     this.arrows = root.querySelector('.legend-arrows')!;
   }
 
-  /** `extra` notes go after the standard ones; `signed` shows values with a sign (anomalies). */
-  show(meta: LayerMeta, scale: DisplayScale, extra: string[] = [], signed = false): void {
+  /** `extra` notes go after the standard ones; `signed` shows values with a sign (anomalies);
+   `timescale` says what period the map shows. */
+  show(meta: LayerMeta, scale: DisplayScale, extra: string[] = [], signed = false, timescale = ''): void {
     this.meta = meta;
     this.signed = signed;
     const units = prettyUnits(meta.units);
@@ -36,6 +38,7 @@ export class Legend {
     unitSpan.className = 'units';
     unitSpan.textContent = `(${units})`;
     title.append(unitSpan);
+    this.root.querySelector('.legend-timescale')!.textContent = timescale;
     const bar = this.root.querySelector<HTMLElement>('.legend-bar')!;
     bar.style.background = cssGradient(meta.colour);
     bar.setAttribute('aria-label', `Colour scale from ${scale.lo} to ${scale.hi} ${units}${meta.log ? ', logarithmic' : ''}`);

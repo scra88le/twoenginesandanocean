@@ -17,7 +17,7 @@ const mapView = (page: Page) =>
     return [c.lng, c.lat, map.getZoom()].map((v) => Math.round(v * 100) / 100);
   });
 
-test('the address bar follows the app: layer, date, view, overlays, anomaly and pin', async ({ page }) => {
+test('the address bar follows the app: layer, date, view, overlays, mode, frame and pin', async ({ page }) => {
   await page.goto('/?particles=off&debug');
   await ready(page);
   await expect.poll(() => page.url()).toContain('layer=net_toa');
@@ -25,20 +25,28 @@ test('the address bar follows the app: layer, date, view, overlays, anomaly and 
   expect(params(page).get('particles')).toBe('off');
   expect(params(page).get('center')).toBe('0.25,20.00');
   expect(params(page).get('zoom')).toBe('1.40');
+  expect(params(page).get('mode')).toBe('climate'); // net_toa opens in Climate, Year frame
+  expect(params(page).get('frame')).toBe('year');
   expect(params(page).has('anom')).toBe(false);
   expect(params(page).has('debug')).toBe(true); // parameters the app doesn't own are kept
 
   await page.locator('#menu input[value=t_emit]').check();
   await expect.poll(() => params(page).get('layer')).toBe('t_emit');
+  await page.getByRole('button', { name: 'Previous month' }).click();
+  await expect.poll(() => params(page).get('frame')).toBe('12'); // from Year, one step back
+  await page.locator('.mode-today').check();
+  await expect.poll(() => params(page).get('mode')).toBe('today');
+  expect(params(page).get('date')).toBe('2026-10-01'); // the date is always kept
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect.poll(() => params(page).get('date')).toBe('2026-09-30');
-  await page.locator('.anomaly-on').check();
-  await expect.poll(() => params(page).get('anom')).toBe('1');
+  await page.locator('.mode-anom').check();
+  await expect.poll(() => params(page).get('mode')).toBe('anom');
   await page.locator('.arrows-on').check();
   await expect.poll(() => params(page).get('arrows')).toBe('1');
   await page.locator('.arrows-on').uncheck();
-  await page.locator('.anomaly-on').uncheck();
-  await expect.poll(() => params(page).has('anom') || params(page).has('arrows')).toBe(false);
+  await page.locator('.mode-today').check();
+  await expect.poll(() => params(page).get('mode')).toBe('today');
+  expect(params(page).has('arrows')).toBe(false);
 
   const box = (await page.locator('#map canvas').boundingBox())!;
   await page.mouse.move(box.x + 300, box.y + 250);
@@ -59,7 +67,7 @@ test('the address bar follows the app: layer, date, view, overlays, anomaly and 
   await expect.poll(() => params(page).has('pin')).toBe(false);
 });
 
-test('a copied URL restores layer, date, view, overlays, anomaly and the pinned point in a fresh page', async ({ page, browser }) => {
+test('a copied URL restores layer, date, view, overlays, mode and the pinned point in a fresh page', async ({ page, browser }) => {
   await page.goto('/?layer=t_emit&date=2026-09-30&center=0.25,-35.25&zoom=4&particles=off&anom=1&arrows=1&pin=0.25,-35.25&debug');
   await ready(page);
   await expect(page.locator('body')).toHaveAttribute('data-readout', /^18_12_200@2026-09-30$/);
@@ -76,10 +84,10 @@ test('a copied URL restores layer, date, view, overlays, anomaly and the pinned 
   await ready(fresh);
   await expect(fresh.locator('body')).toHaveAttribute('data-layer', 't_emit');
   await expect(fresh.locator('body')).toHaveAttribute('data-date', '2026-09-30');
-  await expect(fresh.locator('body')).toHaveAttribute('data-anomaly', 'on');
+  await expect(fresh.locator('body')).toHaveAttribute('data-mode', 'anom');
   await expect(fresh.locator('body')).toHaveAttribute('data-arrows', 'on');
   await expect(fresh.locator('body')).toHaveAttribute('data-particles', 'off');
-  await expect(fresh.locator('.anomaly-on')).toBeChecked();
+  await expect(fresh.locator('.mode-anom')).toBeChecked();
   await expect(fresh.locator('.arrows-on')).toBeChecked();
   expect(await mapView(fresh)).toEqual([0.25, -35.25, 4]);
   await expect(fresh.locator('#readout')).toBeVisible();
@@ -89,7 +97,7 @@ test('a copied URL restores layer, date, view, overlays, anomaly and the pinned 
 });
 
 test('replaceState keeps the Back button for leaving the site, not for every pan', async ({ page }) => {
-  await page.goto('/?particles=off');
+  await page.goto('/?particles=off&mode=today');
   await ready(page);
   const before = await page.evaluate(() => history.length);
   await page.locator('#menu input[value=t_emit]').check();
@@ -104,7 +112,7 @@ test('a bad link falls back to defaults and is rewritten with valid values', asy
   await expect(page.locator('body')).toHaveAttribute('data-layer', 'net_toa');
   await expect(page.locator('body')).toHaveAttribute('data-date', '2026-10-01');
   await expect.poll(() => new URL(page.url()).search).toBe(
-    '?layer=net_toa&date=2026-10-01&center=0.25,20.00&zoom=1.40&particles=wind10',
+    '?layer=net_toa&mode=climate&frame=year&date=2026-10-01&center=0.25,20.00&zoom=1.40&particles=wind10',
   );
 });
 

@@ -191,3 +191,12 @@ def test_radiative_summary_is_the_global_mean_and_its_temperature():
     t = synthetic_tidy(tsr=240.0)
     asr, t_r = derived.radiative_summary(t["tsr"].values)
     assert asr == pytest.approx(240.0) and t_r == pytest.approx(255.1, abs=0.05)
+
+
+def test_manifest_publishes_modes_and_default_mode():
+    m = publish.build_manifest(["2026-01-01"], "2026-01-02T00:00:00Z")
+    assert m["layers"]["net_toa"]["modes"] == ["climate", "today", "anom"]
+    assert m["layers"]["net_toa"]["default_mode"] == "climate"
+    assert m["layers"]["j_ratio"]["modes"] == ["climate"]
+    assert m["layers"]["wind10"]["modes"] == ["today"]
+    assert m["layers"]["human_q"]["modes"] == [] and m["layers"]["human_q"]["default_mode"] is None

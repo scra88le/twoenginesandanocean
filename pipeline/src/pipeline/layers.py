@@ -31,6 +31,8 @@ class LayerSpec:
     anomaly_display: tuple[float, float] | None = None
     anomaly_colour: str = "balance"
     hatch_zero: bool = False  # cells clamped at exactly 0 are hatched (carnot)
+    modes: tuple[str, ...] = ()  # the UI timescales offered: climate, today, anom (set below)
+    default_mode: str | None = None
 
 
 GROUPS = {
@@ -180,6 +182,25 @@ ANOMALY_DISPLAY: dict[str, float] = {
 }  # fmt: skip
 
 
+# Layers whose idea shows in the climatology, so they open in Climate mode (PROPOSALS-v2 F1).
+CLIMATE_FIRST = ("net_toa", "carnot", "g_max", "div_e", "net_sfc")
+# Daily values test a theory meant for means against single days: offered in Climate only.
+CLIMATE_ONLY = ("j_ratio",)
+# `flux_e` has climate arrows but no climate magnitude raster yet (milestone 17).
+TODAY_ONLY = ("flux_e",)
+
+
+def _modes(s: LayerSpec) -> tuple[tuple[str, ...], str | None]:
+    """The timescales the UI offers for a layer, and the one it opens in."""
+    if not s.anomaly:
+        return (), None  # the human layers
+    if s.id in CLIMATE_ONLY:
+        return ("climate",), "climate"
+    if s.uv_encode is not None or s.id in TODAY_ONLY:
+        return ("today",), "today"
+    return ("climate", "today", "anom"), ("climate" if s.id in CLIMATE_FIRST else "today")
+
+
 def _complete(s: LayerSpec) -> LayerSpec:
     """Attach resolutions and, for natural non-vector layers, the anomaly encoding: +/- half
     the display span (or the encode span for "auto"), linear in layer units even for log
@@ -195,6 +216,7 @@ def _complete(s: LayerSpec) -> LayerSpec:
         extra["anomaly_resolution"] = s.display[0] if s.log else RESOLUTION[s.id]
         extra["anomaly_display"] = (-shown, shown)
         extra["anomaly_colour"] = "BrBG" if s.id in WATER_ANOMALY else "balance"
+    extra["modes"], extra["default_mode"] = _modes(s)
     return LayerSpec(**{**s.__dict__, **extra})
 
 

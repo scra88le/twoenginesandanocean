@@ -4,7 +4,7 @@ import { Map as MapLibreMap, Marker, setWorkerUrl } from 'maplibre-gl';
 // MapLibre looks for its worker next to its own module, which a bundled build doesn't have;
 // importing the URL makes Vite emit the file in builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { anomalyNote, anomalyView } from './anomaly';
+import { anomalyView } from './anomaly';
 import { baseStyle } from './basemap';
 import { parseSeries, pointCodes, seriesCodes, tileOf } from './chunks';
 import { MASKED, decodeAll, scalarCodes, vectorCodes } from './codes';
@@ -16,9 +16,10 @@ import { ArrowLayer, arrowReference } from './layers/arrows';
 import { ParticleLayer } from './layers/particles';
 import { RasterLayer } from './layers/raster';
 import { Legend } from './legend';
-import { anomalyUrl, fieldUrl, hasAnomaly, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
+import { anomalyUrl, climUrl, fieldUrl, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
-import { AnomalySwitch, ArrowsSwitch, OverlayControls, type ParticleChoice } from './overlays';
+import { FRAMES, frameName, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
+import { ArrowsSwitch, ModeSwitch, OverlayControls, type ParticleChoice } from './overlays';
 import { decodePng, type DecodedPng } from './png';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
 import { displayScale } from './scale';
@@ -62,8 +63,10 @@ class App {
   private readonly chunks = new Map<string, Promise<ArrayBuffer>>(); // point and series chunks
   private pinned: Pin | null = null;
   private view: LayerMeta | null = null; // the active layer as drawn: itself or its anomaly
-  private anomalyOn = false;
-  anomalySwitch: AnomalySwitch | null = null;
+  private mode: Mode = 'today';
+  private frame: Frame = 'year';
+  modeSwitch: ModeSwitch | null = null;
+  timebar: TimeBar | null = null;
   private marker: Marker | null = null;
   private pinRequest = 0;
   private arrowsOn = false;
@@ -112,7 +115,8 @@ class App {
     return {
       layer: this.layerId || DEFAULT_LAYER,
       date: this.date,
-      anomaly: this.anomalyOn,
+      mode: this.mode,
+      frame: this.frame,
       particles: this.particleChoice,
       arrows: this.arrowsOn,
       center: [wrapLng(c.lng), c.lat],
@@ -155,7 +159,22 @@ class App {
     if (!pin) return;
     const request = ++this.pinRequest;
     const date = this.date;
-    this.readout.showPlace(pin.lng, pin.lat, date);
+    const clim = this.manifest.clim;
+    const climate = this.mode === 'climate' && !!clim?.points;
+    const when = climate ? `${frameName(this.frame)}, ${clim!.period.replace('-', '–')}` : date;
+    this.readout.showPlace(pin.lng, pin.lat, when);
+    if (climate) {
+      try {
+        const buf = await this.loadChunk(tileUrl(DATA, clim!.points!, { frame: this.frame, tx: pin.tx, ty: pin.ty }));
+        const codes = pointCodes(buf, points!.fields, points!.tile, pin.k);
+        if (request !== this.pinRequest) return;
+        this.readout.showTable(readoutItems(this.manifest, codes));
+        document.body.dataset.readout = `${pin.tx}_${pin.ty}_${pin.k}@${this.frame}`;
+      } catch {
+        if (request === this.pinRequest) this.readout.showTable(`No climate point data for ${when}.`);
+      }
+      return;
+    }
     if (!points) {
       this.readout.showTable('Point data has not been published yet.');
       return;
@@ -180,6 +199,17 @@ class App {
     const tile = this.manifest.points?.tile ?? 20;
     if (!pin || !meta) return;
     const request = ++this.chartRequest;
+    if (this.mode === 'climate' && this.manifest.clim) {
+      const clim = await this.climatologyAt(this.layerId, pin, tile);
+      if (request !== this.chartRequest) return;
+      if (typeof clim === 'string') this.readout.showChartMessage(clim);
+      else {
+        const month = this.frame === 'year' ? null : Number(this.frame);
+        this.readout.showClimateChart(meta, clim.byMonth, month, clim.period);
+        document.body.dataset.chart = `${this.layerId}:climate`;
+      }
+      return;
+    }
     if (!series) {
       this.readout.showChartMessage('The 90-day series has not been published yet.');
       return;
@@ -261,6 +291,13 @@ class App {
     const request = ++this.arrowRequest;
     const meta = this.manifest.layers.flux_e;
     const built = this.manifest.built_layers.includes('flux_e');
+    if (this.mode === 'climate' && this.arrowsOn) {
+      // Climate arrows come with milestone 17; daily arrows would be the wrong timescale.
+      this.arrows.setField(null);
+      this.legend.showArrows('Arrows: shown for a day (switch to Today)');
+      document.body.dataset.arrows = 'off';
+      return;
+    }
     if (!this.arrowsOn || !meta?.uv_encode || !built) {
       this.arrows.setField(null);
       this.legend.showArrows(null);
@@ -294,7 +331,8 @@ class App {
    * (A step's overlays are exactly what it lists: anything not listed is switched off.)
    */
   async showStep(step: StoryStep, level: ParticleChoice['level']): Promise<void> {
-    this.anomalyOn = false;
+    this.mode = 'today';
+    this.timebar?.setKind('dates');
     this.particleChoice = { on: step.particles !== null, level: step.particles ?? level };
     this.arrowsOn = step.arrows;
     this.onStateChange?.();
@@ -307,15 +345,24 @@ class App {
     this.map.flyTo({ center: [view.lng, view.lat], zoom: view.zoom, duration: 1800, essential: false });
   }
 
-  /** Set the mode before the first draw, without drawing. */
-  setAnomalyFlag(on: boolean): void {
-    this.anomalyOn = on;
+  /** Set the mode and frame before the first draw, without drawing. */
+  setModeFlags(mode: Mode, frame: Frame): void {
+    this.mode = mode;
+    this.frame = frame;
   }
 
-  setAnomaly(on: boolean): Promise<void> {
-    this.anomalyOn = on;
+  /** Switch timescale. The layer stays unless it can't show the mode (select resolves that). */
+  async setMode(mode: Mode): Promise<void> {
+    this.mode = mode;
+    this.timebar?.setKind(mode === 'climate' ? 'frames' : 'dates');
     this.onStateChange?.();
-    return this.select(this.layerId || DEFAULT_LAYER);
+    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateArrows(), this.updateReadout()]);
+  }
+
+  async setFrame(frame: Frame): Promise<void> {
+    this.frame = frame;
+    this.onStateChange?.();
+    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateReadout()]);
   }
 
   setParticles(choice: ParticleChoice): Promise<void> {
@@ -329,6 +376,14 @@ class App {
     const request = ++this.windRequest;
     const { on, level } = this.particleChoice;
     const meta = this.manifest.layers[level];
+    if (on && this.mode === 'climate') {
+      // Mean-flow particles come with milestone 17; daily wind would be the wrong timescale.
+      this.wind = null;
+      this.particles.setWind(null);
+      this.legend.showWind('Particles: shown for a day (switch to Today)');
+      document.body.dataset.particles = 'off';
+      return;
+    }
     if (!on || !meta?.uv_encode || !this.manifest.built_layers.includes(level)) {
       this.wind = null;
       this.particles.setWind(null);
@@ -367,17 +422,32 @@ class App {
     const request = ++this.request;
     const date = this.date;
     this.menu.setSelected(layer);
-    const anom = this.anomalyOn && hasAnomaly(this.manifest, layer);
-    const view = anom ? anomalyView(meta) : meta;
-    const url = (d: string) => (anom ? anomalyUrl : fieldUrl)(DATA, this.manifest, d, layer);
+    const resolved = resolveMode(this.manifest, layer, this.mode);
+    const mode = resolved.mode;
+    if (mode !== this.mode) {
+      this.mode = mode;
+      this.timebar?.setKind(mode === 'climate' ? 'frames' : 'dates');
+      void this.updateParticles();
+      void this.updateArrows();
+      void this.updateReadout();
+    }
+    const frame = this.frame;
+    const view = mode === 'anom' ? anomalyView(meta) : meta;
+    const clim = this.manifest.clim;
+    const url = (d: string) =>
+      mode === 'anom' ? anomalyUrl(DATA, this.manifest, d, layer)
+        : mode === 'climate' ? climUrl(DATA, clim!, d, layer)
+          : fieldUrl(DATA, this.manifest, d, layer);
+    // Climate maps are indexed by frame, the others by date.
+    const key = mode === 'climate' ? frame : date;
     let field: DecodedPng;
     try {
-      field = await this.load(url(date));
+      field = await this.load(url(key));
     } catch (e) {
       if (request === this.request) {
         this.codes = null;
         this.layerId = layer;
-        this.legend.showMessage(`No data for ${meta.title} on ${date} (${e instanceof Error ? e.message : e})`);
+        this.legend.showMessage(`No data for ${meta.title} on ${key} (${e instanceof Error ? e.message : e})`);
       }
       return;
     }
@@ -388,19 +458,19 @@ class App {
       width: field.width, height: field.height, rgb: field.data, encode: view.encode, scale,
       lut: lutBytes(view.colour), hatchZero: view.hatch_zero,
     });
-    const notes = anom
-      ? [anomalyNote(this.manifest.clim!.period, date)]
-      : this.anomalyOn ? ['No anomaly for this layer (see its info): showing the value'] : [];
-    this.legend.show(view, scale, notes, anom);
+    const notes = resolved.switched ? [switchNote(mode)] : [];
+    this.legend.show(view, scale, notes, mode === 'anom', timescaleText(mode, frame, date, clim?.period ?? '1991-2020'));
     this.codes = codes;
     this.view = view;
     this.layerId = layer;
-    this.anomalySwitch?.setLayerHasAnomaly(hasAnomaly(this.manifest, layer));
+    this.modeSwitch?.update(mode, availableModes(this.manifest, layer));
     document.body.dataset.layer = layer;
     document.body.dataset.date = date;
-    document.body.dataset.anomaly = anom ? 'on' : this.anomalyOn ? 'unavailable' : 'off';
+    document.body.dataset.mode = mode;
+    document.body.dataset.frame = frame;
     this.onStateChange?.();
-    this.prefetch(url);
+    if (mode === 'climate') for (const f of FRAMES) this.load(url(f)).catch(() => undefined);
+    else this.prefetch(url);
     void this.updateChart(); // the chart follows the active layer and marks the date
   }
 
@@ -474,11 +544,12 @@ async function start(): Promise<void> {
   handlers.select = (id) => void app.select(id);
   const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
   document.querySelector('#menu .menu-head')!.after(overlays.element);
-  const anomaly = new AnomalySwitch(manifest, initial.anomaly, (on) => void app.setAnomaly(on));
+  const modeSwitch = new ModeSwitch(initial.mode, (m) => void app.setMode(m));
   const arrowSwitch = new ArrowsSwitch(manifest, initial.arrows, (on) => void app.setArrows(on));
-  overlays.element.append(arrowSwitch.element, anomaly.element);
-  app.anomalySwitch = anomaly;
-  if (anomaly.on) app.setAnomalyFlag(true);
+  overlays.element.append(arrowSwitch.element);
+  document.querySelector('#menu .menu-head')!.after(modeSwitch.element);
+  app.modeSwitch = modeSwitch;
+  app.setModeFlags(initial.mode, initial.frame);
   if (arrowSwitch.on) app.setArrowsFlag(true);
   void app.setParticles(overlays.choice);
 
@@ -492,7 +563,7 @@ async function start(): Promise<void> {
     (step) => {
       overlays.set({ on: step.particles !== null, level: step.particles ?? overlays.choice.level });
       arrowSwitch.set(step.arrows);
-      anomaly.set(false);
+      modeSwitch.update('today', availableModes(manifest, step.layer));
       void app.showStep(step, overlays.choice.level);
     },
     () => undefined, // closing keeps the map as the last step left it
@@ -506,7 +577,11 @@ async function start(): Promise<void> {
     tour.start(0);
   });
   document.querySelector('#menu .menu-head')!.after(tourButton);
-  new TimeBar(document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d));
+  const timebar = new TimeBar(
+    document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d), (f) => app.setFrame(f), initial.frame,
+  );
+  timebar.setKind(initial.mode === 'climate' ? 'frames' : 'dates');
+  app.timebar = timebar;
 
   // On phones the menu is a bottom sheet: opened by the Layers button, closed by Done, Esc, or
   // a tap on the map.

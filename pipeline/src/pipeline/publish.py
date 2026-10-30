@@ -85,6 +85,8 @@ def _layer_meta(s: LayerSpec) -> dict:
             _range(*s.anomaly_encode, s.anomaly_resolution) if s.anomaly_encode else None
         ),
         "hatch_zero": s.hatch_zero,
+        "modes": list(s.modes),
+        "default_mode": s.default_mode,
         "info": asdict(INFO[s.id]),
     }
 

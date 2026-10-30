@@ -1,15 +1,17 @@
 // URL state: the query string holds what the visitor is looking at, so a copied URL restores
-// layer, date, view, overlays, anomaly and pinned point. Reading validates everything (a stale
+// layer, mode, frame, date, view, overlays and pinned point. Reading validates everything (a stale
 // or hand-edited link falls back to defaults instead of breaking); writing keeps the order of
 // the keys fixed and leaves parameters it doesn't own (like ?debug) alone.
 import type { Manifest } from './manifest';
+import { DEFAULT_FRAME, isFrame, isMode, resolveMode, type Frame, type Mode } from './modes';
 import type { ParticleChoice } from './overlays';
 import { isWindLevel } from './wind';
 
 export interface ViewState {
   layer: string;
   date: string;
-  anomaly: boolean;
+  mode: Mode;
+  frame: Frame; // the Climate frame: "01".."12" or "year"
   particles: ParticleChoice;
   arrows: boolean;
   center: [number, number]; // lng, lat
@@ -25,7 +27,7 @@ export const DEFAULT_PARTICLES: ParticleChoice = { on: true, level: 'wind10' };
 const MAX_LAT = 85.05;
 const MAX_ZOOM = 22;
 // Keys written in this order; `tour` is dropped (it only opens the tour, once).
-const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'anom', 'arrows', 'pin', 'tour'];
+const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'pin', 'tour'];
 
 /** "lng,lat" -> numbers, or null if it isn't two finite numbers. */
 export function parseCenter(text: string | null): [number, number] | null {
@@ -54,6 +56,10 @@ export function readState(params: URLSearchParams, m: Manifest): ViewState {
       : m.built_layers.includes(DEFAULT_LAYER)
         ? DEFAULT_LAYER
         : (m.built_layers[0] ?? DEFAULT_LAYER);
+  // The legacy ?anom=1 means mode=anom. A layer that can't show the mode falls back to its own.
+  const asked = params.get('mode');
+  const wantedMode: Mode | null = isMode(asked) ? asked : params.get('anom') === '1' ? 'anom' : null;
+  const frameText = params.get('frame');
   const center = parseCenter(params.get('center'));
   const zoomText = params.get('zoom');
   const zoom = zoomText === null || zoomText.trim() === '' ? NaN : Number(zoomText); // not "" -> 0
@@ -61,7 +67,8 @@ export function readState(params: URLSearchParams, m: Manifest): ViewState {
   return {
     layer,
     date,
-    anomaly: params.get('anom') === '1',
+    mode: resolveMode(m, layer, wantedMode).mode,
+    frame: isFrame(frameText) ? frameText : DEFAULT_FRAME,
     particles: parseParticles(params.get('particles')),
     arrows: params.get('arrows') === '1',
     center: center && Math.abs(center[1]) <= MAX_LAT ? [wrapLng(center[0]), center[1]] : DEFAULT_CENTER,
@@ -74,11 +81,12 @@ export function readState(params: URLSearchParams, m: Manifest): ViewState {
 export function stateQuery(current: string | URLSearchParams, s: ViewState): string {
   const out = new URLSearchParams();
   out.set('layer', s.layer);
+  out.set('mode', s.mode);
+  out.set('frame', s.frame);
   out.set('date', s.date);
   out.set('center', `${wrapLng(s.center[0]).toFixed(2)},${s.center[1].toFixed(2)}`);
   out.set('zoom', s.zoom.toFixed(2));
   out.set('particles', s.particles.on ? s.particles.level : 'off');
-  if (s.anomaly) out.set('anom', '1');
   if (s.arrows) out.set('arrows', '1');
   if (s.pin) out.set('pin', `${s.pin[0].toFixed(2)},${s.pin[1].toFixed(2)}`);
   for (const [k, v] of new URLSearchParams(current)) if (!OWNED.includes(k)) out.append(k, v);

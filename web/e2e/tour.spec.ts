@@ -32,7 +32,6 @@ async function expectStep(page: Page, i: number) {
   await expect(body(page)).toHaveAttribute('data-layer', s.layer);
   await expect(body(page)).toHaveAttribute('data-particles', s.particles);
   await expect(body(page)).toHaveAttribute('data-arrows', s.arrows);
-  await expect(body(page)).toHaveAttribute('data-anomaly', 'off');
   await expect.poll(() => page.evaluate(() => {
     const { map } = (window as unknown as { ehe: { map: { getCenter(): { lng: number; lat: number }; getZoom(): number } } }).ehe;
     const c = map.getCenter();
@@ -71,9 +70,10 @@ test('each card shows its title and its text', async ({ page }) => {
 
 test('the overlay controls follow the step, and the anomaly is switched off', async ({ page }) => {
   await open(page, '&anom=1');
-  await expect(page.locator('.anomaly-on')).toBeChecked();
+  await expect(page.locator('.mode-anom')).toBeChecked();
   await page.getByRole('button', { name: 'Take the tour' }).click();
-  await expect(page.locator('.anomaly-on')).not.toBeChecked();
+  await expect(page.locator('.mode-anom')).not.toBeChecked();
+  await expect(page.locator('.mode-today')).toBeChecked();
   await page.getByRole('button', { name: 'Step 6: Output' }).click();
   await expect(page.locator('.particles-on')).toBeChecked();
   await expect(page.locator('.particles-level')).toHaveValue('wind100');
@@ -108,7 +108,7 @@ test('arrows point along the flux and the legend says how long a full arrow is',
 });
 
 test('arrows work without the tour, and a date without them says so', async ({ page }) => {
-  await open(page, '&arrows=1&date=2026-09-29');
+  await open(page, '&arrows=1&date=2026-09-29&mode=today');
   await expect(body(page)).toHaveAttribute('data-arrows', 'missing');
   await expect(page.locator('.legend-arrows')).toHaveText('No transport arrows for 2026-09-29');
   await page.getByRole('button', { name: 'Next day' }).click();

@@ -299,7 +299,7 @@ Full-bleed dark map with four overlays:
 - Overlay toggles:
   - Wind particles, with a level selector (10 m / 100 m / 250 hPa), usable over any raster.
   - Transport arrows (`flux_e`): see **Transport arrows** below.
-- An anomaly switch applies to the active raster ("Anomaly vs 1991–2020" in the Overlays section; `?anom=1` until URL state lands). It is disabled until the climatology is published. On a layer without an anomaly the value is shown, with a legend note and "Not for this layer" by the switch. The legend says which month's mean the difference is from; hover values are signed. Each layer's info panel has an "Anomaly" section: exact for layers linear in their inputs, an approximation for `t_emit`, `carnot`, `g_max`, `j_ratio` and `evap_frac`, and why there is none for the others.
+- A **timescale switch** (Climate · Today · Today vs normal, at the top of the menu) applies to the active raster. Each layer's manifest `modes` and `default_mode` say what it offers; a layer opens in its default mode, selecting a layer keeps the mode unless the layer can't show it (then its default is used and the legend says so), and switching mode never changes the layer. Climate and Today vs normal are disabled for a layer without a published climatology; the legacy `?anom=1` reads as `mode=anom`. The legend states the timescale ("1991–2020 mean, July", "Annual mean, 1991–2020", "2026-10-17", "2026-10-17 minus the October 1991–2020 mean"). Each layer's info panel has an "Anomaly" section: exact for layers linear in their inputs, an approximation for `t_emit`, `carnot`, `g_max`, `j_ratio` and `evap_frac`, and why there is none for the others.
 - Layers listed in the manifest but not in `built_layers` are shown disabled ("Not available yet"). Radio buttons give keyboard navigation (Tab into the list, arrow keys select).
 
 ### Wind particles
@@ -313,6 +313,7 @@ Full-bleed dark map with four overlays:
 
 ### Time bar
 
+- Climate mode: 12 months (slider) and a separate Year button, ← → step the frames, Play loops January to December and skips Year, all 13 frames of the active layer are pre-fetched. The rest of this section is Today / Today vs normal.
 - Last 90 available days, newest on the right.
 - Play / pause / step, plus arrow keys.
 - Shows the data date and the note "ERA5, about 6 days behind real time".
@@ -380,16 +381,18 @@ The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is 
 
 ### URL state
 
-The query string holds layer, anomaly flag, overlays, date, centre, zoom and pinned point, and updates on every change (`web/src/urlstate.ts`):
+The query string holds layer, mode, frame, overlays, date, centre, zoom and pinned point, and updates on every change (`web/src/urlstate.ts`):
 
-`?layer=t_emit&date=2026-10-01&center=0.25,-35.25&zoom=4&particles=wind100&anom=1&arrows=1&pin=0.25,-35.25`
+`?layer=t_emit&mode=anom&frame=year&date=2026-10-01&center=0.25,-35.25&zoom=4&particles=wind100&arrows=1&pin=0.25,-35.25`
 
-- `layer`, `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `anom=1`, `arrows=1` and `pin=lng,lat` only when on or set.
+- `layer`, `mode` (`climate`, `today` or `anom`), `frame` (`01`–`12` or `year`), `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `arrows=1` and `pin=lng,lat` only when on or set. `anom=1` is read as `mode=anom`. A mode the layer can't show falls back to its default.
 - It is written with `history.replaceState` (so Back isn't filled with every pan), 120 ms after the last change and after every map move.
 - Reading validates each value and falls back to its default one by one: an unpublished or unbuilt layer, a date that isn't published, a bad number, a latitude beyond the map, a zoom outside 0–22. The page then rewrites the URL with the valid values. Longitudes wrap into −180…180.
 - Parameters the app doesn't own (`?debug`) are kept. `?tour=N` opens the tour at step N once and is then dropped.
 
 ### Mobile
+
+**Paused 2026-10-30 (see `docs/DECISIONS.md`):** no further mobile work for now. New features (milestone 17 onward) are desktop-only; the layout below stays as built and is not extended or fixed, and its e2e tests are not extended.
 
 Phone layout under 700 px:
 
@@ -435,6 +438,7 @@ Phone layout under 700 px:
     - Playwright smoke test (`web/e2e-live`)
 14. Pipeline foundations (docs/PROPOSALS-v2.md): (**Code and tests done** 2026-10-24, see `docs/DECISIONS.md`. **Data, 2026-10-25:** the `str` backfill is finished (90 of 90 tidy files have `lw_up`); `climatology --partial` and `rebuild` ran on the local `./out`, so the 90 dates (2026-07-16 to 10-13) have `net_sfc`, the T_r-based `carnot` and `g_max` and `manifest.radiative`, all validated `ok`. **Complete 2026-10-26:** all 12 climatology requests arrived, `climatology` and a second `rebuild` ran (35 min): 90 of 90 dates `ok`, 19 anomaly files per date including `net_sfc_anom`, the annual frame (`clim/year`, 19 layers, `radiative` ASR 242.7 W m⁻², T_r 255.78 K) and 19 layers in `clim.json`; the largest PNG is 345 kB. The wind climatology is merged into the sums but, by the 2026-10-19 decision, publishes no vector layers. **Synced 2026-10-27:** 10-14 to 10-18 were fetched day by day (15 requests, one at a time, 1–2 h each) and built from fresh tidy files, so `./out` now has the bucket's window, 2026-07-21 to 10-18, 90 of 90 `ok`, all with the new layers. **Pushed and uploaded 2026-10-27/28** (first upload: 76 066 objects), but the daily job then ran the old code (origin/main was not yet pushed) and overwrote the manifest, so the bucket is **mixed**: dates up to 10-18 carry the new files, 10-19 to 10-21 are old-code builds, 10-22 onward are new-code builds, and the manifest has `radiative` for newer dates only. **Open:** fetch 10-19 to 10-22 (10-19 to 10-21 are in `raw/`, 10-22 has its mean file only, the CDS queue stalled on 2026-10-30), build them into `./out`, re-check the bucket's dates, upload again. Milestone 15 started before this was closed, by decision of the user, 2026-10-30.)
 15. Climate data products (docs/PROPOSALS-v2.md): (**Pipeline code and tests done** 2026-10-30, 409 tests pass; see `docs/DECISIONS.md`. `pipeline.zonal` (two-box with the Kleidon fixture, transport, budget residual); `climatology` now also writes climate point chunks, climate `flux_e` and mean-flow uv files, and `clim/zonal`; run on the real data into `./out` (33 361 files, 9 min). F3 acceptance met; budget residual recorded. **Open:** the daily `zonal/{date}.json` appear in `./out` only after the final `rebuild`, which waits on the re-sync of 10-19 to 10-22; nothing from 14 or 15 is uploaded in its final form.)
+16. Mode switch (docs/PROPOSALS-v2.md F1): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Manifest `modes` and `default_mode`, the switch, the Climate time bar, URL `mode`/`frame`, the readout in Climate mode (climate point chunks, 12-month chart) and the legend timescale text. `flux_e` is Today-only until milestone 17. In Climate mode particles and arrows are off with a note until milestone 17.)
 
 ## Acceptance criteria
 

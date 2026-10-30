@@ -105,3 +105,36 @@ def test_natural_layers_have_anomalies_except_the_vector_ones():
     for lid in VECTOR:
         assert LAYERS[lid].anomaly_encode is None and LAYERS[lid].anomaly_display is None
     assert LAYERS["precip"].anomaly_colour == "BrBG" and LAYERS["olr"].anomaly_colour == "balance"
+
+
+CONCEPT = ("net_toa", "carnot", "g_max", "div_e", "net_sfc")
+WIND = ("wind10", "wind100", "jet250")
+BOTH = (
+    "asr_toa", "asr_sfc", "olr", "t_emit", "j_conv", "lh", "sh", "evap_frac", "tcwv", "precip",
+    "p_lift", "ke_col", "diss_bl",
+)  # fmt: skip
+
+
+def test_modes_follow_the_v2_table():
+    for lid in CONCEPT:
+        assert LAYERS[lid].modes == ("climate", "today", "anom")
+        assert LAYERS[lid].default_mode == "climate"
+    assert LAYERS["j_ratio"].modes == ("climate",) and LAYERS["j_ratio"].default_mode == "climate"
+    for lid in BOTH:
+        assert LAYERS[lid].modes == ("climate", "today", "anom")
+        assert LAYERS[lid].default_mode == "today"
+    for lid in WIND:
+        assert LAYERS[lid].modes == ("today",) and LAYERS[lid].default_mode == "today"
+    for lid in ("human_q", "human_ratio"):
+        assert LAYERS[lid].modes == () and LAYERS[lid].default_mode is None
+
+
+def test_flux_e_has_no_climate_raster_yet():
+    # Its climate frames are arrows only (clim/{frame}/flux_e_uv.png); see DECISIONS.md.
+    assert LAYERS["flux_e"].modes == ("today",)
+
+
+def test_modes_agree_with_the_anomaly_and_default_is_supported():
+    for lid, s in LAYERS.items():
+        assert ("anom" in s.modes) == (s.anomaly_encode is not None and lid != "j_ratio")
+        assert s.default_mode is None or s.default_mode in s.modes

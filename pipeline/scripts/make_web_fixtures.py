@@ -66,7 +66,7 @@ def _uv_codes(lid: str, x: np.ndarray) -> np.ndarray:
     return quantise(x, np.zeros_like(x, bool), *s.uv_encode, step=s.uv_resolution)[0]
 
 
-CLIM = {"t_emit": 230.0, "net_toa": 0.0, "carnot": 10.0}
+CLIM = {"t_emit": 230.0, "net_toa": 0.0, "carnot": 10.0, "j_ratio": 1.0}
 
 
 def clim_fixtures(data: Path) -> None:
@@ -76,11 +76,16 @@ def clim_fixtures(data: Path) -> None:
 
     for lid, value in CLIM.items():
         codes = _codes(lid, np.full((360, 720), value))
-        for m in range(1, 13):
-            path = data / "clim" / f"{m:02d}" / f"{lid}.png"
+        for m in [*(f"{k:02d}" for k in range(1, 13)), "year"]:
+            path = data / "clim" / m / f"{lid}.png"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(scalar_png(codes))
         stack = np.repeat(codes[None], 12, 0).astype("<u2")
+        for (tx, ty), tile in _tiles(codes[None]):
+            if f"{tx}_{ty}.bin" in FIXTURE_TILES:
+                path = data / "clim" / "year" / "series" / lid / f"{tx}_{ty}.bin"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(tile.tobytes())
         for (tx, ty), tile in _tiles(stack):
             if f"{tx}_{ty}.bin" in FIXTURE_TILES:
                 path = data / "clim" / "series" / lid / f"{tx}_{ty}.bin"
@@ -89,10 +94,34 @@ def clim_fixtures(data: Path) -> None:
     index = {
         "period": "1991-2020",
         "layers": list(CLIM),
+        "frames": [*(f"{k:02d}" for k in range(1, 13)), "year"],
         "file": "clim/{MM}/{layer}.png",
         "series": "clim/series/{layer}/{tx}_{ty}.bin",
+        "year_file": "clim/year/{layer}.png",
+        "year_series": "clim/year/series/{layer}/{tx}_{ty}.bin",
+        "points": "clim/points/{frame}/{tx}_{ty}.bin",
     }
     (data / "clim" / "clim.json").write_text(json.dumps(index, indent=1))
+    clim_points(data)
+
+
+def clim_points(data: Path) -> None:
+    """Climate point chunks in the daily layout: the CLIM layers, everything else code 0, and
+    the extras t_skin = 288 K (north) / 300 K (south), j_opt = 100 W m-2 on land."""
+    lat = 89.75 - 0.5 * j
+    codes = {lid: _codes(lid, np.full((360, 720), v)) for lid, v in CLIM.items()}
+    for eid, x, masked in (
+        ("t_skin", np.where(lat > 0, 288.0, 300.0), np.zeros_like(lat, bool)),
+        ("j_opt", np.full_like(lat, 100.0), lat < 0),
+    ):
+        e = EXTRAS[eid]
+        codes[eid] = quantise(x, masked, *e.encode, step=e.resolution)[0]
+    tiles = {k: v for k, v in point_tiles(codes).items() if k in FIXTURE_TILES}
+    for frame in [*(f"{k:02d}" for k in range(1, 13)), "year"]:
+        for name, blob in tiles.items():
+            path = data / "clim" / "points" / frame / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(blob)
 
 
 def e2e_fixtures() -> None:

@@ -3,8 +3,27 @@
  "layers": [
   "t_emit",
   "net_toa",
-  "carnot"
+  "carnot",
+  "j_ratio"
+ ],
+ "frames": [
+  "01",
+  "02",
+  "03",
+  "04",
+  "05",
+  "06",
+  "07",
+  "08",
+  "09",
+  "10",
+  "11",
+  "12",
+  "year"
  ],
  "file": "clim/{MM}/{layer}.png",
- "series": "clim/series/{layer}/{tx}_{ty}.bin"
+ "series": "clim/series/{layer}/{tx}_{ty}.bin",
+ "year_file": "clim/year/{layer}.png",
+ "year_series": "clim/year/series/{layer}/{tx}_{ty}.bin",
+ "points": "clim/points/{frame}/{tx}_{ty}.bin"
 }

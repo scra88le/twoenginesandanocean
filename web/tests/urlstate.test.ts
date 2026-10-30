@@ -10,21 +10,21 @@ const manifest = JSON.parse(
 const read = (q: string) => readState(new URLSearchParams(q), manifest);
 
 const FULL: ViewState = {
-  layer: 'carnot', date: '2026-09-30', anomaly: true, particles: { on: true, level: 'wind100' },
+  layer: 'carnot', date: '2026-09-30', mode: 'anom', frame: '07', particles: { on: true, level: 'wind100' },
   arrows: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
 };
 
 test('a state survives the round trip through the query string', () => {
   const q = stateQuery('', FULL);
-  expect(q).toBe('layer=carnot&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&anom=1&arrows=1&pin=10.25,20.75');
+  expect(q).toBe('layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&pin=10.25,20.75');
   expect(read(q)).toEqual(FULL);
 });
 
 test('off switches are left out, and particles off is written explicitly', () => {
-  const q = stateQuery('', { ...FULL, anomaly: false, arrows: false, pin: null, particles: { on: false, level: 'wind10' } });
-  expect(q).toBe('layer=carnot&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=off');
+  const q = stateQuery('', { ...FULL, mode: 'today', arrows: false, pin: null, particles: { on: false, level: 'wind10' } });
+  expect(q).toBe('layer=carnot&mode=today&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=off');
   const s = read(q);
-  expect(s.anomaly).toBe(false);
+  expect(s.mode).toBe('today');
   expect(s.arrows).toBe(false);
   expect(s.pin).toBeNull();
   expect(s.particles.on).toBe(false);
@@ -32,7 +32,7 @@ test('off switches are left out, and particles off is written explicitly', () =>
 
 test('an empty URL gives the defaults: newest date, net radiation, 10 m particles, whole world', () => {
   expect(read('')).toEqual({
-    layer: 'net_toa', date: '2026-10-01', anomaly: false, particles: { on: true, level: 'wind10' },
+    layer: 'net_toa', date: '2026-10-01', mode: 'climate', frame: 'year', particles: { on: true, level: 'wind10' },
     arrows: false, center: DEFAULT_CENTER, zoom: 1.4, pin: null,
   });
 });
@@ -45,7 +45,8 @@ test('invalid or stale values fall back to defaults one by one', () => {
   expect(s.zoom).toBe(1.4);
   expect(s.particles).toEqual({ on: true, level: 'wind10' });
   expect(s.pin).toBeNull();
-  expect(s.anomaly).toBe(false);
+  expect(s.mode).toBe('climate'); // net_toa's default
+  expect(s.frame).toBe('year');
   expect(s.arrows).toBe(false);
   expect(read('layer=no_such_layer').layer).toBe('net_toa');
   expect(read('center=10,').center).toEqual(DEFAULT_CENTER); // a blank latitude is not 0
@@ -69,8 +70,8 @@ test('longitudes wrap into -180..180, so a map panned past the date line gives a
 });
 
 test('parameters the app does not own are kept, and ?tour is dropped once used', () => {
-  const q = stateQuery('debug&tour=3&layer=olr&foo=bar', { ...FULL, anomaly: false, arrows: false, pin: null });
-  expect(q).toBe('layer=carnot&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&debug=&foo=bar');
+  const q = stateQuery('debug&tour=3&layer=olr&foo=bar', { ...FULL, mode: 'today', arrows: false, pin: null });
+  expect(q).toBe('layer=carnot&mode=today&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&debug=&foo=bar');
 });
 
 test('the center parser needs two real numbers', () => {
@@ -80,4 +81,18 @@ test('the center parser needs two real numbers', () => {
   expect(parseCenter('1,2,3')).toBeNull();
   expect(parseCenter('a,b')).toBeNull();
   expect(parseCenter(',')).toBeNull();
+});
+
+test('the legacy ?anom=1 means mode=anom, and mode and frame validate one by one', () => {
+  expect(read('layer=t_emit&anom=1').mode).toBe('anom');
+  expect(read('layer=t_emit&mode=today&anom=1').mode).toBe('today'); // mode wins
+  expect(read('layer=t_emit&mode=bogus&frame=13')).toMatchObject({ mode: 'today', frame: 'year' });
+  expect(read('layer=net_toa&mode=today&frame=03')).toMatchObject({ mode: 'today', frame: '03' });
+});
+
+test('a layer that cannot show the asked mode opens in its own default', () => {
+  expect(read('layer=j_ratio&mode=today').mode).toBe('climate');
+  expect(read('layer=wind10&mode=climate').mode).toBe('today');
+  expect(read('layer=net_toa').mode).toBe('climate');
+  expect(read('layer=t_emit').mode).toBe('today');
 });
