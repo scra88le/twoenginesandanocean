@@ -298,3 +298,11 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - The bucket manifest (built 2026-10-24) ran to 2026-10-18, five dates beyond `./out` (10-13), all on the old layer set. They were fetched and built into `./out`, which now covers 2026-07-21 to 10-18, 90 of 90 `ok`, with `net_sfc`, `radiative` and 19 anomaly files per date.
 - CDS: from 08:45 to 14:27 on 2026-10-26 every request for these dates was accepted and then rejected ("Maximum number queued requests for this dataset has been reached"), though no job of ours was queued; `fetch` reports a rejected request as "waiting". One request at a time worked (50 min to 2 h 10 min each). A future `fetch` should log rejections as such.
 - Not uploaded.
+
+## Publish of milestone 14 and the mixed bucket, 2026-10-27 to 10-30
+
+- 2026-10-27/28: the 5 commits were uploaded to the bucket (exit 0, 76 066 uploaded, 26 172 unchanged, 0 deleted) before `origin/main` was pushed, so the 2026-10-28 daily run used the old code, built its new dates without `net_sfc` and the T_r `carnot`, and rewrote the manifest. Lesson: **push the code before the first upload**, or the daily job undoes it.
+- Main was pushed afterwards (CI and Site green). The daily runs of 10-29 onward build new dates with the new code, but never rebuild published dates, so dates 10-19 to 10-21 stay old-code builds in the bucket until a re-upload from `./out`.
+- Re-sync status: raw archives exist for 10-19 to 10-21 and for the 10-22 single-level mean. The 10-22 sum request waited over 10 h without being rejected (a stalled queue), and the driver was stopped by the user on 2026-10-30 to move on. `./out` still ends at 10-18. **Before any upload:** fetch the rest of 10-22 (two requests), `tidy` and `build` 10-19 to 10-22, compare the manifest's dates with `./out` (the upload deletes bucket dates outside the local window), then upload.
+- The CDS API token was printed once in a tool output on 2026-10-29; rotating it is advised.
+- Milestone 15 was started while this was open, at the user's request (CLAUDE.md says to finish a milestone first; this was an explicit exception).
