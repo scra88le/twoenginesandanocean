@@ -35,7 +35,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /web/src/layers        raster.ts, particles.ts, arrows.ts
 /web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
 /web/tests/fixtures    PNGs from the real encoder, for decoder tests
-/web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds) for the Playwright tests
+/web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds, zonal JSON for the 13 frames and two dates) for the Playwright tests
 /pipeline/scripts      export_colormaps.py (writes web/src/colormap-tables.json), make_web_fixtures.py
 /story                 01-fuel.md … 09-explore.md  (story-mode cards: front matter for the step's layer, overlays and view, then 60–100 words of text)
 /docs/DECISIONS.md     log of deviations and choices made during the build
@@ -286,11 +286,13 @@ Point and series chunks are little-endian uint16 and use the same per-layer pack
 
 ### Layout
 
-Full-bleed dark map with four overlays:
+Full-bleed dark map with six overlays:
 - layer menu (right)
 - time bar (bottom)
 - legend (bottom left)
 - point readout panel (opens on click)
+- global engine strip (above the time bar; see **Global engine strip**)
+- zonal budget panel (opens from the menu; see **Zonal budget panel**)
 
 ### Layer menu
 
@@ -355,6 +357,18 @@ Source dataset and variable, units, sign convention, formula, one paragraph on i
 
 The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is published in the manifest. Config values the panels quote (`h_lift`, the smoothing length, the mask thresholds) are filled in from `pipeline.derived`, so they can't drift. Shown in a native `<dialog>` (Esc closes it and focus returns to the (i) button).
 
+### Zonal budget panel
+
+- A "Zonal budget" toggle under "Take the tour" opens `#zonal` beside the readout (desktop only); × or Esc closes it and returns focus to the toggle. `?panel=zonal` opens it at load and is written while it is open.
+- Data: `clim/zonal/{frame}.json` in Climate mode (`clim.zonal` template), `zonal/{date}.json` in Today and Today vs normal (`web/src/zonal.ts`, which checks the shape and caches hits). A file that is missing (daily files exist only for dates built after milestone 15) gives a message in the panel and dashes in the strip, not an error.
+- Two uPlot charts (`web/src/zonalpanel.ts`) with an x-axis linear in sin φ and ticks at 60°S, 30°S, 0, 30°N, 60°N: zonal `asr_toa` (red) and `olr` (blue) with surplus and deficit shaded, and northward transport (total, atmosphere, and ocean in the Year frame only). A legend, a "The numbers as text" fold-out (surplus band, peak transport) and a source note come with them.
+- One line below the charts: "Max-power prediction: J ≈ 31 W m⁻², ΔT ≈ 29 K. ERA5: J = 41 W m⁻², ΔT = 21 K." in the Year frame; a note that the model is for the annual mean otherwise. ERA5's ΔT is the box-mean `skt` difference.
+
+### Global engine strip
+
+- `#strip`, above the time bar, shows the frame's or date's global means from the same zonal JSON (`global`): sunlight absorbed, heat radiated to space, imbalance, heat lifted by convection, Ceiling (Carnot), max power (two-box, Year frame only) and friction near the ground (W m⁻² and % of sunlight absorbed). Plain label first, symbol second; the formula is the tooltip and an (i) button opens the layer's info panel (not for the two-box item). It never computes a mean itself.
+- Hidden at 1100 px and narrower: there is no room between the legend and the menu (it covered the map at 760 px and took the hover), and mobile is paused.
+
 ### Transport arrows
 
 - A custom WebGL layer (`web/src/layers/arrows.ts`) draws the divergent energy flux (`flux_e_uv.png`) as arrows on a regular screen grid, 44 px apart (52 px on phones). Positions and directions are computed on the CPU each frame from the packed u, v codes (bilinear), which keeps the geometry unit-tested; the GPU draws them as instanced triangles with a dark halo so they read on any colour.
@@ -387,7 +401,7 @@ The query string holds layer, mode, frame, overlays, date, centre, zoom and pinn
 
 `?layer=t_emit&mode=anom&frame=year&date=2026-10-01&center=0.25,-35.25&zoom=4&particles=wind100&arrows=1&pin=0.25,-35.25`
 
-- `layer`, `mode` (`climate`, `today` or `anom`), `frame` (`01`–`12` or `year`), `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `arrows=1` and `pin=lng,lat` only when on or set. `anom=1` is read as `mode=anom`. A mode the layer can't show falls back to its default.
+- `layer`, `mode` (`climate`, `today` or `anom`), `frame` (`01`–`12` or `year`), `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `arrows=1`, `panel=zonal` and `pin=lng,lat` only when on or set. `anom=1` is read as `mode=anom`. A mode the layer can't show falls back to its default.
 - It is written with `history.replaceState` (so Back isn't filled with every pan), 120 ms after the last change and after every map move.
 - Reading validates each value and falls back to its default one by one: an unpublished or unbuilt layer, a date that isn't published, a bad number, a latitude beyond the map, a zoom outside 0–22. The page then rewrites the URL with the valid values. Longitudes wrap into −180…180.
 - Parameters the app doesn't own (`?debug`) are kept. `?tour=N` opens the tour at step N once and is then dropped.
@@ -442,6 +456,8 @@ Phone layout under 700 px:
 15. Climate data products (docs/PROPOSALS-v2.md): (**Pipeline code and tests done** 2026-10-30, 409 tests pass; see `docs/DECISIONS.md`. `pipeline.zonal` (two-box with the Kleidon fixture, transport, budget residual); `climatology` now also writes climate point chunks, climate `flux_e` and mean-flow uv files, and `clim/zonal`; run on the real data into `./out` (33 361 files, 9 min). F3 acceptance met; budget residual recorded. **Open:** the daily `zonal/{date}.json` appear in `./out` only after the final `rebuild`, which waits on the re-sync of 10-19 to 10-22; nothing from 14 or 15 is uploaded in its final form.)
 16. Mode switch (docs/PROPOSALS-v2.md F1): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Manifest `modes` and `default_mode`, the switch, the Climate time bar, URL `mode`/`frame`, the readout in Climate mode (climate point chunks, 12-month chart) and the legend timescale text. `flux_e` is Today-only until milestone 17. In Climate mode particles and arrows were off with a note until milestone 17.)
 17. Climate overlays (docs/PROPOSALS-v2.md F3, F4): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Climate-mode arrows with the shared `flux_ref`, mean-flow particles at all three levels, frame changes reload both; desktop-only. Works against local `./out`; the bucket is still the mixed state of milestones 14–15.)
+
+18. Engine 2 and the global strip (docs/PROPOSALS-v2.md F7, F8): (**Done** 2026-10-30, see `docs/DECISIONS.md`. `web/src/zonal.ts`, `zonalpanel.ts`, `enginestrip.ts`; URL `panel=zonal`; desktop-only. Works against local `./out`: the daily `zonal/{date}.json` don't exist there until the final `rebuild`, and the bucket is still the mixed state of milestones 14–15.)
 
 ## Acceptance criteria
 

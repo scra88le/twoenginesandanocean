@@ -14,6 +14,7 @@ export interface ViewState {
   frame: Frame; // the Climate frame: "01".."12" or "year"
   particles: ParticleChoice;
   arrows: boolean;
+  panel: boolean; // the zonal budget panel is open
   center: [number, number]; // lng, lat
   zoom: number;
   pin: [number, number] | null; // lng, lat of the pinned cell
@@ -27,7 +28,7 @@ export const DEFAULT_PARTICLES: ParticleChoice = { on: true, level: 'wind10' };
 const MAX_LAT = 85.05;
 const MAX_ZOOM = 22;
 // Keys written in this order; `tour` is dropped (it only opens the tour, once).
-const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'pin', 'tour'];
+const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'panel', 'pin', 'tour'];
 
 /** "lng,lat" -> numbers, or null if it isn't two finite numbers. */
 export function parseCenter(text: string | null): [number, number] | null {
@@ -71,6 +72,7 @@ export function readState(params: URLSearchParams, m: Manifest): ViewState {
     frame: isFrame(frameText) ? frameText : DEFAULT_FRAME,
     particles: parseParticles(params.get('particles')),
     arrows: params.get('arrows') === '1',
+    panel: params.get('panel') === 'zonal',
     center: center && Math.abs(center[1]) <= MAX_LAT ? [wrapLng(center[0]), center[1]] : DEFAULT_CENTER,
     zoom: Number.isFinite(zoom) && zoom >= 0 && zoom <= MAX_ZOOM ? zoom : DEFAULT_ZOOM,
     pin: pin && Math.abs(pin[1]) <= 90 ? [wrapLng(pin[0]), pin[1]] : null,
@@ -88,6 +90,7 @@ export function stateQuery(current: string | URLSearchParams, s: ViewState): str
   out.set('zoom', s.zoom.toFixed(2));
   out.set('particles', s.particles.on ? s.particles.level : 'off');
   if (s.arrows) out.set('arrows', '1');
+  if (s.panel) out.set('panel', 'zonal');
   if (s.pin) out.set('pin', `${s.pin[0].toFixed(2)},${s.pin[1].toFixed(2)}`);
   for (const [k, v] of new URLSearchParams(current)) if (!OWNED.includes(k)) out.append(k, v);
   return out.toString().replace(/%2C/g, ',');

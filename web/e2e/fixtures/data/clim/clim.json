@@ -33,5 +33,6 @@
   "jet250",
   "flux_e"
  ],
- "flux_ref": 400000000.0
+ "flux_ref": 400000000.0,
+ "zonal": "clim/zonal/{frame}.json"
 }

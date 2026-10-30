@@ -111,6 +111,47 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
+/* Global engine strip, above the time bar */
+#strip {
+  left: calc(12px + min(320px, calc(100vw - 48px)) + 36px); right: calc(300px + 36px); bottom: 104px;
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 18px; padding: 6px 10px;
+}
+.es-head { flex: 1 0 100%; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.es-item { display: flex; flex-direction: column; font-size: 12px; line-height: 1.25; position: relative; padding-right: 28px; }
+.es-label { color: var(--muted); font-size: 11px; }
+.es-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.es-symbol { color: var(--muted); font-size: 11px; }
+.es-info { position: absolute; top: 0; right: 0; }
+
+/* No room beside the legend and the menu on narrower windows (and mobile is paused) */
+@media (max-width: 1100px) { #strip { display: none; } }
+
+/* Zonal budget panel (beside the readout; own classes, so the readout's tests don't match it) */
+.zb-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.zb-heading { font-size: 14px; margin: 0; }
+.zb-place { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.zb-close {
+  flex: none; width: 28px; height: 28px; border-radius: 6px; border: 1px solid #3a4252;
+  background: transparent; color: var(--text); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.zb-close:hover { border-color: var(--text); }
+#zonal {
+  left: calc(12px + min(340px, calc(100vw - 48px)) + 12px); top: 12px; width: min(480px, calc(100vw - 720px));
+  min-width: 320px; max-height: calc(100vh - 210px); overflow-y: auto; z-index: 1;
+}
+.zb-title { font-size: 12px; font-weight: 600; margin: 8px 0 2px; }
+.zb-legend { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 11px; color: var(--muted); }
+.zb-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+.zb-twobox { font-size: 12px; margin: 6px 0; }
+.zb-details { font-size: 12px; color: var(--muted); }
+.zb-summary { margin: 4px 0 0; padding-left: 18px; }
+.zb-note { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
+.zb-open {
+  width: 100%; margin: 0 0 8px; padding: 7px 10px; border-radius: 6px; border: 1px solid #3a4252;
+  background: transparent; color: var(--text); font: inherit; cursor: pointer;
+}
+.zb-open:hover, .zb-open[aria-pressed='true'] { border-color: var(--text); }
+
 /* Guided tour: the card sits where the readout does; the readout moves below it. */
 #tour { left: 12px; top: 12px; width: min(340px, calc(100vw - 48px)); z-index: 2; }
 .tour-head { display: flex; justify-content: space-between; align-items: center; }
@@ -178,7 +219,7 @@ body.tour-active #readout {
   .overlay-toggle { min-height: 36px; }
   .overlay-toggle input { flex: none; width: 18px; height: 18px; }
   .tour-start { min-height: 40px; }
-  .tour-close, .ro-close { width: 40px; height: 40px; }
+  .tour-close, .ro-close, .zb-close { width: 40px; height: 40px; }
   .tour-nav button { height: 40px; }
   .tour-dot { width: 30px; height: 30px; }
   .tour-dot::before { inset: 10px; }

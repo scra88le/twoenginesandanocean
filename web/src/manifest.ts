@@ -66,6 +66,7 @@ export interface ClimMeta {
   year_file?: string; // clim/year/{layer}.png
   year_series?: string; // clim/year/series/{layer}/{tx}_{ty}.bin: one value per cell
   points?: string; // clim/points/{frame}/{tx}_{ty}.bin, the daily point-chunk layout
+  zonal?: string; // clim/zonal/{frame}.json: zonal means, transport and global means
   uv_file?: string; // clim/{frame}/{layer}_uv.png: divergent flux and mean-flow vectors
   uv_layers?: string[]; // layers that have a climate uv file
   flux_ref?: number; // arrow reference (W m-1) shared by all frames: 98th percentile of |F|

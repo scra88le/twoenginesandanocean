@@ -116,6 +116,7 @@ def clim_fixtures(data: Path) -> None:
         "uv_file": "clim/{frame}/{layer}_uv.png",
         "uv_layers": [*CLIM_UV],
         "flux_ref": CLIM_FLUX_REF,
+        "zonal": "clim/zonal/{frame}.json",
     }
     for frame in index["frames"]:
         ones = np.ones((360, 720))
@@ -127,6 +128,53 @@ def clim_fixtures(data: Path) -> None:
             path.write_bytes(vector_png(_uv_codes(lid, u * ones), _uv_codes(lid, v * ones)))
     (data / "clim" / "clim.json").write_text(json.dumps(index, indent=1))
     clim_points(data)
+    for k, frame in enumerate(index["frames"]):
+        year = frame == "year"
+        zonal = zonal_fixture(240.0 + k, year)
+        path = data / "clim" / "zonal" / f"{frame}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(zonal))
+
+
+def zonal_fixture(asr_mean: float, year: bool) -> dict:
+    """A smooth zonal budget: sunlight absorbed 100 W m-2 above the mean at the equator and below
+    at the poles, radiated heat flatter, transport a sine. `asr_mean` is the global ASR, so a test
+    can tell the frames apart. The Year frame adds the ocean transport and the two-box numbers."""
+    lat = 89.75 - 0.5 * np.arange(360)
+    s = np.sin(np.radians(lat))
+    asr = asr_mean + 60 * (1 - 3 * s**2)
+    olr = np.full(360, asr_mean - 0.5) + 15 * (1 - 3 * s**2)
+    edges = np.sin(np.radians(np.linspace(-90, 90, 361)))
+    total = 5.0 * edges * (1 - edges**2) * 2.6
+    atm = 0.85 * total
+    r = lambda a: [round(float(x), 3) for x in a]  # noqa: E731
+    out = {
+        "lat": [float(x) for x in lat],
+        "asr_toa": r(asr),
+        "olr": r(olr),
+        "net_toa": r(asr - olr),
+        "skt": r(288 + 20 * (1 - 3 * s**2)),
+        "transport_total": r(total),
+        "transport_atm": r(atm),
+        "global": {
+            "asr_toa": asr_mean,
+            "olr": asr_mean - 0.5,
+            "imbalance": 0.5,
+            "j_conv": 100.0,
+            "carnot": 12.5,
+            "diss_bl": 2.0,
+            "diss_bl_pct": round(200 / asr_mean, 4),
+        },
+    }
+    if year:
+        out["transport_ocean"] = r(total - atm)
+        out["two_box"] = {
+            "r_tropics": 304.6, "r_poles": 180.8, "j_opt": 31.0, "t_tropics": 305.2,
+            "t_poles": 276.7, "delta_t": 28.5, "g_max": 1.45, "j_obs": 40.7,
+            "skt_tropics": 298.9, "skt_poles": 277.7,
+        }
+        out["global"]["g_max_two_box"] = 1.45
+    return out
 
 
 def clim_points(data: Path) -> None:
@@ -149,6 +197,8 @@ def clim_points(data: Path) -> None:
 
 
 def e2e_fixtures() -> None:
+    import json
+
     lat = 89.75 - 0.5 * j
     data = ROOT / "web/e2e/fixtures/data"
     clim_fixtures(data)
@@ -192,7 +242,11 @@ def e2e_fixtures() -> None:
         )
         files.update(anomalies)
         points = {k: v for k, v in point_tiles(codes).items() if k in FIXTURE_TILES}
-        publish_date(data, day, files, built_at="2026-10-18T00:00:00Z", points=points)
+        publish_date(
+            data, day, files, built_at="2026-10-18T00:00:00Z", points=points,
+            # the oldest date has no zonal file, as a date not yet rebuilt
+            zonal=json.dumps(zonal_fixture(250.0 - older, False)).encode() if older <= 1 else None,
+        )
     build_series(data)
     for p in (data / "series").rglob("*.bin"):
         if p.name not in FIXTURE_TILES:

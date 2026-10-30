@@ -72,7 +72,8 @@
    "jet250",
    "flux_e"
   ],
-  "flux_ref": 400000000.0
+  "flux_ref": 400000000.0,
+  "zonal": "clim/zonal/{frame}.json"
  },
  "radiative": {},
  "layers": {
@@ -742,7 +743,7 @@
     "meaning": "Part of the engine's mechanical output. Near the surface, friction turns this motion back into heat (see boundary-layer dissipation).",
     "caveats": "Computed from the day's mean u and v components, so it is the speed of the day's average wind. Where the direction changes during the day it is lower than the average speed.",
     "mask": null,
-    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather."
+    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather. In Climate mode the particles show the 1991\u20132020 mean flow of the frame. The speed of the mean wind is lower than the typical speed, and the difference is the weather: the day-to-day swings that the average cancels."
    }
   },
   "wind100": {
@@ -789,7 +790,7 @@
     "meaning": "The height where wind turbines tap the engine's output, so this is the layer to compare with human energy use.",
     "caveats": "Computed from the day's mean u and v components, so it is the speed of the day's average wind. Where the direction changes during the day it is lower than the average speed.",
     "mask": null,
-    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather."
+    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather. In Climate mode the particles show the 1991\u20132020 mean flow of the frame. The speed of the mean wind is lower than the typical speed, and the difference is the weather: the day-to-day swings that the average cancels."
    }
   },
   "jet250": {
@@ -836,7 +837,7 @@
     "meaning": "The fastest winds, driven by the temperature contrast between tropics and poles. Much of the atmosphere's kinetic energy sits in and around the jets.",
     "caveats": "Computed from the day's mean u and v components, so it is the speed of the day's average wind. Where the direction changes during the day it is lower than the average speed.",
     "mask": null,
-    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather."
+    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather. In Climate mode the particles show the 1991\u20132020 mean flow of the frame. The speed of the mean wind is lower than the typical speed, and the difference is the weather: the day-to-day swings that the average cancels."
    }
   },
   "ke_col": {
@@ -1189,7 +1190,7 @@
     "meaning": "Summed across a latitude circle this matches ERA5's own energy transport: around 5 PW (5 \u00d7 10\u00b9\u2075 W) poleward in mid-latitudes.",
     "caveats": "The circulating part of the flux, which moves energy around but carries none across latitude circles, is left out.",
     "mask": null,
-    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather."
+    "anomaly": "No anomaly. ERA5 monthly means give the speed of the month's average vector, which is far below the average of daily speeds where the direction changes (by about 1.8 m/s on average for the 10 m wind in August 2026), so the difference would show that bias, not the weather. In Climate mode the arrows come from the 1991\u20132020 mean of the divergence of the total energy flux, which is exact because the flux is linear in it. All frames share one arrow length reference, so lengths compare across months."
    }
   },
   "human_q": {

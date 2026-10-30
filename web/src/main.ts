@@ -21,6 +21,9 @@ import { LayerMenu, menuGroups } from './menu';
 import { FRAMES, frameName, meanFlowText, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
 import { ArrowsSwitch, ModeSwitch, OverlayControls, type ParticleChoice } from './overlays';
 import { decodePng, type DecodedPng } from './png';
+import { EngineStrip } from './enginestrip';
+import { ZonalPanel } from './zonalpanel';
+import { loadZonal, zonalUrl } from './zonal';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
 import { displayScale } from './scale';
 import { parseCards, type StoryStep, type StoryView } from './story';
@@ -72,6 +75,7 @@ class App {
   private pinRequest = 0;
   private arrowsOn = false;
   private arrowRequest = 0;
+  private zonalRequest = 0;
   /** Called after anything the URL records changes; main.ts writes the address bar. */
   onStateChange: (() => void) | null = null;
   private chartRequest = 0;
@@ -92,6 +96,8 @@ class App {
     private readonly readout: ReadoutPanel,
     private readonly map: MapLibreMap,
     private readonly arrows: ArrowLayer,
+    private readonly zonal: ZonalPanel,
+    private readonly strip: EngineStrip,
   ) {}
 
   private loadChunk(url: string): Promise<ArrayBuffer> {
@@ -120,6 +126,7 @@ class App {
       frame: this.frame,
       particles: this.particleChoice,
       arrows: this.arrowsOn,
+      panel: this.zonal.isOpen,
       center: [wrapLng(c.lng), c.lat],
       zoom: this.map.getZoom(),
       pin: this.pinned ? [this.pinned.lng, this.pinned.lat] : null,
@@ -274,6 +281,32 @@ class App {
     }
   }
 
+  /** Load the zonal file of what is on screen (Climate frame, or Today's date) for the strip and, if open, the panel. */
+  async updateZonal(): Promise<void> {
+    const request = ++this.zonalRequest;
+    const { mode, frame, date } = this;
+    const url = zonalUrl(DATA, this.manifest, mode, frame, date);
+    const z = url ? await loadZonal(url) : null;
+    if (request !== this.zonalRequest) return;
+    const period = (this.manifest.clim?.period ?? '1991-2020').replace('-', '–');
+    const what = mode === 'climate' ? `${period} ${meanFlowText(frame)}` : date;
+    const shown = mode === 'climate' ? frame : null; // a daily date has no frame
+    this.strip.update(z, shown, what);
+    if (!this.zonal.isOpen) return;
+    this.zonal.show(
+      z, shown, what,
+      mode === 'climate' ? 'ERA5 monthly means, zonal means over all longitudes.' : 'ERA5 daily means, zonal means over all longitudes.',
+    );
+  }
+
+  /** Open or close the zonal budget panel. */
+  setPanel(open: boolean): Promise<void> {
+    if (open) this.zonal.open();
+    else this.zonal.close();
+    this.onStateChange?.();
+    return this.updateZonal();
+  }
+
   async setDate(date: string): Promise<void> {
     this.date = date;
     this.onStateChange?.();
@@ -282,6 +315,7 @@ class App {
       this.updateParticles(),
       this.updateArrows(),
       this.updateReadout(),
+      this.updateZonal(),
     ]);
   }
 
@@ -372,7 +406,7 @@ class App {
     this.mode = mode;
     this.timebar?.setKind(mode === 'climate' ? 'frames' : 'dates');
     this.onStateChange?.();
-    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateArrows(), this.updateReadout()]);
+    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateArrows(), this.updateReadout(), this.updateZonal()]);
   }
 
   async setFrame(frame: Frame): Promise<void> {
@@ -383,6 +417,7 @@ class App {
       this.updateParticles(),
       this.updateArrows(),
       this.updateReadout(),
+      this.updateZonal(),
     ]);
   }
 
@@ -458,6 +493,7 @@ class App {
       void this.updateParticles();
       void this.updateArrows();
       void this.updateReadout();
+      void this.updateZonal();
     }
     const frame = this.frame;
     const view = mode === 'anom' ? anomalyView(meta) : meta;
@@ -565,11 +601,18 @@ async function start(): Promise<void> {
     (id, opener) => info.open(manifest.layers[id]!, manifest.credits, opener),
   );
   const choice = initial.particles;
-  const closers: { close: () => void } = { close: () => undefined };
+  const closers: { close: () => void; zonal: () => void } = { close: () => undefined, zonal: () => undefined };
   const readout = new ReadoutPanel(document.getElementById('readout')!, () => closers.close());
   const arrows = new ArrowLayer('arrows');
-  const app = new App(manifest, date, raster, particles, legend, menu, choice, readout, map, arrows);
+  const zonalPanel = new ZonalPanel(document.getElementById('zonal')!, () => void closers.zonal());
+  const strip = new EngineStrip(document.getElementById('strip')!, (id, opener) => info.open(manifest.layers[id]!, manifest.credits, opener));
+  const app = new App(manifest, date, raster, particles, legend, menu, choice, readout, map, arrows, zonalPanel, strip);
   closers.close = () => app.unpin();
+  closers.zonal = () => {
+    void app.setPanel(false);
+    zonalButton.setAttribute('aria-pressed', 'false');
+    zonalButton.focus();
+  };
   handlers.select = (id) => void app.select(id);
   const overlays = new OverlayControls(manifest, choice, (c) => void app.setParticles(c));
   document.querySelector('#menu .menu-head')!.after(overlays.element);
@@ -606,6 +649,18 @@ async function start(): Promise<void> {
     tour.start(0);
   });
   document.querySelector('#menu .menu-head')!.after(tourButton);
+  const zonalButton = document.createElement('button');
+  zonalButton.type = 'button';
+  zonalButton.className = 'zb-open';
+  zonalButton.textContent = 'Zonal budget';
+  zonalButton.setAttribute('aria-pressed', String(initial.panel));
+  zonalButton.setAttribute('aria-controls', 'zonal');
+  zonalButton.addEventListener('click', () => {
+    const open = !zonalPanel.isOpen;
+    zonalButton.setAttribute('aria-pressed', String(open));
+    void app.setPanel(open);
+  });
+  tourButton.after(zonalButton);
   const timebar = new TimeBar(
     document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d), (f) => app.setFrame(f), initial.frame,
   );
@@ -648,6 +703,8 @@ async function start(): Promise<void> {
     app.pin(e.lngLat.lng, e.lngLat.lat);
   });
   if (initial.pin) app.pin(initial.pin[0], initial.pin[1]);
+  if (initial.panel) void app.setPanel(true);
+  else void app.updateZonal();
   document.body.dataset.ready = 'true';
   // From here on the address bar follows the app: replaceState, so Back isn't filled with
   // every pan; one write shortly after the last change.

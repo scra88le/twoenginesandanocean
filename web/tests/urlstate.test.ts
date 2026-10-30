@@ -11,21 +11,22 @@ const read = (q: string) => readState(new URLSearchParams(q), manifest);
 
 const FULL: ViewState = {
   layer: 'carnot', date: '2026-09-30', mode: 'anom', frame: '07', particles: { on: true, level: 'wind100' },
-  arrows: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
+  arrows: true, panel: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
 };
 
 test('a state survives the round trip through the query string', () => {
   const q = stateQuery('', FULL);
-  expect(q).toBe('layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&pin=10.25,20.75');
+  expect(q).toBe('layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&panel=zonal&pin=10.25,20.75');
   expect(read(q)).toEqual(FULL);
 });
 
 test('off switches are left out, and particles off is written explicitly', () => {
-  const q = stateQuery('', { ...FULL, mode: 'today', arrows: false, pin: null, particles: { on: false, level: 'wind10' } });
+  const q = stateQuery('', { ...FULL, mode: 'today', arrows: false, panel: false, pin: null, particles: { on: false, level: 'wind10' } });
   expect(q).toBe('layer=carnot&mode=today&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=off');
   const s = read(q);
   expect(s.mode).toBe('today');
   expect(s.arrows).toBe(false);
+  expect(s.panel).toBe(false);
   expect(s.pin).toBeNull();
   expect(s.particles.on).toBe(false);
 });
@@ -33,7 +34,7 @@ test('off switches are left out, and particles off is written explicitly', () =>
 test('an empty URL gives the defaults: newest date, net radiation, 10 m particles, whole world', () => {
   expect(read('')).toEqual({
     layer: 'net_toa', date: '2026-10-01', mode: 'climate', frame: 'year', particles: { on: true, level: 'wind10' },
-    arrows: false, center: DEFAULT_CENTER, zoom: 1.4, pin: null,
+    arrows: false, panel: false, center: DEFAULT_CENTER, zoom: 1.4, pin: null,
   });
 });
 
@@ -70,7 +71,7 @@ test('longitudes wrap into -180..180, so a map panned past the date line gives a
 });
 
 test('parameters the app does not own are kept, and ?tour is dropped once used', () => {
-  const q = stateQuery('debug&tour=3&layer=olr&foo=bar', { ...FULL, mode: 'today', arrows: false, pin: null });
+  const q = stateQuery('debug&tour=3&layer=olr&foo=bar', { ...FULL, mode: 'today', arrows: false, panel: false, pin: null });
   expect(q).toBe('layer=carnot&mode=today&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&debug=&foo=bar');
 });
 
@@ -95,4 +96,9 @@ test('a layer that cannot show the asked mode opens in its own default', () => {
   expect(read('layer=wind10&mode=climate').mode).toBe('today');
   expect(read('layer=net_toa').mode).toBe('climate');
   expect(read('layer=t_emit').mode).toBe('today');
+});
+
+test('only panel=zonal opens the panel', () => {
+  expect(read('panel=zonal').panel).toBe(true);
+  expect(read('panel=1').panel).toBe(false);
 });
