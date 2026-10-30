@@ -12,6 +12,7 @@ from pathlib import Path
 
 import xarray as xr
 
+from . import zonal
 from .climatology import Climatology, encode_anomalies
 from .derived import compute_extras, compute_layers, radiative_summary
 from .fetch import PRESSURE_DAILY, SINGLE_DAILY, build_requests, fetch_dates
@@ -55,6 +56,9 @@ def build_date(day: date, raw: Path, work: Path, out: Path) -> list[str]:
             files,
             points=points,
             radiative={"asr": round(asr, 2), "t_r": round(t_r, 2)},
+            zonal=zonal.to_json(
+                zonal.zonal_summary(zonal.layer_inputs(layers, tidy["skt"].values), year=False)
+            ),
         )
     return problems
 

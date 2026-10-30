@@ -290,15 +290,19 @@ def annual_mean(means: xr.Dataset) -> xr.Dataset:
     return (means * w).sum("month")
 
 
-def climatology_layers(month: xr.Dataset) -> dict:
-    """The layer formulas applied to one frame's mean inputs (a month, or the annual mean),
-    for the non-vector layers."""
+def frame_layers(month: xr.Dataset) -> dict:
+    """Every layer's formula applied to one frame's mean inputs (a month, or the annual
+    mean), vector layers included. Without winds the wind layers are zero and not published."""
     fields = month.copy()
-    for k in _WIND_KEYS:  # the formulas need winds; vector layers are dropped below
+    for k in _WIND_KEYS:  # the formulas need winds
         if k not in fields:
             fields[k] = xr.zeros_like(month["tsr"])
-    layers = compute_layers(fields)
-    return {k: v for k, v in layers.items() if k in CLIM_LAYERS}
+    return compute_layers(fields)
+
+
+def climatology_layers(month: xr.Dataset) -> dict:
+    """The non-vector layers of `frame_layers`, the ones that have anomalies."""
+    return {k: v for k, v in frame_layers(month).items() if k in CLIM_LAYERS}
 
 
 # ---- publishing the climatology and daily anomalies -----------------------------------
@@ -335,8 +339,15 @@ def build_climatology(work: Path, out: Path) -> int:
         asr, t_r = radiative_summary(inputs["tsr"].values)
         radiative[frame] = {"asr": round(asr, 2), "t_r": round(t_r, 2)}
     written = 0
+    flux_speeds = []
+    mean_flow = [k for k in ("wind10", "wind100", "jet250") if f"u{WIND_KEY[k]}" in means]
     for frame, inputs in frames.items():
-        for lid, field in climatology_layers(inputs).items():
+        layers = frame_layers(inputs)
+        written += _frame_products(out, frame, layers, inputs, mean_flow, frame == "year")
+        flux_speeds.append(layers["flux_e"].values.values.ravel())
+        for lid, field in layers.items():
+            if lid not in CLIM_LAYERS:
+                continue
             spec = LAYERS[lid]
             c, _ = quantise(
                 field.values.values, field.masked.values, *spec.encode, log=spec.log,
@@ -362,8 +373,51 @@ def build_climatology(work: Path, out: Path) -> int:
         "series": "clim/series/{layer}/{tx}_{ty}.bin",
         "year_file": "clim/year/{layer}.png",
         "year_series": "clim/year/series/{layer}/{tx}_{ty}.bin",
+        # climate point chunks (same layout as the daily ones), zonal budgets, and the
+        # divergent energy flux and 1991-2020 mean wind vectors of each frame
+        "points": "clim/points/{frame}/{tx}_{ty}.bin",
+        "zonal": "clim/zonal/{frame}.json",
+        "uv_file": "clim/{frame}/{layer}_uv.png",
+        "uv_layers": ["flux_e", *mean_flow],
+        # one arrow reference for all 13 frames: the 98th percentile of |F|, so lengths compare
+        "flux_ref": float(np.percentile(np.concatenate(flux_speeds), 98)),
     }
     _write(out / CLIM_INDEX, json.dumps(index, indent=1).encode())
+    return written + 1
+
+
+WIND_KEY = {"wind10": "10", "wind100": "100", "jet250": "250"}
+
+
+def _frame_products(out, frame, layers, inputs, mean_flow, is_year) -> int:
+    """One frame's vector files (`flux_e_uv.png`, the mean-flow winds), climate point chunk
+    and zonal budget. The speed of the mean wind is far below the mean of daily speeds, so
+    the wind layers are published as vectors for particles only, never as speed rasters or
+    point values. `flux_e` is linear in `div_e`, so its climatology is honest."""
+    from . import zonal
+    from .derived import compute_extras
+    from .publish import encode_date
+
+    vectors, _, _ = encode_date({k: layers[k] for k in ("flux_e", *mean_flow)})
+    files, _, points = encode_date(
+        {k: v for k, v in layers.items() if k not in WIND_KEY}, compute_extras(inputs)
+    )
+    written = 0
+    for name, data in vectors.items():
+        if name.endswith("_uv.png"):
+            _write(out / "clim" / frame / name, data)
+            written += 1
+    for name, data in points.items():
+        _write(out / "clim" / "points" / frame / name, data)
+        written += 1
+    summary = zonal.zonal_summary(zonal.layer_inputs(layers, inputs["skt"].values), year=is_year)
+    if is_year and "net_sfc" in layers:
+        summary["budget_residual"] = zonal.budget_residual(
+            layers["net_toa"].values.values,
+            inputs["p86.162"].values.astype("float64"),
+            layers["net_sfc"].values.values,
+        )
+    _write(out / "clim" / "zonal" / f"{frame}.json", zonal.to_json(summary))
     return written + 1
 
 

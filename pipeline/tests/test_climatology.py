@@ -13,6 +13,7 @@ from pipeline import run
 from pipeline.derived import SIGMA, compute_layers
 from pipeline.encode import MASKED, decode, png_to_ints
 from pipeline.layers import LAYERS
+from pipeline.points import POINT_FIELDS
 
 LAT = np.linspace(90, -90, 721)
 LON = np.arange(1440) * 0.25
@@ -168,8 +169,9 @@ def test_build_climatology_publishes_maps_series_and_index(tmp_path):
     work, out = tmp_path / "work", tmp_path / "out"
     write_sums(work)
     n = clim.build_climatology(work, out)
-    # 18 layers (net_sfc needs `str`, which isn't there): 13 frames, 12-month and annual series
-    assert n == 13 * 18 + 18 * 648 + 18 * 648 + 1
+    # 18 layers (net_sfc needs `str`, which isn't there): 13 frames, 12-month and annual series,
+    # and per frame a flux_e_uv.png, a zonal JSON and 648 point chunks
+    assert n == 13 * 18 + 18 * 648 + 18 * 648 + 13 * 650 + 1
     s = LAYERS["olr"]
     olr = decode(
         png_to_ints((out / "clim" / "07" / "olr.png").read_bytes()), *s.encode, step=s.resolution
@@ -185,6 +187,16 @@ def test_build_climatology_publishes_maps_series_and_index(tmp_path):
     assert index["frames"] == [f"{m:02d}" for m in range(1, 13)] + ["year"]
     assert not (out / "clim" / "07" / "wind10.png").exists()
     assert (out / "clim" / "year" / "olr.png").is_file()
+    assert index["uv_layers"] == ["flux_e"]  # no winds in these sums
+    assert index["flux_ref"] >= 0  # the synthetic field is uniform, so no flux
+    assert (out / "clim" / "07" / "flux_e_uv.png").is_file()
+    assert not (out / "clim" / "07" / "wind10_uv.png").exists()
+    point = (out / "clim" / "points" / "year" / "0_0.bin").read_bytes()
+    assert len(point) == len(POINT_FIELDS) * 20 * 20 * 2
+    zonal = json.loads((out / "clim" / "zonal" / "year.json").read_text())
+    assert len(zonal["lat"]) == 360 and "two_box" in zonal and "transport_ocean" in zonal
+    july = json.loads((out / "clim" / "zonal" / "07.json").read_text())
+    assert "two_box" not in july
     year_tile = (out / "clim" / "year" / "series" / "olr" / "0_0.bin").read_bytes()
     assert len(year_tile) == 20 * 20 * 2  # one frame; the 12-month series keep their length
 

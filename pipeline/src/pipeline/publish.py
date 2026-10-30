@@ -215,14 +215,19 @@ def publish_date(
     keep_days: int = KEEP_DAYS,
     points: dict[str, bytes] | None = None,
     radiative: dict[str, float] | None = None,
+    zonal: bytes | None = None,
 ) -> None:
     """Write one date's point chunks and map files, then the manifest, then delete dates
-    beyond `keep_days`. `radiative` is the date's {"asr", "t_r"} for the manifest."""
+    beyond `keep_days`. `radiative` is the date's {"asr", "t_r"} for the manifest; `zonal`
+    is the date's `zonal/{date}.json`."""
     day = date.fromisoformat(day).isoformat()  # also rejects anything path-like
     built_at = built_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     fields = out / "fields"
     if points:
         _swap_in(out / "points", day, points)
+    if zonal is not None:
+        (out / "zonal").mkdir(exist_ok=True)
+        _write_file(out / "zonal" / f"{day}.json", zonal)
     _swap_in(fields, day, files)
 
     old = _read_manifest(out)
@@ -236,3 +241,4 @@ def publish_date(
     for gone in set(previous) - set(dates):
         shutil.rmtree(fields / gone, ignore_errors=True)
         shutil.rmtree(out / "points" / gone, ignore_errors=True)
+        (out / "zonal" / f"{gone}.json").unlink(missing_ok=True)

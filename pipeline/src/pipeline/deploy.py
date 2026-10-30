@@ -26,7 +26,7 @@ MANIFEST = "manifest.json"
 STATE_KEY = "state/pending.json"
 LOG_KEY = "logs/global_means.csv"
 WORKERS = 16
-_CLIM_MAP = re.compile(r"clim/\d\d/\w+\.png")
+_CLIM_MAP = re.compile(r"clim/\d\d/\w+(?<!_uv)\.png")  # the monthly maps, not the vectors
 
 
 @dataclass
@@ -71,7 +71,8 @@ def upload(
     manifest = json.loads(manifest_path.read_text())
     remote = store.list("")
     result = UploadResult()
-    maps = {**_local(out, "fields"), **_local(out, "points"), **_local(out, "clim")}
+    maps = {**_local(out, "fields"), **_local(out, "points"),
+            **_local(out, "zonal"), **_local(out, "clim")}  # fmt: skip
     stages = [
         ("maps, points and climatology", maps),
         ("series", _local(out, "series")),
@@ -87,7 +88,8 @@ def upload(
     keep = set(manifest["dates"])
     expired = [
         k for k in remote
-        if k.split("/", 1)[0] in ("fields", "points") and k.split("/")[1] not in keep
+        if k.split("/", 1)[0] in ("fields", "points", "zonal")
+        and k.split("/")[1].removesuffix(".json") not in keep
     ]  # fmt: skip
     store.delete(expired)
     result.deleted = len(expired)

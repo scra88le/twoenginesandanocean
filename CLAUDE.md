@@ -250,6 +250,10 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 /clim/year/{layer}.png              annual-mean frame: formulas applied to the day-weighted annual-mean inputs, not the mean of 12 derived maps
 /clim/year/series/{layer}/{tx}_{ty}.bin  the annual value of one tile (400 codes); apart from clim/series so those keep 12 months
 /clim/series/{layer}/{tx}_{ty}.bin  the 12 monthly means of one tile (12 × 20 × 20 codes, month-major), for the readout chart
+/clim/points/{MM|year}/{tx}_{ty}.bin  the daily point-chunk layout for one frame; wind layers are no-data (speed of a mean wind is not a mean speed)
+/clim/{MM|year}/{flux_e|wind10|wind100|jet250}_uv.png  vectors only: divergent energy flux and 1991–2020 mean flow
+/clim/zonal/{MM|year}.json          zonal means, transport (PW), global means; Year adds two_box, transport_ocean, budget_residual
+/zonal/{YYYY-MM-DD}.json            the same for a daily date (no two_box or ocean)
 /clim/clim.json                     period, layers and file templates; copied into the manifest's `clim` (null until published)
 /static/human_q.png
 /logs/global_means.csv              daily validation log
@@ -430,6 +434,7 @@ Phone layout under 700 px:
     - validation log (`logs/global_means.csv` is uploaded with each run)
     - Playwright smoke test (`web/e2e-live`)
 14. Pipeline foundations (docs/PROPOSALS-v2.md): (**Code and tests done** 2026-10-24, see `docs/DECISIONS.md`. **Data, 2026-10-25:** the `str` backfill is finished (90 of 90 tidy files have `lw_up`); `climatology --partial` and `rebuild` ran on the local `./out`, so the 90 dates (2026-07-16 to 10-13) have `net_sfc`, the T_r-based `carnot` and `g_max` and `manifest.radiative`, all validated `ok`. **Complete 2026-10-26:** all 12 climatology requests arrived, `climatology` and a second `rebuild` ran (35 min): 90 of 90 dates `ok`, 19 anomaly files per date including `net_sfc_anom`, the annual frame (`clim/year`, 19 layers, `radiative` ASR 242.7 W m⁻², T_r 255.78 K) and 19 layers in `clim.json`; the largest PNG is 345 kB. The wind climatology is merged into the sums but, by the 2026-10-19 decision, publishes no vector layers. **Synced 2026-10-27:** 10-14 to 10-18 were fetched day by day (15 requests, one at a time, 1–2 h each) and built from fresh tidy files, so `./out` now has the bucket's window, 2026-07-21 to 10-18, 90 of 90 `ok`, all with the new layers. **Pushed and uploaded 2026-10-27/28** (first upload: 76 066 objects), but the daily job then ran the old code (origin/main was not yet pushed) and overwrote the manifest, so the bucket is **mixed**: dates up to 10-18 carry the new files, 10-19 to 10-21 are old-code builds, 10-22 onward are new-code builds, and the manifest has `radiative` for newer dates only. **Open:** fetch 10-19 to 10-22 (10-19 to 10-21 are in `raw/`, 10-22 has its mean file only, the CDS queue stalled on 2026-10-30), build them into `./out`, re-check the bucket's dates, upload again. Milestone 15 started before this was closed, by decision of the user, 2026-10-30.)
+15. Climate data products (docs/PROPOSALS-v2.md): (**Pipeline code and tests done** 2026-10-30, 409 tests pass; see `docs/DECISIONS.md`. `pipeline.zonal` (two-box with the Kleidon fixture, transport, budget residual); `climatology` now also writes climate point chunks, climate `flux_e` and mean-flow uv files, and `clim/zonal`; run on the real data into `./out` (33 361 files, 9 min). F3 acceptance met; budget residual recorded. **Open:** the daily `zonal/{date}.json` appear in `./out` only after the final `rebuild`, which waits on the re-sync of 10-19 to 10-22; nothing from 14 or 15 is uploaded in its final form.)
 
 ## Acceptance criteria
 
