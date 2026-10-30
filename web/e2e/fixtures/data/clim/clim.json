@@ -4,7 +4,12 @@
   "t_emit",
   "net_toa",
   "carnot",
-  "j_ratio"
+  "j_ratio",
+  "asr_sfc",
+  "evap_frac",
+  "div_e",
+  "ke_col",
+  "net_sfc"
  ],
  "frames": [
   "01",

@@ -39,6 +39,8 @@ export interface LayerMeta {
   hatch_zero: boolean;
   modes?: ('climate' | 'today' | 'anom')[]; // absent in manifests from before milestone 16
   default_mode?: 'climate' | 'today' | 'anom' | null;
+  advanced?: boolean; // technical layers sit under "More layers" in the menu (absent before milestone 19)
+  menu_order?: number;
   info: LayerInfo;
 }
 
@@ -51,6 +53,7 @@ export interface Manifest {
   codes: { nodata: number; masked: number; first_valid: number };
   files: { field: string; uv: string; anomaly: string };
   clim?: ClimMeta | null; // null until the climatology job has run
+  groups?: Record<string, { name: string; blurb: string }>; // absent before milestone 19
   layers: Record<string, LayerMeta>;
   points?: PointsMeta; // absent in manifests from before milestone 9
   series?: { file: string; magic: string };

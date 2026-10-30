@@ -42,6 +42,10 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 }
 #menu fieldset { border: 0; margin: 0 0 6px; padding: 0; }
 #menu legend { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 2px 2px; }
+.group-blurb { margin: 0 2px 4px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.more-layers { margin: 2px 0 0; }
+.more-layers summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 4px 4px; border-radius: 6px; }
+.more-layers summary:hover { background: rgba(255, 255, 255, 0.05); }
 .layer-item { display: flex; align-items: flex-start; gap: 6px; border-radius: 6px; }
 .layer-item:hover { background: rgba(255, 255, 255, 0.05); }
 .layer-item label { flex: 1; display: flex; gap: 8px; padding: 5px 4px; cursor: pointer; }
@@ -136,7 +140,7 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 }
 .zb-close:hover { border-color: var(--text); }
 #zonal {
-  left: calc(12px + min(340px, calc(100vw - 48px)) + 12px); top: 12px; width: min(480px, calc(100vw - 720px));
+  left: calc(12px + min(340px, calc(100vw - 48px)) + 24px + 12px); top: 12px; width: min(480px, calc(100vw - 740px));
   min-width: 320px; max-height: calc(100vh - 210px); overflow-y: auto; z-index: 1;
 }
 .zb-title { font-size: 12px; font-weight: 600; margin: 8px 0 2px; }
@@ -167,6 +171,8 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 .tour-dots { display: flex; gap: 0; margin: 4px 0 8px; }
 .tour-dot { position: relative; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .tour-dot::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; border: 1px solid #5a6475; }
+.tour-dot.chapter-start { margin-left: 10px; }
+.tour-dot.chapter-start::after { content: ''; position: absolute; left: -6px; top: 5px; bottom: 5px; width: 1px; background: #3a4252; }
 .tour-dot.current::before { background: #7aa7ff; border-color: #7aa7ff; }
 .tour-nav { display: flex; justify-content: space-between; gap: 8px; }
 .tour-nav button {

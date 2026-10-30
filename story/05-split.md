@@ -1,8 +1,9 @@
 ---
 title: The split
 layer: evap_frac
+mode: climate
+frame: year
+chapter: Engine one
 view: 10, 15, 1.4
 ---
-The surface sends heat upward in two forms: **latent heat**, from evaporating water, and **sensible heat**, from warm air. The evaporative fraction, LE / (LE + H), says how the surface splits them.
-
-Near 1, over oceans and rainforests, almost all the heat leaves as water vapour. Near 0, over deserts, it leaves as hot air. The split matters because vapour gives up its heat only where it condenses, often far away, and often as rain.
+The engine has two exhaust routes. **Latent heat** leaves as water vapour, **sensible heat** as warm air. The evaporative fraction, LE / (LE + H), says which dominates: near 1 over oceans and rainforests, near 0 over deserts. The split matters because vapour releases its heat only where it condenses, often far away and high in the atmosphere. Evaporation therefore links engine one to engine two, and makes water the working fluid of the whole system.

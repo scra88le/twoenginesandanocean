@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from pipeline.layers import ANOMALY, GROUPS, LAYERS, NATURAL, VECTOR
+from pipeline.layers import ADVANCED, ANOMALY, GROUP_BLURBS, GROUPS, LAYERS, MENU, NATURAL, VECTOR
 
 SPEC_IDS = [
     "asr_toa", "asr_sfc", "net_toa", "olr", "t_emit", "carnot", "g_max", "j_conv", "j_ratio",
@@ -30,9 +30,47 @@ def test_vector_layers():
         assert LAYERS[lid].uv_encode is None
 
 
-def test_groups_are_1_to_10():
-    assert sorted({s.group for s in LAYERS.values()}) == list(range(1, 11))
-    assert LAYERS["net_sfc"].group == 10 and GROUPS[10] == "Ocean"
+def test_groups_follow_the_title_of_the_site():
+    assert GROUPS == {
+        1: "Engine one: surface to sky",
+        2: "Engine two: tropics to poles",
+        3: "The ocean",
+        4: "Water",
+        5: "Humans",
+    }
+    assert set(GROUP_BLURBS) == set(GROUPS) and all(GROUP_BLURBS.values())
+    assert sorted({s.group for s in LAYERS.values()}) == [1, 2, 3, 4, 5]
+    assert LAYERS["net_sfc"].group == 3
+
+
+def test_menu_lists_every_layer_once_in_the_proposed_order():
+    assert sorted(MENU) == sorted(LAYERS)  # every layer once, none invented
+    by_group = {g: [i for i in MENU if LAYERS[i].group == g] for g in GROUPS}
+    assert by_group[1] == [
+        "asr_sfc", "carnot", "g_max", "j_ratio", "evap_frac", "j_conv", "lh", "sh",
+    ]  # fmt: skip
+    assert by_group[2] == [
+        "net_toa", "div_e", "flux_e", "ke_col", "jet250", "asr_toa", "olr", "t_emit", "diss_bl",
+        "wind10", "wind100",
+    ]  # fmt: skip
+    assert by_group[3] == ["net_sfc"]
+    assert by_group[4] == ["precip", "tcwv", "p_lift"]
+    assert by_group[5] == ["human_q", "human_ratio"]
+    assert [LAYERS[i].menu_order for i in MENU] == list(range(len(MENU)))
+
+
+def test_advanced_layers_are_the_technical_ones_and_come_after_the_plain_ones():
+    assert set(ADVANCED) == {
+        "j_conv", "lh", "sh", "asr_toa", "olr", "t_emit", "diss_bl", "wind10", "wind100", "p_lift",
+    }  # fmt: skip
+    assert {i for i, s in LAYERS.items() if s.advanced} == set(ADVANCED)
+    for g in GROUPS:
+        flags = [LAYERS[i].advanced for i in MENU if LAYERS[i].group == g]
+        assert flags == sorted(flags), f"group {g}: an advanced layer comes before a plain one"
+    # the layers the story and the readout rely on are not hidden away
+    plain = ("net_toa", "asr_sfc", "carnot", "j_ratio", "evap_frac", "div_e", "ke_col", "net_sfc")
+    for lid in (*plain, "precip"):
+        assert not LAYERS[lid].advanced
 
 
 def test_net_sfc_is_a_diverging_layer_centred_on_zero():

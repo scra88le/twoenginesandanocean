@@ -7,6 +7,7 @@
   "2026-10-01"
  ],
  "built_layers": [
+  "asr_sfc",
   "carnot",
   "diss_bl",
   "div_e",
@@ -14,6 +15,8 @@
   "flux_e",
   "j_ratio",
   "jet250",
+  "ke_col",
+  "net_sfc",
   "net_toa",
   "precip",
   "t_emit",
@@ -43,7 +46,12 @@
    "t_emit",
    "net_toa",
    "carnot",
-   "j_ratio"
+   "j_ratio",
+   "asr_sfc",
+   "evap_frac",
+   "div_e",
+   "ke_col",
+   "net_sfc"
   ],
   "frames": [
    "01",
@@ -76,11 +84,33 @@
   "zonal": "clim/zonal/{frame}.json"
  },
  "radiative": {},
+ "groups": {
+  "1": {
+   "name": "Engine one: surface to sky",
+   "blurb": "Sunlight heats the surface; convection lifts the heat away and does work on the way."
+  },
+  "2": {
+   "name": "Engine two: tropics to poles",
+   "blurb": "Heat flows from the tropics to the poles, and the flow drives winds and jet streams."
+  },
+  "3": {
+   "name": "The ocean",
+   "blurb": "The ocean stores heat and carries part of the transport. ERA5's surface budget."
+  },
+  "4": {
+   "name": "Water",
+   "blurb": "Water carries heat up as vapour and gives it back as rain."
+  },
+  "5": {
+   "name": "Humans",
+   "blurb": "Human energy use against nature's. Not available yet."
+  }
+ },
  "layers": {
   "asr_toa": {
    "title": "Absorbed solar, TOA",
-   "group": 1,
-   "group_name": "Fuel",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
    "colour": "inferno",
    "display": [
@@ -118,6 +148,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 13,
    "info": {
     "summary": "Sunlight absorbed by the Earth system: the engine's fuel.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: top net solar radiation (tsr, parameter 178).",
@@ -132,7 +164,7 @@
   "asr_sfc": {
    "title": "Absorbed solar, surface",
    "group": 1,
-   "group_name": "Fuel",
+   "group_name": "Engine one: surface to sky",
    "units": "W m-2",
    "colour": "inferno",
    "display": [
@@ -170,6 +202,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 0,
    "info": {
     "summary": "Sunlight absorbed at the surface, heating the ground and the ocean.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: surface net solar radiation (ssr, parameter 176).",
@@ -183,8 +217,8 @@
   },
   "net_toa": {
    "title": "Net radiation, TOA",
-   "group": 1,
-   "group_name": "Fuel",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
    "colour": "balance",
    "display": [
@@ -222,8 +256,10 @@
     "anom"
    ],
    "default_mode": "climate",
+   "advanced": false,
+   "menu_order": 8,
    "info": {
-    "summary": "Net radiation at the top of the atmosphere: where Earth gains or loses energy.",
+    "summary": "Where Earth gains or loses energy overall (net radiation at the top of the atmosphere).",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variables: top net solar radiation (tsr, 178) and top net thermal radiation (ttr, 179).",
     "formula": "N = tsr \u2212 OLR, with OLR = \u2212ttr",
     "sign": "Positive: the Earth system gains energy here. Negative: it loses energy.",
@@ -236,7 +272,7 @@
   "olr": {
    "title": "Outgoing longwave",
    "group": 2,
-   "group_name": "Exhaust",
+   "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
    "colour": "thermal",
    "display": [
@@ -274,6 +310,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 14,
    "info": {
     "summary": "Heat radiated to space: the engine's exhaust.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: top net thermal radiation (ttr, parameter 179).",
@@ -288,7 +326,7 @@
   "t_emit": {
    "title": "Effective emission temperature",
    "group": 2,
-   "group_name": "Exhaust",
+   "group_name": "Engine two: tropics to poles",
    "units": "K",
    "colour": "thermal",
    "display": [
@@ -326,6 +364,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 15,
    "info": {
     "summary": "The temperature at which Earth appears to radiate to space: the engine's cold side.",
     "source": "Derived from OLR. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: ttr (parameter 179).",
@@ -339,8 +379,8 @@
   },
   "carnot": {
    "title": "Local Carnot limit",
-   "group": 3,
-   "group_name": "Limits",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "%",
    "colour": "viridis",
    "display": [
@@ -378,8 +418,10 @@
     "anom"
    ],
    "default_mode": "climate",
+   "advanced": false,
+   "menu_order": 1,
    "info": {
-    "summary": "The Carnot limit: the most work any engine could get from heat flowing to space.",
+    "summary": "The most work any engine could get from this heat flow (the Carnot limit).",
     "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: skin temperature (skt, 235), top net solar radiation (tsr, 178).",
     "formula": "\u03b7_C = (T_s \u2212 T_r) / T_s, clamped at 0. T_s is the skin temperature. T_r = (\u27e8ASR\u27e9 / \u03c3)^\u00bc is the radiative temperature of the whole Earth system, from the area-weighted global mean of absorbed sunlight at the top of the atmosphere for the same day (about 255 K).",
     "sign": "Not applicable (an efficiency, in %).",
@@ -391,8 +433,8 @@
   },
   "g_max": {
    "title": "Maximum convective power",
-   "group": 3,
-   "group_name": "Limits",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "W m-2",
    "colour": "magma",
    "display": [
@@ -430,6 +472,8 @@
     "anom"
    ],
    "default_mode": "climate",
+   "advanced": false,
+   "menu_order": 2,
    "info": {
     "summary": "The most power convection could generate at this surface (maximum-power model).",
     "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: ssr (176), skt (235), tsr (178). Model: Kleidon & Renner (2013).",
@@ -443,8 +487,8 @@
   },
   "j_conv": {
    "title": "Actual convective heat flux",
-   "group": 4,
-   "group_name": "Max power",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "W m-2",
    "colour": "magma",
    "display": [
@@ -482,6 +526,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 5,
    "info": {
     "summary": "Heat carried up from the surface by rising air and evaporation.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variables: surface latent heat flux (slhf, 147), surface sensible heat flux (sshf, 146).",
@@ -495,8 +541,8 @@
   },
   "j_ratio": {
    "title": "Actual \u00f7 max-power flux",
-   "group": 4,
-   "group_name": "Max power",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "ratio",
    "colour": "balance",
    "display": [
@@ -532,8 +578,10 @@
     "climate"
    ],
    "default_mode": "climate",
+   "advanced": false,
+   "menu_order": 3,
    "info": {
-    "summary": "Actual surface heat flux \u00f7 maximum-power flux: is the land near maximum power?",
+    "summary": "How close the land's convection is to its maximum-power flux (actual \u00f7 optimum).",
     "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variables: slhf (147), sshf (146), ssr (176).",
     "formula": "r_J = (LE + H) / J_opt, with J_opt = R_s / 2",
     "sign": "A ratio. 1 means the surface runs exactly at maximum power.",
@@ -545,8 +593,8 @@
   },
   "lh": {
    "title": "Latent heat flux",
-   "group": 5,
-   "group_name": "Surface split",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "W m-2",
    "colour": "deep",
    "display": [
@@ -584,8 +632,10 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 6,
    "info": {
-    "summary": "Latent heat flux: energy carried up in evaporated water.",
+    "summary": "Heat carried up in evaporated water (latent heat flux).",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: surface latent heat flux (slhf, parameter 147).",
     "formula": "LE = \u2212slhf",
     "sign": "Positive upward: heat leaving the surface. ECMWF stores fluxes as positive downward; the sign is flipped.",
@@ -597,8 +647,8 @@
   },
   "sh": {
    "title": "Sensible heat flux",
-   "group": 5,
-   "group_name": "Surface split",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "W m-2",
    "colour": "amp",
    "display": [
@@ -636,8 +686,10 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 7,
    "info": {
-    "summary": "Sensible heat flux: heat carried up by warm rising air.",
+    "summary": "Heat carried up by warm rising air (sensible heat flux).",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: surface sensible heat flux (sshf, parameter 146).",
     "formula": "H = \u2212sshf",
     "sign": "Positive upward: heat leaving the surface. ECMWF stores fluxes as positive downward; the sign is flipped.",
@@ -649,8 +701,8 @@
   },
   "evap_frac": {
    "title": "Evaporative fraction",
-   "group": 5,
-   "group_name": "Surface split",
+   "group": 1,
+   "group_name": "Engine one: surface to sky",
    "units": "0-1",
    "colour": "BrBG",
    "display": [
@@ -688,6 +740,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 4,
    "info": {
     "summary": "Share of the surface heat flux that goes into evaporation.",
     "source": "Derived. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variables: slhf (147), sshf (146).",
@@ -701,8 +755,8 @@
   },
   "wind10": {
    "title": "Wind 10 m",
-   "group": 6,
-   "group_name": "Output",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "m s-1",
    "colour": "viridis",
    "display": [
@@ -735,6 +789,8 @@
     "today"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 17,
    "info": {
     "summary": "Wind speed 10 m above the surface.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily mean of hourly values. Variables: 10 m u and v wind (u10, v10; parameters 165, 166).",
@@ -748,8 +804,8 @@
   },
   "wind100": {
    "title": "Wind 100 m",
-   "group": 6,
-   "group_name": "Output",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "m s-1",
    "colour": "viridis",
    "display": [
@@ -782,6 +838,8 @@
     "today"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 18,
    "info": {
     "summary": "Wind speed 100 m above the surface, about the hub height of wind turbines.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily mean of hourly values. Variables: 100 m u and v wind (u100, v100; parameters 228246, 228247).",
@@ -795,8 +853,8 @@
   },
   "jet250": {
    "title": "Jet stream 250 hPa",
-   "group": 6,
-   "group_name": "Output",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "m s-1",
    "colour": "viridis",
    "display": [
@@ -829,8 +887,10 @@
     "today"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 12,
    "info": {
-    "summary": "Jet stream: wind speed at 250 hPa, about 10 km up.",
+    "summary": "Fast winds about 10 km up (jet stream, wind speed at 250 hPa).",
     "source": "ERA5 pressure-level daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily mean. Variables: u and v wind at 250 hPa (parameters 131, 132).",
     "formula": "speed = \u221a(u\u00b2 + v\u00b2)",
     "sign": "Not applicable (a speed).",
@@ -842,8 +902,8 @@
   },
   "ke_col": {
    "title": "Column kinetic energy",
-   "group": 6,
-   "group_name": "Output",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "MJ m-2",
    "colour": "magma",
    "display": [
@@ -881,6 +941,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 11,
    "info": {
     "summary": "Kinetic energy of the air in the whole column.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily mean of hourly values. Variable: vertical integral of kinetic energy (parameter 162059), J m\u207b\u00b2 \u00f7 10\u2076.",
@@ -894,8 +956,8 @@
   },
   "diss_bl": {
    "title": "Boundary-layer dissipation",
-   "group": 6,
-   "group_name": "Output",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
    "colour": "magma",
    "display": [
@@ -933,8 +995,10 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 16,
    "info": {
-    "summary": "Boundary-layer dissipation: wind energy turned back into heat by friction.",
+    "summary": "Wind energy turned back into heat by friction near the ground (boundary-layer dissipation).",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variable: boundary layer dissipation (bld, parameter 145).",
     "formula": "D_BL = bld",
     "sign": "Positive: kinetic energy converted to heat.",
@@ -946,7 +1010,7 @@
   },
   "tcwv": {
    "title": "Column water vapour",
-   "group": 7,
+   "group": 4,
    "group_name": "Water",
    "units": "kg m-2",
    "colour": "rain",
@@ -985,6 +1049,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 21,
    "info": {
     "summary": "Water vapour in the whole column.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily mean of hourly values. Variable: total column water vapour (tcwv, parameter 137).",
@@ -998,7 +1064,7 @@
   },
   "precip": {
    "title": "Precipitation",
-   "group": 7,
+   "group": 4,
    "group_name": "Water",
    "units": "mm day-1",
    "colour": "rain",
@@ -1037,6 +1103,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 20,
    "info": {
     "summary": "Precipitation: where water vapour condensed and released its latent heat.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations. Variable: total precipitation (tp, parameter 228).",
@@ -1050,7 +1118,7 @@
   },
   "p_lift": {
    "title": "Power lifting water (indicative)",
-   "group": 7,
+   "group": 4,
    "group_name": "Water",
    "units": "W m-2",
    "colour": "deep",
@@ -1089,6 +1157,8 @@
     "anom"
    ],
    "default_mode": "today",
+   "advanced": true,
+   "menu_order": 22,
    "info": {
     "summary": "Power spent lifting water that falls as rain (indicative).",
     "source": "Derived from precipitation. ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day. Variable: tp (parameter 228).",
@@ -1102,8 +1172,8 @@
   },
   "div_e": {
    "title": "Divergence of total energy flux (smoothed)",
-   "group": 8,
-   "group_name": "Transport",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
    "colour": "balance",
    "display": "auto",
@@ -1138,6 +1208,8 @@
     "anom"
    ],
    "default_mode": "climate",
+   "advanced": false,
+   "menu_order": 9,
    "info": {
     "summary": "Where the atmosphere exports (positive) or imports (negative) energy.",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily mean of hourly values. Variable: vertical integral of divergence of total energy flux (parameter 162086), smoothed.",
@@ -1151,8 +1223,8 @@
   },
   "flux_e": {
    "title": "Divergent energy transport",
-   "group": 8,
-   "group_name": "Transport",
+   "group": 2,
+   "group_name": "Engine two: tropics to poles",
    "units": "W m-1",
    "colour": "cividis",
    "display": "auto",
@@ -1182,6 +1254,8 @@
     "today"
    ],
    "default_mode": "today",
+   "advanced": false,
+   "menu_order": 10,
    "info": {
     "summary": "Energy transported by the atmosphere, from sources to sinks.",
     "source": "Derived from the smoothed divergence of total energy flux (see that layer). ERA5 parameter 162086.",
@@ -1195,7 +1269,7 @@
   },
   "human_q": {
    "title": "Human energy use density",
-   "group": 9,
+   "group": 5,
    "group_name": "Humans",
    "units": "W m-2",
    "colour": "magma",
@@ -1221,6 +1295,8 @@
    "hatch_zero": false,
    "modes": [],
    "default_mode": null,
+   "advanced": false,
+   "menu_order": 23,
    "info": {
     "summary": "Human energy use per area.",
     "source": "Gridded anthropogenic heat flux dataset (to be chosen, see the project's decisions log).",
@@ -1234,7 +1310,7 @@
   },
   "human_ratio": {
    "title": "Human \u00f7 natural dissipation",
-   "group": 9,
+   "group": 5,
    "group_name": "Humans",
    "units": "ratio",
    "colour": "balance",
@@ -1260,6 +1336,8 @@
    "hatch_zero": false,
    "modes": [],
    "default_mode": null,
+   "advanced": false,
+   "menu_order": 24,
    "info": {
     "summary": "Human energy use compared with the wind's frictional dissipation.",
     "source": "Derived: human energy use (see that layer) and ERA5 boundary layer dissipation (bld, 145).",
@@ -1273,8 +1351,8 @@
   },
   "net_sfc": {
    "title": "Net heat into the surface",
-   "group": 10,
-   "group_name": "Ocean",
+   "group": 3,
+   "group_name": "The ocean",
    "units": "W m-2",
    "colour": "balance",
    "display": [
@@ -1312,13 +1390,15 @@
     "anom"
    ],
    "default_mode": "climate",
+   "advanced": false,
+   "menu_order": 19,
    "info": {
     "summary": "Net heat into the surface: the ocean charging (positive) or discharging (negative).",
     "source": "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day: daily sum of hourly accumulations, divided by 86 400 s. Variables: ssr (176), str (177), slhf (147), sshf (146). Same-day sums, so the four terms close exactly.",
     "formula": "Q_net = ssr \u2212 lw_up \u2212 LE \u2212 H, with lw_up = \u2212str, LE = \u2212slhf and H = \u2212sshf",
     "sign": "Positive: energy flowing into the surface (it warms or stores heat). Negative: the surface gives energy up. The three loss terms are flipped from ECMWF's downward-positive convention, as in the other flux layers.",
     "meaning": "The ocean is the engine's store and its second carrier of heat. It charges in the tropics and in summer, and discharges at high latitudes and in winter, and currents carry the difference between them. Over land the annual mean is near zero, because land stores little heat.",
-    "caveats": "Daily values swing with the seasons and the weather; the annual mean over the ocean is a few W m\u207b\u00b2 and ERA5 does not close the budget exactly. Dates built before longwave was added to the daily fetch have no value.",
+    "caveats": "Daily values swing with the seasons and the weather. ERA5's surface fluxes do not close against the top-of-atmosphere budget: in the 1991\u20132020 annual mean the global average is about +5 W m\u207b\u00b2 (about +7 over the ocean, about +1 over land), while the top-of-atmosphere imbalance is about +0.5 W m\u207b\u00b2. Read absolute ocean values with a bias of a few W m\u207b\u00b2 in mind; the patterns and the seasonal cycle are what to trust. Dates built before longwave was added to the daily fetch have no value.",
     "mask": null,
     "anomaly": "Daily value minus the 1991\u20132020 mean for the same calendar month, from ERA5 monthly means (reanalysis-era5-single-levels-monthly-means). Exact: the layer is linear in its inputs, so the mean of the layer is the layer of the means."
    }

@@ -37,7 +37,8 @@ export interface Zonal {
   olr: number[];
   net_toa: number[];
   skt: number[];
-  transport_total: number[]; // PW at the 361 cell edges
+  // PW, northward positive, at the 361 cell edges. North first, like `lat`: index 0 is the north pole.
+  transport_total: number[];
   transport_atm: number[];
   transport_ocean?: number[]; // Year frame only
   global: ZonalGlobal;
@@ -94,6 +95,9 @@ export function loadZonal(url: string, fetcher: typeof fetch = fetch): Promise<Z
   }
   return p;
 }
+
+/** A north-first array turned south-first, so x rises with latitude. */
+const south = (a: number[]) => [...a].reverse();
 
 /** An element of an array whose length the caller has checked. */
 const at = (a: number[], i: number) => a[i] as number;
@@ -236,15 +240,14 @@ export interface PanelData {
 
 /** What the two charts plot, ordered south to north so x rises. */
 export function panelData(z: Zonal): PanelData {
-  const south = (a: number[]) => [...a].reverse();
   return {
     x: south(z.lat).map(sinLat),
     asr: south(z.asr_toa),
     olr: south(z.olr),
     ex: edgeLats(z.lat).map(sinLat),
-    total: z.transport_total,
-    atm: z.transport_atm,
-    ocean: z.transport_ocean ?? null,
+    total: south(z.transport_total),
+    atm: south(z.transport_atm),
+    ocean: z.transport_ocean ? south(z.transport_ocean) : null,
   };
 }
 
@@ -269,8 +272,8 @@ export function summaryLines(z: Zonal): string[] {
     out.push('Absorbed sunlight and radiated heat do not cross.');
   }
   const lats = edgeLats(z.lat);
-  const rows: [string, number[]][] = [['total', z.transport_total], ['atmosphere', z.transport_atm]];
-  if (z.transport_ocean) rows.push(['ocean', z.transport_ocean]);
+  const rows: [string, number[]][] = [['total', south(z.transport_total)], ['atmosphere', south(z.transport_atm)]];
+  if (z.transport_ocean) rows.push(['ocean', south(z.transport_ocean)]);
   for (const [name, e] of rows) {
     const n = peakTransport(e, lats, 1);
     const s = peakTransport(e, lats, -1);

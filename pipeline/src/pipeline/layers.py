@@ -33,67 +33,87 @@ class LayerSpec:
     hatch_zero: bool = False  # cells clamped at exactly 0 are hatched (carnot)
     modes: tuple[str, ...] = ()  # the UI timescales offered: climate, today, anom (set below)
     default_mode: str | None = None
+    advanced: bool = False  # technical layers sit under "More layers" in the menu (set below)
+    menu_order: int = 0  # position in the menu, from MENU (set below)
 
 
 GROUPS = {
-    1: "Fuel",
-    2: "Exhaust",
-    3: "Limits",
-    4: "Max power",
-    5: "Surface split",
-    6: "Output",
-    7: "Water",
-    8: "Transport",
-    9: "Humans",
-    10: "Ocean",
+    1: "Engine one: surface to sky",
+    2: "Engine two: tropics to poles",
+    3: "The ocean",
+    4: "Water",
+    5: "Humans",
 }
+
+# One line under each group header in the menu.
+GROUP_BLURBS = {
+    1: "Sunlight heats the surface; convection lifts the heat away and does work on the way.",
+    2: "Heat flows from the tropics to the poles, and the flow drives winds and jet streams.",
+    3: "The ocean stores heat and carries part of the transport. ERA5's surface budget.",
+    4: "Water carries heat up as vapour and gives it back as rain.",
+    5: "Human energy use against nature's. Not available yet.",
+}
+
+# The menu order, plain layers before the technical ones of each group (F10). Layer IDs and
+# the order of LAYERS are unchanged: the point-chunk field order follows LAYERS.
+MENU = (
+    "asr_sfc", "carnot", "g_max", "j_ratio", "evap_frac", "j_conv", "lh", "sh",
+    "net_toa", "div_e", "flux_e", "ke_col", "jet250", "asr_toa", "olr", "t_emit", "diss_bl",
+    "wind10", "wind100",
+    "net_sfc",
+    "precip", "tcwv", "p_lift",
+    "human_q", "human_ratio",
+)  # fmt: skip
+ADVANCED = (
+    "j_conv", "lh", "sh", "asr_toa", "olr", "t_emit", "diss_bl", "wind10", "wind100", "p_lift",
+)  # fmt: skip
 
 _W = "W m-2"
 
 # Encode ranges come from physical limits and the 2026-10-01 data (see docs/DECISIONS.md).
 _SPECS = [
-    LayerSpec("asr_toa", "Absorbed solar, TOA", 1, _W, "inferno", (0, 450), (0, 600)),
+    LayerSpec("asr_toa", "Absorbed solar, TOA", 2, _W, "inferno", (0, 450), (0, 600)),
     LayerSpec("asr_sfc", "Absorbed solar, surface", 1, _W, "inferno", (0, 350), (0, 500)),
     LayerSpec(
-        "net_toa", "Net radiation, TOA", 1, _W, "balance", (-200, 200), (-400, 400), centre=0
+        "net_toa", "Net radiation, TOA", 2, _W, "balance", (-200, 200), (-400, 400), centre=0
     ),
     LayerSpec("olr", "Outgoing longwave", 2, _W, "thermal", (100, 320), (50, 400)),
     LayerSpec(
         "t_emit", "Effective emission temperature", 2, "K", "thermal", (200, 290), (150, 300)
     ),
-    LayerSpec("carnot", "Local Carnot limit", 3, "%", "viridis", (0, 30), (0, 45), hatch_zero=True),
-    LayerSpec("g_max", "Maximum convective power", 3, _W, "magma", (0, 15), (0, 60)),
-    LayerSpec("j_conv", "Actual convective heat flux", 4, _W, "magma", (0, 300), (-300, 1500)),
+    LayerSpec("carnot", "Local Carnot limit", 1, "%", "viridis", (0, 30), (0, 45), hatch_zero=True),
+    LayerSpec("g_max", "Maximum convective power", 1, _W, "magma", (0, 15), (0, 60)),
+    LayerSpec("j_conv", "Actual convective heat flux", 1, _W, "magma", (0, 300), (-300, 1500)),
     LayerSpec(
-        "j_ratio", "Actual ÷ max-power flux", 4, "ratio", "balance", (0, 2), (-50, 50), centre=1
+        "j_ratio", "Actual ÷ max-power flux", 1, "ratio", "balance", (0, 2), (-50, 50), centre=1
     ),
-    LayerSpec("lh", "Latent heat flux", 5, _W, "deep", (0, 300), (-200, 1200)),
-    LayerSpec("sh", "Sensible heat flux", 5, _W, "amp", (-50, 150), (-300, 600)),
-    LayerSpec("evap_frac", "Evaporative fraction", 5, "0-1", "BrBG", (0, 1), (-20, 20)),
-    LayerSpec("wind10", "Wind 10 m", 6, "m s-1", "viridis", (0, 25), (0, 90), uv_encode=(-60, 60)),
+    LayerSpec("lh", "Latent heat flux", 1, _W, "deep", (0, 300), (-200, 1200)),
+    LayerSpec("sh", "Sensible heat flux", 1, _W, "amp", (-50, 150), (-300, 600)),
+    LayerSpec("evap_frac", "Evaporative fraction", 1, "0-1", "BrBG", (0, 1), (-20, 20)),
+    LayerSpec("wind10", "Wind 10 m", 2, "m s-1", "viridis", (0, 25), (0, 90), uv_encode=(-60, 60)),
     LayerSpec(
-        "wind100", "Wind 100 m", 6, "m s-1", "viridis", (0, 30), (0, 120), uv_encode=(-80, 80)
+        "wind100", "Wind 100 m", 2, "m s-1", "viridis", (0, 30), (0, 120), uv_encode=(-80, 80)
     ),
     LayerSpec(
         "jet250",
         "Jet stream 250 hPa",
-        6,
+        2,
         "m s-1",
         "viridis",
         (0, 80),
         (0, 220),
         uv_encode=(-150, 150),
     ),  # fmt: skip
-    LayerSpec("ke_col", "Column kinetic energy", 6, "MJ m-2", "magma", (0, 6), (0, 40)),
+    LayerSpec("ke_col", "Column kinetic energy", 2, "MJ m-2", "magma", (0, 6), (0, 40)),
     LayerSpec(
-        "diss_bl", "Boundary-layer dissipation", 6, _W, "magma", (0.01, 20), (1e-4, 1e3), log=True
+        "diss_bl", "Boundary-layer dissipation", 2, _W, "magma", (0.01, 20), (1e-4, 1e3), log=True
     ),
-    LayerSpec("tcwv", "Column water vapour", 7, "kg m-2", "rain", (0, 70), (0, 120)),
-    LayerSpec("precip", "Precipitation", 7, "mm day-1", "rain", (0.1, 100), (1e-3, 1e3), log=True),
+    LayerSpec("tcwv", "Column water vapour", 4, "kg m-2", "rain", (0, 70), (0, 120)),
+    LayerSpec("precip", "Precipitation", 4, "mm day-1", "rain", (0.1, 100), (1e-3, 1e3), log=True),
     LayerSpec(
         "p_lift",
         "Power lifting water (indicative)",
-        7,
+        4,
         _W,
         "deep",
         (0.01, 10),
@@ -103,7 +123,7 @@ _SPECS = [
     LayerSpec(
         "div_e",
         "Divergence of total energy flux (smoothed)",
-        8,
+        2,
         _W,
         "balance",
         None,
@@ -113,7 +133,7 @@ _SPECS = [
     LayerSpec(
         "flux_e",
         "Divergent energy transport",
-        8,
+        2,
         "W m-1",
         "cividis",
         None,
@@ -123,7 +143,7 @@ _SPECS = [
     LayerSpec(
         "human_q",
         "Human energy use density",
-        9,
+        5,
         _W,
         "magma",
         (0.001, 100),
@@ -134,7 +154,7 @@ _SPECS = [
     LayerSpec(
         "human_ratio",
         "Human ÷ natural dissipation",
-        9,
+        5,
         "ratio",
         "balance",
         (1e-4, 10),
@@ -147,7 +167,7 @@ _SPECS = [
     LayerSpec(
         "net_sfc",
         "Net heat into the surface",
-        10,
+        3,
         _W,
         "balance",
         (-200, 200),
@@ -217,6 +237,8 @@ def _complete(s: LayerSpec) -> LayerSpec:
         extra["anomaly_display"] = (-shown, shown)
         extra["anomaly_colour"] = "BrBG" if s.id in WATER_ANOMALY else "balance"
     extra["modes"], extra["default_mode"] = _modes(s)
+    extra["advanced"] = s.id in ADVANCED
+    extra["menu_order"] = MENU.index(s.id)
     return LayerSpec(**{**s.__dict__, **extra})
 
 

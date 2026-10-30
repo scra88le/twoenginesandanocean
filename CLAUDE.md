@@ -35,7 +35,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /web/src/layers        raster.ts, particles.ts, arrows.ts
 /web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
 /web/tests/fixtures    PNGs from the real encoder, for decoder tests
-/web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds, zonal JSON for the 13 frames and two dates) for the Playwright tests
+/web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds, zonal JSON for the 13 frames and two dates, 15 built layers with Climate views for the tour's) for the Playwright tests
 /pipeline/scripts      export_colormaps.py (writes web/src/colormap-tables.json), make_web_fixtures.py
 /story                 01-fuel.md … 09-explore.md  (story-mode cards: front matter for the step's layer, overlays and view, then 60–100 words of text)
 /docs/DECISIONS.md     log of deviations and choices made during the build
@@ -137,35 +137,35 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 
 ## Layer catalogue
 
-25 layers in 10 groups (the 9 story groups and Ocean). Inputs are ERA5 short names, or the converted names `olr`, `le`, `h` and `lw_up` for the four sign-flipped fields. **Range** is the *display* range. The *encode* range is separate and fixed (see **Encoding**). "auto" means the display range is the day's 2nd–98th percentile, symmetric about zero for diverging scales; the encode range is still fixed.
+25 layers in 5 groups (Engine one: surface to sky; Engine two: tropics to poles; The ocean; Water; Humans). Technical layers are `advanced` and sit under "More layers" in the menu (`pipeline.layers.ADVANCED`; menu order `MENU`). Inputs are ERA5 short names, or the converted names `olr`, `le`, `h` and `lw_up` for the four sign-flipped fields. **Range** is the *display* range. The *encode* range is separate and fixed (see **Encoding**). "auto" means the display range is the day's 2nd–98th percentile, symmetric about zero for diverging scales; the encode range is still fixed.
 
 | ID | Layer | Group | Inputs | Units | Colour scale | Range |
 | --- | --- | --- | --- | --- | --- | --- |
-| `asr_toa` | Absorbed solar, TOA | 1 Fuel | `tsr` | W m⁻² | inferno | 0–450 |
-| `asr_sfc` | Absorbed solar, surface | 1 Fuel | `ssr` | W m⁻² | inferno | 0–350 |
-| `net_toa` | Net radiation, TOA | 1 Fuel | `tsr` − `olr` | W m⁻² | balance | −200 to 200 |
-| `olr` | Outgoing longwave | 2 Exhaust | `olr` | W m⁻² | thermal | 100–320 |
-| `t_emit` | Effective emission temperature | 2 Exhaust | derived (`olr`) | K | thermal | 200–290 |
-| `carnot` | Carnot limit | 3 Limits | derived (`skt`, `tsr`) | % | viridis | 0–30 |
-| `g_max` | Maximum convective power | 3 Limits | derived (`ssr`, `skt`, `tsr`) | W m⁻² | magma | 0–15 |
-| `j_conv` | Actual convective heat flux | 4 Max power | `le` + `h` | W m⁻² | magma | 0–300 |
-| `j_ratio` | Actual ÷ max-power flux | 4 Max power | derived | ratio | balance, centred on 1 | 0–2 |
-| `lh` | Latent heat flux | 5 Surface split | `le` | W m⁻² | deep | 0–300 |
-| `sh` | Sensible heat flux | 5 Surface split | `h` | W m⁻² | amp | −50 to 150 |
-| `evap_frac` | Evaporative fraction | 5 Surface split | `le`, `h` | 0–1 | BrBG | 0–1 |
-| `wind10` | Wind 10 m | 6 Output | `u10`, `v10` | m s⁻¹ | viridis | 0–25 |
-| `wind100` | Wind 100 m | 6 Output | `u100`, `v100` | m s⁻¹ | viridis | 0–30 |
-| `jet250` | Jet stream 250 hPa | 6 Output | `u`, `v` @250 hPa | m s⁻¹ | viridis | 0–80 |
-| `ke_col` | Column kinetic energy | 6 Output | `p59.162` | MJ m⁻² | magma | 0–6 |
-| `diss_bl` | Boundary-layer dissipation | 6 Output | `bld` | W m⁻² | magma, log | 0.01–20 |
-| `tcwv` | Column water vapour | 7 Water | `tcwv` | kg m⁻² | rain | 0–70 |
-| `precip` | Precipitation | 7 Water | `tp` | mm day⁻¹ | rain, log | 0.1–100 |
-| `p_lift` | Power lifting water (indicative) | 7 Water | derived (`tp`) | W m⁻² | deep, log | 0.01–10 |
-| `div_e` | Divergence of total energy flux (smoothed) | 8 Transport | derived (`p86.162`) | W m⁻² | balance | auto |
-| `flux_e` | Divergent energy transport (arrows) | 8 Transport | derived (`div_e`) | W m⁻¹ | cividis | auto |
-| `human_q` | Human energy use density | 9 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
-| `human_ratio` | Human ÷ natural dissipation | 9 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
-| `net_sfc` | Net heat into the surface | 10 Ocean | `ssr` − `lw_up` − `le` − `h` | W m⁻² | balance | −200 to 200 |
+| `asr_toa` | Absorbed solar, TOA | 2 Engine two | `tsr` | W m⁻² | inferno | 0–450 |
+| `asr_sfc` | Absorbed solar, surface | 1 Engine one | `ssr` | W m⁻² | inferno | 0–350 |
+| `net_toa` | Net radiation, TOA | 2 Engine two | `tsr` − `olr` | W m⁻² | balance | −200 to 200 |
+| `olr` | Outgoing longwave | 2 Engine two | `olr` | W m⁻² | thermal | 100–320 |
+| `t_emit` | Effective emission temperature | 2 Engine two | derived (`olr`) | K | thermal | 200–290 |
+| `carnot` | Carnot limit | 1 Engine one | derived (`skt`, `tsr`) | % | viridis | 0–30 |
+| `g_max` | Maximum convective power | 1 Engine one | derived (`ssr`, `skt`, `tsr`) | W m⁻² | magma | 0–15 |
+| `j_conv` | Actual convective heat flux | 1 Engine one | `le` + `h` | W m⁻² | magma | 0–300 |
+| `j_ratio` | Actual ÷ max-power flux | 1 Engine one | derived | ratio | balance, centred on 1 | 0–2 |
+| `lh` | Latent heat flux | 1 Engine one | `le` | W m⁻² | deep | 0–300 |
+| `sh` | Sensible heat flux | 1 Engine one | `h` | W m⁻² | amp | −50 to 150 |
+| `evap_frac` | Evaporative fraction | 1 Engine one | `le`, `h` | 0–1 | BrBG | 0–1 |
+| `wind10` | Wind 10 m | 2 Engine two | `u10`, `v10` | m s⁻¹ | viridis | 0–25 |
+| `wind100` | Wind 100 m | 2 Engine two | `u100`, `v100` | m s⁻¹ | viridis | 0–30 |
+| `jet250` | Jet stream 250 hPa | 2 Engine two | `u`, `v` @250 hPa | m s⁻¹ | viridis | 0–80 |
+| `ke_col` | Column kinetic energy | 2 Engine two | `p59.162` | MJ m⁻² | magma | 0–6 |
+| `diss_bl` | Boundary-layer dissipation | 2 Engine two | `bld` | W m⁻² | magma, log | 0.01–20 |
+| `tcwv` | Column water vapour | 4 Water | `tcwv` | kg m⁻² | rain | 0–70 |
+| `precip` | Precipitation | 4 Water | `tp` | mm day⁻¹ | rain, log | 0.1–100 |
+| `p_lift` | Power lifting water (indicative) | 4 Water | derived (`tp`) | W m⁻² | deep, log | 0.01–10 |
+| `div_e` | Divergence of total energy flux (smoothed) | 2 Engine two | derived (`p86.162`) | W m⁻² | balance | auto |
+| `flux_e` | Divergent energy transport (arrows) | 2 Engine two | derived (`div_e`) | W m⁻¹ | cividis | auto |
+| `human_q` | Human energy use density | 5 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
+| `human_ratio` | Human ÷ natural dissipation | 5 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
+| `net_sfc` | Net heat into the surface | 3 Ocean | `ssr` − `lw_up` − `le` − `h` | W m⁻² | balance | −200 to 200 |
 
 - Every natural layer has an anomaly variant (`{layer}_anom`; `net_sfc` once the `str` climatology is in), **except the four vector layers** (`wind10`, `wind100`, `jet250`, `flux_e`): monthly means only give the speed of the mean vector, far below the mean of daily speeds (+1.8 m/s bias at 10 m, August 2026), so there is no honest climatology for them (decided 2026-10-19). Human layers have none either. That leaves 19 layers with anomalies (`pipeline.layers.ANOMALY`).
 - `p_lift` must be labelled "indicative" in the UI.
@@ -182,16 +182,16 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 | Layer | Formula | Notes |
 | --- | --- | --- |
 | `t_emit` | T_e = (OLR / σ)^(1/4) | |
-| `carnot` | η_C = (T_s − T_r) / T_s; T_r = (⟨ASR_TOA⟩ / σ)^¼ | T_r is Kleidon's radiative temperature of the whole system (about 255 K): ⟨ASR_TOA⟩ is the area-weighted global mean of `tsr` for the same frame (day, month or year), published in the manifest (`radiative`, `clim.radiative`). Never use local ASR. Clamp < 0 to 0 and render clamped cells hatched. Clamped cells are exactly 0 (the lowest valid code), which is how the front end finds them |
-| `g_max` | J_opt = R_s / 2; G_max = R_s² / (4 k_r T_s); k_r = 4σT_r³ | Clip T_r to 230–290 K in k_r (a no-op). Kleidon & Renner single-column model. Land only. |
-| `j_ratio` | r_J = (LE + H) / J_opt | Land only; grey out ocean and sea ice (the model ignores heat storage). Also masked where R_s < 10 W m⁻², where J_opt → 0 and the ratio is meaningless |
-| `net_sfc` | Q = R_s − lw_up − LE − H | No mask. Needs `lw_up` (`str`); a date without it has no `net_sfc` |
-| `evap_frac` | EF = LE / (LE + H) | Mask where LE + H < 10 W m⁻² |
-| `p_lift` | P_lift = P · g · h_lift | P in kg m⁻² s⁻¹; `h_lift` is a config value, default 3000 m, shown in the info panel |
+| `carnot` | η_C = (T_s − T_r) / T_s; T_r = (⟨ASR_TOA⟩ / σ)^¼ | 1 Engine one
+| `g_max` | J_opt = R_s / 2; G_max = R_s² / (4 k_r T_s); k_r = 4σT_r³ | 1 Engine one
+| `j_ratio` | r_J = (LE + H) / J_opt | 1 Engine one
+| `net_sfc` | Q = R_s − lw_up − LE − H | 3 Ocean
+| `evap_frac` | EF = LE / (LE + H) | 1 Engine one
+| `p_lift` | P_lift = P · g · h_lift | 4 Water
 | wind speed | √(u² + v²) | Keep u, v for the particle texture |
-| `human_ratio` | r_H = q_human / D_BL | Mask where `bld` < 0.01 W m⁻² |
-| `div_e` | (1 − L²∇²) D_s = D, with D = `p86.162` | Implicit diffusion on the sphere: isotropic, preserves the global mean, no pole problem. L is a config value (`smooth_length_m`, default 100 km, tuned 2026-10-18) shown in the info panel. It removes grid-scale noise only; the weather-scale structure left on a given day is real (see `docs/DECISIONS.md`) |
-| `flux_e` | ∇²χ = D_s − ⟨D_s⟩; F_div = ∇χ | Divergent part of the energy flux, so arrows point from sources to sinks. ⟨·⟩ is the area-weighted global mean, removed so the equation is solvable. The info panel says the circulating part is left out |
+| `human_ratio` | r_H = q_human / D_BL | 5 Humans
+| `div_e` | (1 − L²∇²) D_s = D, with D = `p86.162` | 2 Engine two
+| `flux_e` | ∇²χ = D_s − ⟨D_s⟩; F_div = ∇χ | 2 Engine two
 
 **Spherical solver for `div_e` and `flux_e`.** One finite-volume operator on the 0.5° grid (earth radius a = 6.371e6 m): FFT in longitude, then a tridiagonal solve in latitude for each zonal wavenumber. Fluxes through the pole edges are zero because cos(±90°) = 0. The same operator gives both the smoothing and the Poisson solve.
 
@@ -296,7 +296,7 @@ Full-bleed dark map with six overlays:
 
 ### Layer menu
 
-- Layers grouped by the 9 story groups, each with a one-line description and an (i) info button.
+- Layers in the 5 groups of the catalogue, each group with a one-line explanation (manifest `groups`), each layer with a one-line description (plain name first) and an (i) info button. `advanced` layers are collapsed under "More layers" in each group; the group opens by itself when the active layer is one of them.
 - One raster active at a time.
 - Overlay toggles:
   - Wind particles, with a level selector (10 m / 100 m / 250 hPa), usable over any raster.
@@ -378,20 +378,27 @@ The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is 
 
 ### Story mode
 
-"Take the tour" (a button at the top of the layer menu; `?tour=N` opens it at step N) runs 9 steps. Each step sets the layer, overlays and view, and shows a card from `/story/NN-*.md`.
+"Take the tour" (a button at the top of the layer menu; `?tour=N` opens it at step N) runs 12 steps in an opening, three chapters and a close, set by each card's `chapter`. Each step sets the layer, mode, frame, overlays, panel and view, and shows a card from `/story/NN-*.md`. All steps are Climate, Year unless noted.
 
-1. Fuel — `net_toa`, global
-2. Exhaust — `t_emit`
-3. Ceiling — `carnot`
-4. The feedback — `j_ratio`, land
-5. The split — `evap_frac`
-6. Output — `diss_bl` + 100 m particles
-7. Water — `precip`
-8. Transport — `div_e` + arrows
-9. Explore — `net_toa` + 10 m particles; click, time bar, anomaly (replaces "Humans — `human_ratio`, Europe", because milestone 11 was skipped)
+| # | Chapter | Title | Layer | Also |
+| --- | --- | --- | --- | --- |
+| 1 | Opening | Two engines and an ocean | `net_toa` | |
+| 2 | Engine one | Engine one: fuel | `asr_sfc` | |
+| 3 | Engine one | The ceiling | `carnot` | |
+| 4 | Engine one | Working at the limit | `j_ratio` | land view |
+| 5 | Engine one | The split | `evap_frac` | |
+| 6 | Engine two | Surplus and deficit | `net_toa` | zonal panel |
+| 7 | Engine two | Transport | `div_e` | arrows |
+| 8 | Engine two | Output | `ke_col` | Climate, January; mean-flow particles at 250 hPa |
+| 9 | The ocean | The ocean battery | `net_sfc` | Climate, July |
+| 10 | The ocean | The ocean's share | `net_sfc` | zonal panel |
+| 11 | Today | The engine today | `ke_col` | Today; 100 m particles |
+| 12 | Today | Explore | `net_toa` | switch, time bar, click |
 
-- **Cards** are Markdown files with a front matter block (`title`, `layer`, `particles` = `off` or a wind layer, `arrows` = `on`/`off`, `view` = `lng, lat, zoom`), then 60–100 words in paragraphs with `**bold**`, `*italic*` and `` `code` `` only. They are bundled at build time (`import.meta.glob`), so a card can't drift from the code that reads it, and are rendered as DOM text, never as HTML. Tests check each card's front matter, its word count and that its layer exists.
-- A step shows exactly what it lists: overlays it doesn't list are switched off, and the anomaly is always off. The map flies to the step's view (an instant jump for users who prefer reduced motion). Closing the tour, with × or Esc, or finishing it leaves the map as the last step left it.
+The numbers the cards quote were checked against the published data on 2026-10-30 (see `docs/DECISIONS.md`); change the wording, not the data, if they ever disagree.
+
+- **Cards** are Markdown files with a front matter block (`title`, `layer`, `mode` = `climate`/`today`/`anom` (default `today`), `frame` = `01`–`12` or `year` (required with `mode: climate`, rejected otherwise), `particles` = `off` or a wind layer (mean flow in Climate), `arrows` = `on`/`off`, `panel` = `zonal`/`none`, `chapter` (progress dots break where it changes), `view` = `lng, lat, zoom`), then 60–100 words in paragraphs with `**bold**`, `*italic*` and `` `code` `` only. They are bundled at build time (`import.meta.glob`), so a card can't drift from the code that reads it, and are rendered as DOM text, never as HTML. Tests check each card's front matter, its word count and that its layer exists.
+- A step shows exactly what it lists: its layer in its mode and frame, with overlays and the zonal panel it doesn't list switched off. The map flies to the step's view (an instant jump for users who prefer reduced motion). Closing the tour, with × or Esc, or finishing it leaves the map as the last step left it.
 - The card sits top-left, where the readout opens, and the readout moves below it while the tour is open. On phones it sits at the top beside the Layers button (scrolling if long), and the menu closes when the tour starts.
 - Back / Next, progress dots that jump to a step, and ← → on the card (they step the tour, not the date, while the card has focus). The last step's button says Finish.
 
@@ -458,6 +465,7 @@ Phone layout under 700 px:
 17. Climate overlays (docs/PROPOSALS-v2.md F3, F4): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Climate-mode arrows with the shared `flux_ref`, mean-flow particles at all three levels, frame changes reload both; desktop-only. Works against local `./out`; the bucket is still the mixed state of milestones 14–15.)
 
 18. Engine 2 and the global strip (docs/PROPOSALS-v2.md F7, F8): (**Done** 2026-10-30, see `docs/DECISIONS.md`. `web/src/zonal.ts`, `zonalpanel.ts`, `enginestrip.ts`; URL `panel=zonal`; desktop-only. Works against local `./out`: the daily `zonal/{date}.json` don't exist there until the final `rebuild`, and the bucket is still the mixed state of milestones 14–15.)
+19. Story and menu (docs/PROPOSALS-v2.md F9, F10): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Five menu groups with "More layers" for the advanced layers; twelve tour cards with `mode`, `frame`, `panel` and `chapter` front matter, chapter breaks in the dots, every quoted number checked against the data; desktop-only. Works against local `./out` once the manifest carries the new groups, which needs the next `rebuild`; the bucket is still the mixed state of milestones 14–15. The "How the engine works" button comes with milestone 20.)
 
 ## Acceptance criteria
 

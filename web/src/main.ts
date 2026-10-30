@@ -377,17 +377,24 @@ class App {
   }
 
   /**
-   * Show a story step: its layer with the anomaly off, its overlays, and fly to its view.
-   * (A step's overlays are exactly what it lists: anything not listed is switched off.)
+   * Show a story step: its layer in its mode and frame, its overlays and panel, and fly to its
+   * view. (A step shows exactly what it lists: overlays and the panel it doesn't list are off.)
+   * A mode the layer can't show falls back to its default, as everywhere else.
    */
   async showStep(step: StoryStep, level: ParticleChoice['level']): Promise<void> {
-    this.mode = 'today';
-    this.timebar?.setKind('dates');
+    this.mode = resolveMode(this.manifest, step.layer, step.mode).mode;
+    if (step.frame) this.frame = step.frame;
+    this.timebar?.setKind(this.mode === 'climate' ? 'frames' : 'dates');
+    this.timebar?.set(this.date, this.frame);
     this.particleChoice = { on: step.particles !== null, level: step.particles ?? level };
     this.arrowsOn = step.arrows;
+    if (step.panel) this.zonal.open();
+    else this.zonal.close();
     this.onStateChange?.();
     this.flyTo(step.view);
-    await Promise.all([this.select(step.layer), this.updateParticles(), this.updateArrows()]);
+    await Promise.all([
+      this.select(step.layer), this.updateParticles(), this.updateArrows(), this.updateReadout(), this.updateZonal(),
+    ]);
   }
 
   /** Move the map; reduced-motion users get a jump, as MapLibre does for non-essential moves. */
@@ -635,7 +642,7 @@ async function start(): Promise<void> {
     (step) => {
       overlays.set({ on: step.particles !== null, level: step.particles ?? overlays.choice.level });
       arrowSwitch.set(step.arrows);
-      modeSwitch.update('today', availableModes(manifest, step.layer));
+      zonalButton.setAttribute('aria-pressed', String(step.panel));
       void app.showStep(step, overlays.choice.level);
     },
     () => undefined, // closing keeps the map as the last step left it

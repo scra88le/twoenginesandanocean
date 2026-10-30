@@ -43,7 +43,7 @@ test('a point chunk gives every field at a cell, decoded to readout text', () =>
   expect(item('carnot').text).toBe('0.00 %');
   expect(item('j_opt')).toMatchObject({ text: '—' });
   expect(item('j_opt').note).toMatch(/^Ocean and sea ice/);
-  expect(item('asr_sfc').text).toBe('not available yet'); // not built in the fixtures
+  expect(item('g_max').text).toBe('not available yet'); // not built in the fixtures
   expect(item('human_q').text).toBe('not available yet');
 });
 

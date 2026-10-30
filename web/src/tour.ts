@@ -1,7 +1,7 @@
 // The guided tour: a card with Back / Next, a progress row, and the story step it shows.
 // The card only presents a step; what a step does to the map (layer, overlays, view) is the
 // callback's job, so the app stays the one place that changes the map.
-import { renderBody, type StoryStep } from './story';
+import { chapterBreaks, chapterOf, renderBody, type StoryStep } from './story';
 
 export class Tour {
   private index = -1;
@@ -37,11 +37,13 @@ export class Tour {
     this.back = root.querySelector('.tour-back')!;
     this.next = root.querySelector('.tour-next')!;
     const dots = root.querySelector('.tour-dots')!;
+    const breaks = chapterBreaks(steps);
     steps.forEach((s, i) => {
       const d = document.createElement('button');
       d.type = 'button';
-      d.className = 'tour-dot';
-      d.setAttribute('aria-label', `Step ${i + 1}: ${s.title}`);
+      d.className = breaks[i] ? 'tour-dot chapter-start' : 'tour-dot';
+      const chapter = chapterOf(steps, i);
+      d.setAttribute('aria-label', `Step ${i + 1}: ${s.title}${chapter ? ` (${chapter})` : ''}`);
       d.addEventListener('click', () => this.go(i));
       dots.append(d);
       this.dots.push(d);
@@ -81,7 +83,8 @@ export class Tour {
     if (index < 0 || index >= this.steps.length) return;
     this.index = index;
     const step = this.steps[index]!;
-    this.count.textContent = `Step ${index + 1} of ${this.steps.length}`;
+    const chapter = chapterOf(this.steps, index);
+    this.count.textContent = `Step ${index + 1} of ${this.steps.length}${chapter ? ` · ${chapter}` : ''}`;
     this.title.textContent = step.title;
     this.body.replaceChildren(...renderBody(step.body));
     this.back.disabled = index === 0;

@@ -30,8 +30,8 @@ test('the address bar follows the app: layer, date, view, overlays, mode, frame 
   expect(params(page).has('anom')).toBe(false);
   expect(params(page).has('debug')).toBe(true); // parameters the app doesn't own are kept
 
-  await page.locator('#menu input[value=t_emit]').check();
-  await expect.poll(() => params(page).get('layer')).toBe('t_emit');
+  await page.locator('#menu input[value=carnot]').check();
+  await expect.poll(() => params(page).get('layer')).toBe('carnot');
   await page.getByRole('button', { name: 'Previous month' }).click();
   await expect.poll(() => params(page).get('frame')).toBe('12'); // from Year, one step back
   await page.locator('.mode-today').check();
@@ -100,7 +100,7 @@ test('replaceState keeps the Back button for leaving the site, not for every pan
   await page.goto('/?particles=off&mode=today');
   await ready(page);
   const before = await page.evaluate(() => history.length);
-  await page.locator('#menu input[value=t_emit]').check();
+  await page.locator('#menu input[value=carnot]').check();
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect.poll(() => params(page).get('date')).toBe('2026-09-30');
   expect(await page.evaluate(() => history.length)).toBe(before);
@@ -120,6 +120,6 @@ test('?tour=N opens the tour once and is then dropped from the URL', async ({ pa
   await page.goto('/?particles=off&tour=2');
   await ready(page);
   await expect(page.locator('body')).toHaveAttribute('data-tour', '2');
-  await expect.poll(() => params(page).get('layer')).toBe('t_emit');
+  await expect.poll(() => params(page).get('layer')).toBe('asr_sfc'); // step 2: Engine one: fuel
   expect(params(page).has('tour')).toBe(false);
 });

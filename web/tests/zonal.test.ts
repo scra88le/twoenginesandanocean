@@ -117,20 +117,26 @@ test('the strip words each global mean, adds the two-box item in Year only, and 
   expect(stripItems(null, 'year').every((i) => i.formula && i.symbol && i.label)).toBe(true);
 });
 
-test('panel data runs south to north and the text names the surplus band and the peaks', () => {
+test('panel data runs south to north, including the north-first transport, and the text names the peaks', () => {
   const z = make(true);
   z.asr_toa = lat.map((l) => 300 * Math.cos((l * Math.PI) / 180));
   z.olr = n(360, 200);
-  z.transport_total = Array.from({ length: 361 }, (_, i) => 5 * Math.sin(((i / 360) * 2 - 1) * Math.PI * 0.99));
+  // north first, northward positive: the northern hemisphere carries heat north (index 0 is the pole)
+  z.transport_total = Array.from({ length: 361 }, (_, i) => 5 * Math.sin(((i / 360) * 2 - 1) * Math.PI * 0.99) * -1);
+  z.transport_ocean = n(361, 0.5);
   const d = panelData(z);
   expect(d.x[0]).toBeLessThan(d.x[359] as number);
   expect(d.ex).toHaveLength(361);
   expect(d.asr[180]).toBeGreaterThan(d.asr[0] as number);
   expect(d.ocean).toHaveLength(361);
+  expect(d.total[0]).toBeLessThan(0); // south pole end: southward in the south
+  expect(d.total[300]).toBeGreaterThan(0); // northward in the north
   expect(panelData(make(false)).ocean).toBeNull();
   const lines = summaryLines(z);
   expect(lines[0]).toMatch(/exceeds radiated heat between 4\d°S and 4\d°N/);
-  expect(lines.some((l) => l.startsWith('Peak total transport') && l.includes('PW northward'))).toBe(true);
+  const peak = lines.find((l) => l.startsWith('Peak total transport'))!;
+  expect(peak).toMatch(/PW northward at \d+°N/);
+  expect(peak).toMatch(/PW southward at \d+°S/);
   expect(lines.some((l) => l.startsWith('Peak ocean'))).toBe(true);
   expect(summaryLines(make(false))[0]).toMatch(/do not cross|cross at/);
 });

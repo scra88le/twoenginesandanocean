@@ -13,13 +13,16 @@
   uniform 30 m/s southerly (u = 0, v = 30) on the newest date; wind100 is a uniform 8 m/s
   easterly (u = -8) and flux_e a uniform 5e8 W m-1 eastward flux, both on the two newest
   dates only. The other layers the guided tour visits (j_ratio, evap_frac, diss_bl, precip,
-  div_e) are uniform scalars on every date: 1.0, 0.5, 2 W m-2, 3 mm/day and 0.
+  div_e, asr_sfc, ke_col, net_sfc) are uniform scalars on every date: 1.0, 0.5, 2 W m-2,
+  3 mm/day, 0, 150 W m-2, 2 MJ m-2 and 10 W m-2.
   Point chunks hold those layers plus the extras t_skin = 288 K (north) / 300 K (south) and
   j_opt = 100 W m-2 on land (the northern hemisphere) and masked at sea; series chunks are
   rebuilt from the PNGs, so t_emit at a cell steps by 5 K a day. Only the tiles in
   FIXTURE_TILES are kept (around 0.25 E, 35.25 S and 35.25 N), so the fixtures stay small; other
   tiles are missing on purpose. A climatology for t_emit (230 K), net_toa (0) and carnot
   (10%), the same every month, gives anomalies of t_emit - 230 K, the latitude, and +5 / -10.
+  The tour's other layers have one too (asr_sfc 160, evap_frac 0.5, div_e 0, ke_col 3, net_sfc 5),
+  so every card's layer has a Climate view.
   Climate vectors (clim/{frame}/*_uv.png): wind10 -4 m/s (+4 in July), wind100 +3, jet250 v = -20,
   flux_e 1e8 W m-1 eastward, with a shared arrow reference of 4e8.
 """
@@ -79,7 +82,11 @@ CLIM_UV = {
 }
 CLIM_FLUX_REF = 4e8
 
-CLIM = {"t_emit": 230.0, "net_toa": 0.0, "carnot": 10.0, "j_ratio": 1.0}
+CLIM = {
+    "t_emit": 230.0, "net_toa": 0.0, "carnot": 10.0, "j_ratio": 1.0,
+    # the layers of the twelve tour cards that are not above
+    "asr_sfc": 160.0, "evap_frac": 0.5, "div_e": 0.0, "ke_col": 3.0, "net_sfc": 5.0,
+}  # fmt: skip
 
 
 def clim_fixtures(data: Path) -> None:
@@ -144,7 +151,8 @@ def zonal_fixture(asr_mean: float, year: bool) -> dict:
     s = np.sin(np.radians(lat))
     asr = asr_mean + 60 * (1 - 3 * s**2)
     olr = np.full(360, asr_mean - 0.5) + 15 * (1 - 3 * s**2)
-    edges = np.sin(np.radians(np.linspace(-90, 90, 361)))
+    # north first, like the real files: index 0 is the north pole, northward positive
+    edges = np.sin(np.radians(np.linspace(90, -90, 361)))
     total = 5.0 * edges * (1 - edges**2) * 2.6
     atm = 0.85 * total
     r = lambda a: [round(float(x), 3) for x in a]  # noqa: E731
@@ -169,9 +177,16 @@ def zonal_fixture(asr_mean: float, year: bool) -> dict:
     if year:
         out["transport_ocean"] = r(total - atm)
         out["two_box"] = {
-            "r_tropics": 304.6, "r_poles": 180.8, "j_opt": 31.0, "t_tropics": 305.2,
-            "t_poles": 276.7, "delta_t": 28.5, "g_max": 1.45, "j_obs": 40.7,
-            "skt_tropics": 298.9, "skt_poles": 277.7,
+            "r_tropics": 304.6,
+            "r_poles": 180.8,
+            "j_opt": 31.0,
+            "t_tropics": 305.2,
+            "t_poles": 276.7,
+            "delta_t": 28.5,
+            "g_max": 1.45,
+            "j_obs": 40.7,
+            "skt_tropics": 298.9,
+            "skt_poles": 277.7,
         }
         out["global"]["g_max_two_box"] = 1.45
     return out
@@ -214,6 +229,9 @@ def e2e_fixtures() -> None:
             "diss_bl": np.full_like(lat, 2.0),
             "precip": np.full_like(lat, 3.0),
             "div_e": np.zeros_like(lat),
+            "asr_sfc": np.full_like(lat, 150.0),
+            "ke_col": np.full_like(lat, 2.0),
+            "net_sfc": np.full_like(lat, 10.0),
         }
         winds = (
             {"wind10": (10.0, 0.0), "wind100": (-8.0, 0.0), "flux_e": (5e8, 0.0)}
@@ -243,7 +261,11 @@ def e2e_fixtures() -> None:
         files.update(anomalies)
         points = {k: v for k, v in point_tiles(codes).items() if k in FIXTURE_TILES}
         publish_date(
-            data, day, files, built_at="2026-10-18T00:00:00Z", points=points,
+            data,
+            day,
+            files,
+            built_at="2026-10-18T00:00:00Z",
+            points=points,
             # the oldest date has no zonal file, as a date not yet rebuilt
             zonal=json.dumps(zonal_fixture(250.0 - older, False)).encode() if older <= 1 else None,
         )

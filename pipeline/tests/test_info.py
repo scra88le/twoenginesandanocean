@@ -65,3 +65,8 @@ def test_every_layer_says_how_its_anomaly_is_made_or_why_there_is_none():
         else:
             assert text.startswith("No anomaly")
     assert "approximation" in INFO["carnot"].anomaly and "Exact" in INFO["olr"].anomaly
+
+
+def test_net_sfc_says_the_surface_budget_does_not_close():
+    caveats = INFO["net_sfc"].caveats
+    assert "do not close" in caveats and "top-of-atmosphere" in caveats

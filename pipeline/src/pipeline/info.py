@@ -60,7 +60,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         caveats="Depends on modelled clouds and surface reflectivity (snow, ice, desert).",
     ),
     "net_toa": dict(
-        summary="Net radiation at the top of the atmosphere: where Earth gains or loses energy.",
+        summary="Where Earth gains or loses energy overall (net radiation at the top of the atmosphere).",
         source=(
             f"{_SUM}. Variables: top net solar radiation (tsr, 178) and top net thermal "
             "radiation (ttr, 179)."
@@ -104,7 +104,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         ),
     ),
     "carnot": dict(
-        summary="The Carnot limit: the most work any engine could get from heat flowing to space.",
+        summary="The most work any engine could get from this heat flow (the Carnot limit).",
         source=(
             f"Derived. {_DAILY}. Variables: skin temperature (skt, 235), top net solar "
             "radiation (tsr, 178)."
@@ -169,7 +169,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         caveats="Negative where the surface is colder than the air: at night, in polar regions, over sea ice.",
     ),
     "j_ratio": dict(
-        summary="Actual surface heat flux ÷ maximum-power flux: is the land near maximum power?",
+        summary="How close the land's convection is to its maximum-power flux (actual ÷ optimum).",
         source=f"Derived. {_DAILY}. Variables: slhf (147), sshf (146), ssr (176).",
         formula="r_J = (LE + H) / J_opt, with J_opt = R_s / 2",
         sign="A ratio. 1 means the surface runs exactly at maximum power.",
@@ -186,7 +186,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         mask=f"{_LAND} Also where there is too little sunlight (R_s < {MIN_SURFACE_SOLAR:.0f} W m⁻²).",
     ),
     "lh": dict(
-        summary="Latent heat flux: energy carried up in evaporated water.",
+        summary="Heat carried up in evaporated water (latent heat flux).",
         source=f"{_SUM}. Variable: surface latent heat flux (slhf, parameter 147).",
         formula="LE = −slhf",
         sign=_UP,
@@ -198,7 +198,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         caveats="Negative values mean condensation or frost forming on the surface.",
     ),
     "sh": dict(
-        summary="Sensible heat flux: heat carried up by warm rising air.",
+        summary="Heat carried up by warm rising air (sensible heat flux).",
         source=f"{_SUM}. Variable: surface sensible heat flux (sshf, parameter 146).",
         formula="H = −sshf",
         sign=_UP,
@@ -240,7 +240,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         caveats=_WIND_CAVEAT,
     ),
     "jet250": dict(
-        summary="Jet stream: wind speed at 250 hPa, about 10 km up.",
+        summary="Fast winds about 10 km up (jet stream, wind speed at 250 hPa).",
         source=(
             "ERA5 pressure-level daily statistics (Copernicus Climate Change Service / ECMWF), UTC "
             "day: daily mean. Variables: u and v wind at 250 hPa (parameters 131, 132)."
@@ -265,7 +265,7 @@ _TEXT: dict[str, dict[str, str | None]] = {
         caveats="Daily mean of hourly values.",
     ),
     "diss_bl": dict(
-        summary="Boundary-layer dissipation: wind energy turned back into heat by friction.",
+        summary="Wind energy turned back into heat by friction near the ground (boundary-layer dissipation).",
         source=f"{_SUM}. Variable: boundary layer dissipation (bld, parameter 145).",
         formula="D_BL = bld",
         sign="Positive: kinetic energy converted to heat.",
@@ -368,9 +368,12 @@ _TEXT: dict[str, dict[str, str | None]] = {
             "land stores little heat."
         ),
         caveats=(
-            "Daily values swing with the seasons and the weather; the annual mean over the ocean "
-            "is a few W m⁻² and ERA5 does not close the budget exactly. Dates built before "
-            "longwave was added to the daily fetch have no value."
+            "Daily values swing with the seasons and the weather. ERA5's surface fluxes do not "
+            "close against the top-of-atmosphere budget: in the 1991–2020 annual mean the global "
+            "average is about +5 W m⁻² (about +7 over the ocean, about +1 over land), while the "
+            "top-of-atmosphere imbalance is about +0.5 W m⁻². Read absolute ocean values with "
+            "a bias of a few W m⁻² in mind; the patterns and the seasonal cycle are what to trust. "
+            "Dates built before longwave was added to the daily fetch have no value."
         ),
     ),
     "human_q": dict(

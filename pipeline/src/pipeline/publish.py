@@ -19,7 +19,7 @@ import numpy as np
 from .derived import LayerField
 from .encode import FIRST_VALID, MASKED, NODATA, quantise, scalar_png, scale_offset, vector_png
 from .info import INFO
-from .layers import EXTRAS, GROUPS, LAYERS, LayerSpec
+from .layers import EXTRAS, GROUP_BLURBS, GROUPS, LAYERS, LayerSpec
 from .points import POINT_FIELDS, TILE, point_tiles
 
 MANIFEST_VERSION = 1
@@ -87,6 +87,8 @@ def _layer_meta(s: LayerSpec) -> dict:
         "hatch_zero": s.hatch_zero,
         "modes": list(s.modes),
         "default_mode": s.default_mode,
+        "advanced": s.advanced,
+        "menu_order": s.menu_order,
         "info": asdict(INFO[s.id]),
     }
 
@@ -123,6 +125,7 @@ def build_manifest(
         # <ASR_TOA> (W m-2) and the radiative temperature T_r (K) of each published date: the
         # cold side of `carnot` and `g_max`. The climate frames' are in `clim.radiative`.
         "radiative": radiative or {},
+        "groups": {str(g): {"name": GROUPS[g], "blurb": GROUP_BLURBS[g]} for g in GROUPS},
         "layers": {lid: _layer_meta(s) for lid, s in LAYERS.items()},
         "points": {
             "file": "points/{date}/{tx}_{ty}.bin",

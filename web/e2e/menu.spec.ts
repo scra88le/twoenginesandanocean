@@ -1,20 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 import { decodePng } from '../src/png';
 
-// Fixture data root: 12 layers are built (see make_web_fixtures.py); carnot = 15% north, 0 south.
+// Fixture data root: 15 layers are built (see make_web_fixtures.py); carnot = 15% north, 0 south.
 const ready = (page: Page) =>
   expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
 
-test('menu lists all 25 layers in 10 groups, with unbuilt layers disabled', async ({ page }) => {
+test('menu lists all 25 layers in 5 groups, with unbuilt layers disabled', async ({ page }) => {
   await page.goto('/?layer=t_emit&particles=off');
   await ready(page);
-  await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch)')).toHaveCount(10);
+  await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch)')).toHaveCount(5);
   await expect(page.locator('#menu input[name=layer]')).toHaveCount(25);
-  await expect(page.locator('#menu input[name=layer]:enabled')).toHaveCount(12); // the layers the fixtures build
+  await expect(page.locator('#menu input[name=layer]:enabled')).toHaveCount(15); // the layers the fixtures build
   await expect(page.locator('#menu input[value=t_emit]')).toBeChecked();
   await expect(page.locator('#menu fieldset.overlays legend')).toHaveText('Overlays');
   await expect(page.locator('#menu fieldset.mode-switch legend')).toHaveText('Timescale');
-  await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch) legend').first()).toHaveText('1 · Fuel');
+  await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch) legend').first()).toHaveText('Engine one: surface to sky');
+  await expect(page.locator('#menu .group-blurb')).toHaveCount(5);
 });
 
 test('selecting a layer switches the raster and legend', async ({ page }) => {
@@ -28,9 +29,10 @@ test('selecting a layer switches the raster and legend', async ({ page }) => {
 test('arrow keys move through enabled layers', async ({ page }) => {
   await page.goto('/?layer=t_emit&particles=off');
   await ready(page);
-  await page.locator('#menu input[value=t_emit]').focus();
-  await page.keyboard.press('ArrowDown'); // skips nothing disabled between t_emit and carnot
-  await expect(page.locator('body')).toHaveAttribute('data-layer', 'carnot');
+  await page.locator('#menu input[value=net_toa]').focus();
+  await page.keyboard.press('ArrowDown'); // div_e is the next built layer of Engine two
+  await expect(page.locator('body')).toHaveAttribute('data-layer', 'div_e');
+  await page.locator('#menu input[value=carnot]').check();
   await expect(page.locator('.legend-title')).toHaveText('Local Carnot limit (%)');
   await expect(page.locator('.note-hatch')).toHaveText('Hatched: clamped at zero');
 });
@@ -80,4 +82,26 @@ test('on a narrow screen the menu is behind a Layers button', async ({ page }) =
   await toggle.click();
   await expect(page.locator('#menu')).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('technical layers are under "More layers", closed unless the selected layer is in there', async ({ page }) => {
+  await page.goto('/?layer=net_toa&particles=off');
+  await ready(page);
+  const more = page.locator('#menu details.more-layers');
+  await expect(more).toHaveCount(3); // Engine one, Engine two and Water (p_lift)
+  await expect(page.locator('#menu details.more-layers[open]')).toHaveCount(0);
+  await expect(page.locator('#menu input[value=t_emit]')).toBeHidden();
+  await expect(page.locator('#menu input[value=net_toa]')).toBeVisible();
+  await page.locator('#menu details.more-layers summary').nth(1).click();
+  await expect(page.locator('#menu input[value=t_emit]')).toBeVisible();
+  await page.locator('#menu input[value=t_emit]').check();
+  await expect(page.locator('body')).toHaveAttribute('data-layer', 't_emit');
+});
+
+test('opening on an advanced layer shows it in the menu', async ({ page }) => {
+  await page.goto('/?layer=t_emit&particles=off');
+  await ready(page);
+  await expect(page.locator('#menu input[value=t_emit]')).toBeVisible();
+  await expect(page.locator('#menu input[value=t_emit]')).toBeChecked();
+  await expect(page.locator('#menu details.more-layers[open]')).toHaveCount(1);
 });
