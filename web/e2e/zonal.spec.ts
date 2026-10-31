@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { returning } from './returning';
 
 // Fixture zonal files: the global ASR of a frame is 240 + its index (July 246, Year 252); the
 // daily files exist for 2026-09-30 (249) and 2026-10-01 (250) but not for 2026-09-29.
@@ -87,7 +88,7 @@ test('a copied URL restores the open panel', async ({ page, browser }) => {
   await open(page, '&mode=climate&frame=year');
   await page.getByRole('button', { name: 'Zonal budget', exact: true }).click();
   await expect(page).toHaveURL(/panel=zonal/);
-  const fresh = await browser.newContext({ viewport: { width: 1400, height: 800 } });
+  const fresh = await browser.newContext({ storageState: returning, viewport: { width: 1400, height: 800 } });
   const again = await fresh.newPage();
   await again.goto(page.url());
   await expect(again.locator('#zonal .uplot')).toHaveCount(2);

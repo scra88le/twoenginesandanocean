@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { returning } from './returning';
 
 // A phone: 390 x 800, touch, and a mobile browser (which turns on the phone layout under 700 px).
 test.use({ viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
@@ -105,7 +106,7 @@ test('there are half as many wind particles per pixel as on a desktop', async ({
   expect(phone).toBe(Math.round((390 * 800) / 90 / 2));
   // A desktop-sized visitor, in a context that is closed afterwards: a worker's browser is
   // shared by later tests, and a page left open (with particles running) keeps rendering.
-  const context = await browser.newContext({ viewport: { width: 760, height: 520 } });
+  const context = await browser.newContext({ storageState: returning, viewport: { width: 760, height: 520 } });
   const desktop = await context.newPage();
   await desktop.goto('/?layer=t_emit&debug');
   await expect(desktop.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });

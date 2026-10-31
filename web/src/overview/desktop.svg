@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 660" class="ov-svg" role="group" aria-labelledby="ov-title ov-desc" font-family="system-ui, sans-serif">
+  <title id="ov-title">How the engine works</title>
+  <desc id="ov-desc">A cross-section of the planet from the tropics on the left to the high latitudes on the right, and from the ocean at the bottom to space at the top. Sunlight comes in, convection lifts heat from the surface, the air and the ocean carry heat poleward, and heat is radiated to space. Each labelled part opens the tour step that shows it on the map.</desc>
+  <defs>
+    <linearGradient id="ov-surface" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#ee6a50"/>
+      <stop offset="1" stop-color="#5a8fe0"/>
+    </linearGradient>
+    <linearGradient id="ov-sea" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#1b4a86"/>
+      <stop offset="1" stop-color="#0d2547"/>
+    </linearGradient>
+  </defs>
+
+  <!-- the scene -->
+  <rect class="ov-air" x="20" y="70" width="960" height="260" rx="6"/>
+  <rect class="ov-sea" x="20" y="330" width="960" height="270" fill="url(#ov-sea)"/>
+  <rect x="20" y="326" width="960" height="5" fill="url(#ov-surface)"/>
+  <text class="ov-axis" x="980" y="320" text-anchor="end">surface</text>
+  <text class="ov-axis" x="980" y="82" text-anchor="end">atmosphere</text>
+
+  <!-- part tags -->
+  <text class="ov-tag" data-part="engine1" x="172" y="80">ENGINE ONE</text>
+  <text class="ov-tag" data-part="engine2" x="640" y="214">ENGINE TWO</text>
+  <text class="ov-tag" data-part="ocean" x="30" y="412">THE OCEAN</text>
+
+  <!-- 01: sunlight in, heat out -->
+  <g class="ov-el" data-el="toa" data-part="engine2" data-step="01" data-label="Sunlight absorbed and heat radiated to space" tabindex="0" role="link">
+    <title></title>
+    <desc>Over a year the planet radiates about as much heat to space as it absorbs as sunlight. Opens step 1, the net radiation map.</desc>
+    <rect class="ov-hit" x="20" y="0" width="960" height="68" rx="6"/>
+    <line class="ov-flow ov-solar" data-flux="asr_toa" data-family="wm2" x1="120" y1="6" x2="120" y2="46" stroke-width="10"/>
+    <path class="ov-head ov-solar-f" d="M105,46 L120,66 L135,46 Z"/>
+    <text class="ov-label" x="150" y="24">Sunlight absorbed</text>
+    <text class="ov-label" x="150" y="44"><tspan class="ov-val" data-slot="asr_toa" data-name="Sunlight absorbed">—</tspan></text>
+    <text class="ov-small" x="500" y="40" text-anchor="middle">of which in the air: <tspan class="ov-val" data-slot="asr_atm" data-name="Sunlight absorbed in the air">—</tspan></text>
+    <line class="ov-flow ov-ir" data-flux="olr" data-family="wm2" x1="860" y1="62" x2="860" y2="24" stroke-width="10"/>
+    <path class="ov-head ov-ir-f" d="M845,24 L860,4 L875,24 Z"/>
+    <text class="ov-label" x="830" y="24" text-anchor="end">Heat radiated to space</text>
+    <text class="ov-label" x="830" y="44" text-anchor="end"><tspan class="ov-val" data-slot="olr" data-name="Heat radiated to space">—</tspan></text>
+  </g>
+
+  <!-- 02: sunlight at the surface and the infrared lost -->
+  <g class="ov-el" data-el="surface-sun" data-part="engine1" data-step="02" data-label="Sunlight at the surface" tabindex="0" role="link">
+    <title></title>
+    <desc>The fuel of engine one: the sunlight that reaches and warms the surface, and the infrared heat the surface sends back up. Opens step 2, absorbed solar at the surface.</desc>
+    <polygon class="ov-hit" points="20,90 150,90 150,324 300,324 300,392 20,392"/>
+    <line class="ov-flow ov-solar" data-flux="asr_sfc" data-family="wm2" x1="55" y1="94" x2="55" y2="290" stroke-width="10"/>
+    <path class="ov-head ov-solar-f" d="M40,290 L55,314 L70,290 Z"/>
+    <line class="ov-flow ov-ir" data-flux="lw_up" data-family="wm2" x1="115" y1="318" x2="115" y2="130" stroke-width="6"/>
+    <path class="ov-head ov-ir-f" d="M100,130 L115,106 L130,130 Z"/>
+    <text class="ov-label" x="30" y="356">Sunlight at the surface <tspan class="ov-val" data-slot="asr_sfc" data-name="Sunlight at the surface">—</tspan></text>
+    <text class="ov-label" x="30" y="378">Infrared lost <tspan class="ov-val" data-slot="lw_up" data-name="Infrared heat lost from the surface">—</tspan></text>
+  </g>
+
+  <!-- 03: the ceiling -->
+  <g class="ov-el" data-el="ceiling" data-part="engine1" data-step="03" data-label="The ceiling: hot side, cold side and the Carnot limit" tabindex="0" role="link">
+    <title></title>
+    <desc>An engine between a hot surface and a cold sky can turn only a fraction of the heat into motion, no more than the Carnot limit. Opens step 3, the Carnot map.</desc>
+    <rect class="ov-hit" x="168" y="86" width="210" height="190" rx="6"/>
+    <text class="ov-small" x="180" y="106">Cold side (T_r)</text>
+    <text class="ov-label" x="180" y="124"><tspan class="ov-val" data-slot="t_r" data-name="Cold side, radiative temperature">—</tspan></text>
+    <rect class="ov-cold" x="180" y="132" width="186" height="8" rx="3"/>
+    <circle class="ov-wheel" cx="273" cy="170" r="17"/>
+    <path class="ov-wheel" d="M273,153 L273,187 M256,170 L290,170"/>
+    <rect class="ov-hot" x="180" y="200" width="186" height="8" rx="3"/>
+    <text class="ov-small" x="180" y="226">Hot side (T_s)</text>
+    <text class="ov-label" x="180" y="244"><tspan class="ov-val" data-slot="t_skin" data-name="Hot side, surface temperature">—</tspan></text>
+    <text class="ov-label" x="180" y="266">Ceiling <tspan class="ov-val" data-slot="carnot" data-name="Carnot ceiling">—</tspan></text>
+  </g>
+
+  <!-- 04: convection -->
+  <g class="ov-el" data-el="convection" data-part="engine1" data-step="04" data-label="Convection lifts heat from the surface" tabindex="0" role="link">
+    <title></title>
+    <desc>The engine at work: warm, moist air rises and carries heat from the surface upward. Its best possible rate is about half of the sunlight the surface absorbs. Opens step 4, how close the real flux is to that optimum.</desc>
+    <rect class="ov-hit" x="388" y="196" width="232" height="128" rx="6"/>
+    <line class="ov-flow ov-heat" data-flux="j_conv" data-family="wm2" x1="410" y1="320" x2="410" y2="226" stroke-width="8"/>
+    <path class="ov-head ov-heat-f" d="M395,226 L410,202 L425,226 Z"/>
+    <text class="ov-label" x="432" y="252">Convection lifts</text>
+    <text class="ov-label" x="432" y="272"><tspan class="ov-val" data-slot="j_conv" data-name="Heat lifted by convection">—</tspan></text>
+    <text class="ov-small" x="432" y="296">best possible: half of the</text>
+    <text class="ov-small" x="432" y="312">sunlight at the surface</text>
+  </g>
+
+  <!-- 05: the split and the water loop -->
+  <g class="ov-el" data-el="split" data-part="engine1" data-step="05" data-label="Latent and sensible heat, and rain" tabindex="0" role="link">
+    <title></title>
+    <desc>Convection carries heat as evaporated water (latent) and as warm air (sensible). The water condenses and falls as rain, releasing the heat aloft. Opens step 5, the evaporative fraction.</desc>
+    <rect class="ov-hit" x="388" y="74" width="232" height="58" rx="6"/>
+    <text class="ov-small" x="400" y="92">Latent (water) <tspan class="ov-val" data-slot="lh" data-name="Latent heat flux">—</tspan></text>
+    <text class="ov-small" x="400" y="108">Sensible (warm air) <tspan class="ov-val" data-slot="sh" data-name="Sensible heat flux">—</tspan></text>
+    <text class="ov-small ov-water-t" x="400" y="124">Rain <tspan class="ov-val" data-slot="precip" data-name="Rain">—</tspan></text>
+  </g>
+
+  <!-- 07: heat carried by the air -->
+  <g class="ov-el" data-el="air-transport" data-part="engine2" data-step="07" data-label="Heat carried poleward by the air" tabindex="0" role="link">
+    <title></title>
+    <desc>Engine two: the atmosphere and its weather carry heat from the tropics, which absorb more than they radiate, to the high latitudes, which radiate more than they absorb. Opens step 7, the transport arrows.</desc>
+    <rect class="ov-hit" x="380" y="136" width="440" height="68" rx="6"/>
+    <text class="ov-label" x="600" y="154" text-anchor="middle">Heat carried poleward by the air: <tspan class="ov-val" data-slot="pw_atm" data-name="Heat carried poleward by the air">—</tspan></text>
+    <line class="ov-flow ov-air-flow" data-flux="pw_atm" data-family="pw" x1="388" y1="178" x2="780" y2="178" stroke-width="10"/>
+    <path class="ov-head ov-air-f" d="M780,160 L812,178 L780,196 Z"/>
+  </g>
+
+  <!-- 08: friction -->
+  <g class="ov-el" data-el="friction" data-part="engine2" data-step="08" data-label="Motion lost to friction" tabindex="0" role="link">
+    <title></title>
+    <desc>The air's motion is the engine's output. Near the ground friction turns it back into heat. Opens step 8, the kinetic energy of the air with the mean flow.</desc>
+    <rect class="ov-hit" x="640" y="222" width="230" height="100" rx="6"/>
+    <text class="ov-label" x="652" y="238">Motion lost to friction</text>
+    <text class="ov-label" x="652" y="258"><tspan class="ov-val" data-slot="diss_bl" data-name="Motion lost to friction near the ground">—</tspan></text>
+    <path class="ov-streak" d="M652,284 q20,-12 40,0 t40,0 t40,0 t40,0"/>
+    <path class="ov-streak" d="M652,302 q20,-12 40,0 t40,0 t40,0 t40,0"/>
+    <path class="ov-streak" d="M830,270 a12,12 0 1 1 -12,-12 m-4,-5 l4,5 l-6,3"/>
+  </g>
+
+  <!-- 09: the ocean as a store -->
+  <g class="ov-el" data-el="ocean-store" data-part="ocean" data-step="09" data-label="The ocean stores heat" tabindex="0" role="link">
+    <title></title>
+    <desc>The ocean works like a battery: it absorbs heat in summer and releases it in winter, and along the western boundary currents. Opens step 9, the net heat into the surface in July.</desc>
+    <rect class="ov-hit" x="20" y="418" width="440" height="100" rx="6"/>
+    <rect class="ov-batt" x="34" y="436" width="150" height="64" rx="8"/>
+    <rect class="ov-batt-t" x="184" y="456" width="10" height="24"/>
+    <rect class="ov-cell" x="42" y="444" width="40" height="48" rx="3"/>
+    <rect class="ov-cell" x="88" y="444" width="40" height="48" rx="3"/>
+    <rect class="ov-cell ov-cell-low" x="134" y="444" width="42" height="48" rx="3"/>
+    <text class="ov-small" x="214" y="448">Stores heat in summer and gives it</text>
+    <text class="ov-small" x="214" y="466">back in winter, and along the</text>
+    <text class="ov-small" x="214" y="484">western boundary currents</text>
+  </g>
+
+  <!-- 10: heat carried by the ocean -->
+  <g class="ov-el" data-el="ocean-transport" data-part="ocean" data-step="10" data-label="Heat carried poleward by the ocean" tabindex="0" role="link">
+    <title></title>
+    <desc>Ocean currents carry heat poleward too, most of it at low latitudes where the atmosphere takes over only farther north. Opens step 10, the ocean's share on the zonal budget.</desc>
+    <rect class="ov-hit" x="470" y="506" width="380" height="64" rx="6"/>
+    <text class="ov-label" x="660" y="526" text-anchor="middle">Heat carried poleward by the ocean: <tspan class="ov-val" data-slot="pw_ocean" data-name="Heat carried poleward by the ocean">—</tspan></text>
+    <line class="ov-flow ov-sea-flow" data-flux="pw_ocean" data-family="pw" x1="480" y1="548" x2="800" y2="548" stroke-width="10"/>
+    <path class="ov-head ov-sea-f" d="M800,530 L832,548 L800,566 Z"/>
+  </g>
+
+  <text class="ov-key" x="500" y="592" text-anchor="middle">Arrow widths: flows in W m⁻² share one scale; poleward transport in PW has its own.</text>
+
+  <!-- 06: surplus and deficit -->
+  <g class="ov-el" data-el="surplus" data-part="engine2" data-step="06" data-label="Tropical surplus and high-latitude deficit" tabindex="0" role="link">
+    <title></title>
+    <desc>The tropics absorb more sunlight than they radiate and the high latitudes radiate more than they absorb. That imbalance is what drives engine two. Opens step 6, the zonal budget.</desc>
+    <rect class="ov-hit" x="20" y="604" width="960" height="52" rx="6"/>
+    <rect x="30" y="612" width="940" height="6" rx="3" fill="url(#ov-surface)"/>
+    <text class="ov-label" x="30" y="642">Tropics: surplus of sunlight</text>
+    <text class="ov-label" x="970" y="642" text-anchor="end">High latitudes: deficit</text>
+  </g>
+</svg>

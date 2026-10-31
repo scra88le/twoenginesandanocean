@@ -79,3 +79,27 @@ def test_non_year_frames_omit_two_box_and_ocean():
          "diss_bl": f}, year=False,
     )  # fmt: skip
     assert "two_box" not in s and "transport_ocean" not in s
+
+
+def test_year_global_block_has_overview_slots():
+    asr = 240 + 50 * np.cos(np.deg2rad(LAT))[:, None] * np.ones(NLON)[None, :]
+    olr = np.full_like(asr, 240.0)
+    f = lambda v: np.full_like(asr, v)  # noqa: E731
+    base = {"asr_toa": asr, "olr": olr, "skt": f(288.0), "div_e": asr - olr, "j_conv": f(100.0),
+            "carnot": f(12.0), "diss_bl": f(2.0)}  # fmt: skip
+    s = zonal.zonal_summary(
+        {**base, "asr_sfc": f(160.0), "lw_up": f(60.0), "lh": f(80.0), "sh": f(20.0),
+         "precip": f(2.9)}, year=True,
+    )  # fmt: skip
+    g = s["global"]
+    assert g["asr_sfc"] == 160.0 and g["lw_up"] == 60.0 and g["precip"] == 2.9
+    assert g["t_skin"] == pytest.approx(288.0)
+    assert g["asr_atm"] == pytest.approx(g["asr_toa"] - 160.0, abs=1e-3)
+    assert g["t_r"] == pytest.approx((g["asr_toa"] / d.SIGMA) ** 0.25, abs=1e-2)
+    assert g["pw_atm"] == pytest.approx(np.abs(s["transport_atm"]).max(), abs=1e-3)
+    assert g["pw_ocean"] == pytest.approx(np.abs(s["transport_ocean"]).max(), abs=1e-3)
+    # optional layers that were not supplied are left out, never zero
+    bare = zonal.zonal_summary(base, year=True)["global"]
+    assert "lw_up" not in bare and "asr_atm" not in bare and "t_skin" in bare
+    # other frames keep the old block
+    assert "t_r" not in zonal.zonal_summary(base, year=False)["global"]

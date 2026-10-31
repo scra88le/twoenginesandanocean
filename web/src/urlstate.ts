@@ -27,8 +27,8 @@ export const DEFAULT_PARTICLES: ParticleChoice = { on: true, level: 'wind10' };
 
 const MAX_LAT = 85.05;
 const MAX_ZOOM = 22;
-// Keys written in this order; `tour` is dropped (it only opens the tour, once).
-const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'panel', 'pin', 'tour'];
+// Keys written in this order; `tour` and `overview` are dropped (they only open the tour or overview, once).
+const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'panel', 'pin', 'tour', 'overview'];
 
 /** "lng,lat" -> numbers, or null if it isn't two finite numbers. */
 export function parseCenter(text: string | null): [number, number] | null {

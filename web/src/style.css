@@ -186,6 +186,9 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   width: 100%; margin: 0 0 8px; padding: 7px 10px; border-radius: 6px; border: 1px solid #7aa7ff;
   background: rgba(122, 167, 255, 0.12); color: var(--text); font: inherit; cursor: pointer;
 }
+.menu-guides { display: flex; gap: 8px; margin: 0 0 8px; }
+.menu-guides .tour-start { flex: 1; width: auto; margin: 0; }
+@media (max-width: 700px) { .overview-open { display: none; } }
 .tour-start:hover { background: rgba(122, 167, 255, 0.24); }
 body.tour-active #readout {
   top: calc(12px + var(--tour-h, 0px) + 12px); max-height: calc(100vh - 222px - var(--tour-h, 0px));
@@ -261,3 +264,62 @@ body.tour-active #readout {
 #timebar .tb-year { width: auto; margin-left: 6px; padding: 0 12px; }
 #timebar .tb-year[aria-pressed='true'] { border-color: #7aa7ff; color: #7aa7ff; }
 .tb-range.inactive { opacity: 0.5; }
+
+/* Overview infographic (How the engine works) */
+#overview {
+  width: min(1120px, 94vw); max-height: 94vh; overflow-y: auto; padding: 14px 18px 12px;
+  background: #101521; color: var(--text); border: 1px solid #2c3444; border-radius: 10px;
+}
+#overview::backdrop { background: rgba(0, 0, 0, 0.6); }
+.ov-head { display: flex; justify-content: space-between; align-items: center; }
+.ov-head h2 { font-size: 18px; margin: 0; }
+.ov-close, #overview .ov-foot button, .ov-chip, .ov-list-go {
+  background: transparent; color: var(--text); border: 1px solid #5d6573; border-radius: 6px;
+  padding: 5px 12px; font: inherit; cursor: pointer;
+}
+.ov-close { width: 32px; height: 32px; padding: 0; font-size: 20px; line-height: 1; }
+.ov-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+.ov-chip[aria-pressed="true"] { background: rgba(122, 167, 255, 0.22); border-color: #7aa7ff; }
+.ov-explain { margin: 4px 0 8px; min-height: 3em; color: var(--muted); font-size: 14px; line-height: 1.45; max-width: 80ch; }
+.ov-figure svg { display: block; width: 100%; max-height: 66vh; }
+.ov-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.ov-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.ov-spacer { flex: 1; }
+#overview .ov-foot .ov-tour { border-color: #7aa7ff; background: rgba(122, 167, 255, 0.18); }
+.ov-list { margin: 10px 0 0; padding-left: 22px; font-size: 14px; line-height: 1.5; }
+.ov-list li { margin-bottom: 8px; }
+.ov-list-go { padding: 1px 8px; font-size: 12px; }
+#overview button:focus-visible, #overview .ov-el:focus-visible { outline: 2px solid #ffd479; outline-offset: 2px; }
+
+.ov-air { fill: rgba(130, 170, 255, 0.07); stroke: #2c3444; }
+.ov-axis { fill: #8d95a3; font-size: 11px; letter-spacing: 0.06em; }
+.ov-tag { fill: #cdd3de; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; }
+.ov-label { fill: #e6e8ec; font-size: 14px; }
+.ov-small { fill: #c3c9d4; font-size: 12.5px; }
+.ov-key { fill: #a3a9b4; font-size: 11.5px; }
+.ov-val { fill: #ffd479; font-weight: 700; }
+.ov-water-t .ov-val { fill: #6fe0d0; }
+.ov-hit { fill: transparent; stroke: none; pointer-events: all; }
+.ov-el { cursor: pointer; outline: none; }
+.ov-el:hover .ov-hit, .ov-el:focus-visible .ov-hit { stroke: #ffd479; stroke-width: 1.5; stroke-dasharray: 5 4; fill: rgba(255, 255, 255, 0.04); }
+.ov-solar { stroke: #f4c542; } .ov-solar-f { fill: #f4c542; }
+.ov-ir { stroke: #ee6a50; } .ov-ir-f { fill: #ee6a50; }
+.ov-heat { stroke: #f08a3c; } .ov-heat-f { fill: #f08a3c; }
+.ov-air-flow { stroke: #dbe8ff; } .ov-air-f { fill: #dbe8ff; }
+.ov-sea-flow { stroke: #8fc0ff; } .ov-sea-f { fill: #8fc0ff; }
+.ov-flow { fill: none; stroke-linecap: butt; stroke-dasharray: 22 10; animation: ov-dash 1.4s linear infinite; }
+.ov-flow.ov-nodata { opacity: 0.5; }
+.ov-cold { fill: #8ec5ff; } .ov-hot { fill: #ee6a50; }
+.ov-wheel { fill: none; stroke: #cdd3de; stroke-width: 2; }
+.ov-streak { fill: none; stroke: #f2f5fa; stroke-width: 2; stroke-linecap: round; opacity: 0.85; }
+.ov-batt { fill: none; stroke: #cfe3ff; stroke-width: 2.5; } .ov-batt-t { fill: #cfe3ff; }
+.ov-cell { fill: #5aa0ff; } .ov-cell-low { fill: #5aa0ff; opacity: 0.35; }
+@keyframes ov-dash { to { stroke-dashoffset: -32; } }
+@media (prefers-reduced-motion: reduce) { .ov-flow { animation: none; stroke-dasharray: none; } }
+/* a chosen part: the others dim, and its elements get an outline, so it isn't colour alone */
+.ov-svg[data-focus="engine1"] [data-part]:not([data-part="engine1"]),
+.ov-svg[data-focus="engine2"] [data-part]:not([data-part="engine2"]),
+.ov-svg[data-focus="ocean"] [data-part]:not([data-part="ocean"]) { opacity: 0.3; }
+.ov-svg[data-focus="engine1"] .ov-el[data-part="engine1"] .ov-hit,
+.ov-svg[data-focus="engine2"] .ov-el[data-part="engine2"] .ov-hit,
+.ov-svg[data-focus="ocean"] .ov-el[data-part="ocean"] .ov-hit { stroke: #7aa7ff; stroke-width: 1.5; }

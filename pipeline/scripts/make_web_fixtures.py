@@ -189,6 +189,21 @@ def zonal_fixture(asr_mean: float, year: bool) -> dict:
             "skt_poles": 277.7,
         }
         out["global"]["g_max_two_box"] = 1.45
+        # the overview infographic's slots (F13), in the real file's units
+        out["global"].update(
+            {
+                "asr_sfc": 160.0,
+                "lw_up": 55.0,
+                "lh": 85.0,
+                "sh": 20.0,
+                "precip": 2.9,
+                "t_skin": 288.0,
+                "t_r": 255.8,
+                "asr_atm": round(asr_mean - 160.0, 4),
+                "pw_atm": 5.4,
+                "pw_ocean": 2.1,
+            }
+        )
     return out
 
 

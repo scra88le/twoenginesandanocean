@@ -10,6 +10,11 @@ export default defineConfig({
   timeout: 90_000,
   retries: 1, // a cold CDN or a slow first request is not a failed deployment
   use: {
+    // A returning visitor: a first visit would open the overview over the map it clicks.
+    storageState: {
+      cookies: [],
+      origins: [{ origin: new URL(site).origin, localStorage: [{ name: 'ehe.overview.seen', value: '1' }] }],
+    },
     baseURL: site.endsWith('/') ? site : `${site}/`,
     viewport: { width: 1000, height: 700 },
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },

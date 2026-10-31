@@ -29,6 +29,18 @@ export interface ZonalGlobal {
   diss_bl: number;
   diss_bl_pct: number;
   g_max_two_box?: number; // Year frame only
+  // Year frame only, for the overview infographic (docs/PROPOSALS-v2.md F13). Each is absent if
+  // the pipeline didn't have the field (`lw_up` and `asr_atm` need the `str` climatology).
+  asr_sfc?: number;
+  lw_up?: number;
+  lh?: number;
+  sh?: number;
+  precip?: number; // mm day⁻¹
+  t_skin?: number; // K
+  t_r?: number; // K
+  asr_atm?: number;
+  pw_atm?: number; // PW, the largest poleward transport in either hemisphere
+  pw_ocean?: number;
 }
 
 export interface Zonal {

@@ -29,6 +29,14 @@ export default defineConfig({
     },
   ],
   use: {
+    // Every test starts as a returning visitor; overview.spec.ts clears this to test a first visit.
+    storageState: {
+      cookies: [],
+      origins: [PORT, SUB_PORT].map((p) => ({
+        origin: `http://localhost:${p}`,
+        localStorage: [{ name: 'ehe.overview.seen', value: '1' }],
+      })),
+    },
     baseURL: `http://localhost:${PORT}`,
     viewport: { width: 1000, height: 700 },
     deviceScaleFactor: 1,

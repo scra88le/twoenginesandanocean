@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { returning } from './returning';
 
 // SwiftShader draws on the CPU, so the map is small.
 test.use({ viewport: { width: 760, height: 520 } });
@@ -78,7 +79,7 @@ test('a copied URL restores layer, date, view, overlays, mode and the pinned poi
 
   // A second, separate browser context (a different visitor). It must be closed: a worker's
   // browser is shared by the tests that follow, and a page left open keeps rendering.
-  const context = await browser.newContext({ viewport: { width: 760, height: 520 } });
+  const context = await browser.newContext({ storageState: returning, viewport: { width: 760, height: 520 } });
   const fresh = await context.newPage();
   await fresh.goto(copied);
   await ready(fresh);

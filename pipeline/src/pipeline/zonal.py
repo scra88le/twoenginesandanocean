@@ -56,6 +56,11 @@ def _box_mean(x: np.ndarray, rows: np.ndarray) -> float:
     return float((_zonal(x)[rows] * w).sum() / w.sum())
 
 
+# Fields whose Year-frame global mean the overview infographic quotes (proposal F13): the layers
+# `asr_sfc`, `lh`, `sh`, `precip`, the input `lw_up` and the skin temperature as `t_skin`.
+OVERVIEW_MEANS = ("asr_sfc", "lw_up", "lh", "sh", "precip", "t_skin")
+
+
 def zonal_summary(fields: dict[str, np.ndarray], year: bool) -> dict:
     """The panel's JSON for one frame from the frame's 0.5 degree fields `asr_toa`, `olr`,
     `skt`, `div_e` (smoothed), `j_conv`, `carnot` and `diss_bl`. The two-box estimate and the
@@ -95,6 +100,18 @@ def zonal_summary(fields: dict[str, np.ndarray], year: bool) -> dict:
         box["skt_poles"] = _box_mean(fields["skt"], ~_TROPICS)
         out["two_box"] = {k: round(float(v), 4) for k, v in box.items()}
         out["global"]["g_max_two_box"] = out["two_box"]["g_max"]
+        # The overview's slots. Means of whichever of OVERVIEW_MEANS were supplied (`t_skin` is
+        # `skt`); `asr_atm` is sunlight absorbed in the air; `pw_atm` and `pw_ocean` are the
+        # largest poleward transports in either hemisphere (one "up to" figure each).
+        given = {"t_skin": fields["skt"], **fields}
+        for k in OVERVIEW_MEANS:
+            if k in given:
+                out["global"][k] = round(d.global_mean(given[k]), 4)
+        out["global"]["t_r"] = round(float(d.radiative_temperature(g_asr)), 3)
+        if "asr_sfc" in out["global"]:
+            out["global"]["asr_atm"] = round(g_asr - out["global"]["asr_sfc"], 4)
+        out["global"]["pw_atm"] = round(float(np.abs(atm).max()), 3)
+        out["global"]["pw_ocean"] = round(float(np.abs(total - atm).max()), 3)
     return out
 
 
@@ -112,10 +129,17 @@ def budget_residual(net_toa: np.ndarray, div_e: np.ndarray, net_sfc: np.ndarray)
     }
 
 
-def layer_inputs(layers: dict, skt: np.ndarray) -> dict[str, np.ndarray]:
-    """The `zonal_summary` inputs from a frame's layer fields and its skin temperature."""
+def layer_inputs(
+    layers: dict, skt: np.ndarray, lw_up: np.ndarray | None = None
+) -> dict[str, np.ndarray]:
+    """The `zonal_summary` inputs from a frame's layer fields, its skin temperature and, when
+    it has arrived, `lw_up`. Optional layers (`OVERVIEW_MEANS`) are passed when built."""
     need = ("asr_toa", "olr", "div_e", "j_conv", "carnot", "diss_bl")
-    return {**{k: layers[k].values.values for k in need}, "skt": np.asarray(skt, dtype="float64")}
+    out = {k: layers[k].values.values for k in need}
+    out.update({k: layers[k].values.values for k in OVERVIEW_MEANS if k in layers})
+    if lw_up is not None:
+        out["lw_up"] = np.asarray(lw_up, dtype="float64")
+    return {**out, "skt": np.asarray(skt, dtype="float64")}
 
 
 def to_json(summary: dict) -> bytes:

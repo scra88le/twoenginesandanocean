@@ -410,7 +410,10 @@ def _frame_products(out, frame, layers, inputs, mean_flow, is_year) -> int:
     for name, data in points.items():
         _write(out / "clim" / "points" / frame / name, data)
         written += 1
-    summary = zonal.zonal_summary(zonal.layer_inputs(layers, inputs["skt"].values), year=is_year)
+    lw_up = inputs["lw_up"].values if "lw_up" in inputs else None
+    summary = zonal.zonal_summary(
+        zonal.layer_inputs(layers, inputs["skt"].values, lw_up), year=is_year
+    )
     if is_year and "net_sfc" in layers:
         summary["budget_residual"] = zonal.budget_residual(
             layers["net_toa"].values.values,

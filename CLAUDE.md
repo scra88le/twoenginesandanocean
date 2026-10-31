@@ -32,6 +32,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
+/web/src/overview      desktop.svg, the overview infographic (read by overview.ts)
 /web/src/layers        raster.ts, particles.ts, arrows.ts
 /web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
 /web/tests/fixtures    PNGs from the real encoder, for decoder tests
@@ -402,6 +403,15 @@ The numbers the cards quote were checked against the published data on 2026-10-3
 - The card sits top-left, where the readout opens, and the readout moves below it while the tour is open. On phones it sits at the top beside the Layers button (scrolling if long), and the menu closes when the tour starts.
 - Back / Next, progress dots that jump to a step, and ← → on the card (they step the tour, not the date, while the card has focus). The last step's button says Finish.
 
+### Overview infographic
+
+- "How the engine works": a hand-authored SVG (`web/src/overview/desktop.svg`, bundled with `?raw`) in a native `<dialog>` (`web/src/overview.ts`). It opens by itself on a first visit, over a map that keeps loading, and from the "How the engine works" button beside "Take the tour" in the menu.
+- Value slots (`data-slot`) are filled from `clim/zonal/year.json` `global` (1991–2020 annual mean) with `textContent`: rounded in the text, exact in the tooltip (`<title>`). No climatology gives dashes; no value is in the SVG. Arrow widths (`data-flux`, `data-family`) are proportional within a unit family: W m⁻² flows share one scale and PW transports another, with a key on the graphic.
+- Ten elements, each a focusable `role="link"` with `data-part` (`engine1`, `engine2`, `ocean`) and `data-step` (`01`–`10`, the tour card whose id starts with it). Clicking one, or Enter or Space, closes the overview and opens that tour step, so the tour's `showStep` sets the map. The accessible name carries the value ("Heat carried poleward by the ocean, up to 2.1 PW: open tour step 10").
+- Chips (All, Engine one, Engine two, The ocean) dim the other parts to 0.3 opacity and outline the chosen one, with two or three sentences of explanation. "Read as text" swaps the graphic for an ordered list in tour order, with values and links. Footer: Take the tour, Explore the map, ×.
+- First visit (`shouldAutoShow`): `localStorage` `ehe.overview.seen = 1` is set when it closes; every storage access is in try/catch and blocked storage shows it once per load. `?tour=N` and `?overview=0` suppress it, `?overview=1` always opens it (and is dropped from the address). Esc returns focus to the button that opened it, or to the map on a first visit.
+- Desktop only: under 700 px it does not open by itself and its button is hidden (`?overview=1` still opens it). The default Playwright context is a returning visitor (`storageState` in both configs; `e2e/returning.ts` for contexts a test makes itself); `e2e/overview.spec.ts` clears it.
+
 ### URL state
 
 The query string holds layer, mode, frame, overlays, date, centre, zoom and pinned point, and updates on every change (`web/src/urlstate.ts`):
@@ -411,7 +421,7 @@ The query string holds layer, mode, frame, overlays, date, centre, zoom and pinn
 - `layer`, `mode` (`climate`, `today` or `anom`), `frame` (`01`–`12` or `year`), `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `arrows=1`, `panel=zonal` and `pin=lng,lat` only when on or set. `anom=1` is read as `mode=anom`. A mode the layer can't show falls back to its default.
 - It is written with `history.replaceState` (so Back isn't filled with every pan), 120 ms after the last change and after every map move.
 - Reading validates each value and falls back to its default one by one: an unpublished or unbuilt layer, a date that isn't published, a bad number, a latitude beyond the map, a zoom outside 0–22. The page then rewrites the URL with the valid values. Longitudes wrap into −180…180.
-- Parameters the app doesn't own (`?debug`) are kept. `?tour=N` opens the tour at step N once and is then dropped.
+- Parameters the app doesn't own (`?debug`) are kept. `?tour=N` opens the tour at step N once and is then dropped, as is `?overview`.
 
 ### Mobile
 
@@ -465,7 +475,8 @@ Phone layout under 700 px:
 17. Climate overlays (docs/PROPOSALS-v2.md F3, F4): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Climate-mode arrows with the shared `flux_ref`, mean-flow particles at all three levels, frame changes reload both; desktop-only. Works against local `./out`; the bucket is still the mixed state of milestones 14–15.)
 
 18. Engine 2 and the global strip (docs/PROPOSALS-v2.md F7, F8): (**Done** 2026-10-30, see `docs/DECISIONS.md`. `web/src/zonal.ts`, `zonalpanel.ts`, `enginestrip.ts`; URL `panel=zonal`; desktop-only. Works against local `./out`: the daily `zonal/{date}.json` don't exist there until the final `rebuild`, and the bucket is still the mixed state of milestones 14–15.)
-19. Story and menu (docs/PROPOSALS-v2.md F9, F10): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Five menu groups with "More layers" for the advanced layers; twelve tour cards with `mode`, `frame`, `panel` and `chapter` front matter, chapter breaks in the dots, every quoted number checked against the data; desktop-only. Works against local `./out` once the manifest carries the new groups, which needs the next `rebuild`; the bucket is still the mixed state of milestones 14–15. The "How the engine works" button comes with milestone 20.)
+19. Story and menu (docs/PROPOSALS-v2.md F9, F10): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Five menu groups with "More layers" for the advanced layers; twelve tour cards with `mode`, `frame`, `panel` and `chapter` front matter, chapter breaks in the dots, every quoted number checked against the data; desktop-only. Works against local `./out` once the manifest carries the new groups, which needs the next `rebuild`; the bucket is still the mixed state of milestones 14–15. The "How the engine works" button came with milestone 20.)
+20. Overview infographic (docs/PROPOSALS-v2.md F13): (**Done** 2026-10-31, desktop only, see `docs/DECISIONS.md`. The Year frame's `global` block carries the infographic's slots; `web/src/overview.ts` and `web/src/overview/desktop.svg`; first-visit logic, menu button, tests. The phone variant is deferred with the rest of the mobile work. Works against local `./out`; nothing is uploaded, the bucket is still the mixed state of milestones 14–15.)
 
 ## Acceptance criteria
 

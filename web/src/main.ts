@@ -29,6 +29,8 @@ import { displayScale } from './scale';
 import { parseCards, type StoryStep, type StoryView } from './story';
 import { TimeBar, nearbyDates } from './timebar';
 import { Tour } from './tour';
+import { Overview, markSeen, readSeen, shouldAutoShow } from './overview';
+import overviewSvg from './overview/desktop.svg?raw';
 import { DEFAULT_LAYER, readState, stateQuery, wrapLng, type ViewState } from './urlstate';
 import { LEVEL_LABELS, describeWind, windAt } from './wind';
 
@@ -647,15 +649,42 @@ async function start(): Promise<void> {
     },
     () => undefined, // closing keeps the map as the last step left it
   );
+  // The overview is the first thing a new visitor sees (docs/PROPOSALS-v2.md F13); choosing one of
+  // its parts opens the tour card that shows it. It waits for the app so a step can set the map.
+  let appReady: () => void = () => undefined;
+  const appIsReady = new Promise<void>((resolve) => (appReady = resolve));
+  const startTour = (index: number) => {
+    setMenuOpen(false); // on phones the sheet would cover the card
+    void appIsReady.then(() => tour.start(index));
+  };
+  const overview = new Overview(overviewSvg, {
+    onStep: (n) => {
+      const i = steps.findIndex((s) => s.id.startsWith(`${n}-`));
+      if (i >= 0) startTour(i);
+    },
+    onTour: () => startTour(0),
+  });
+  overview.dialog.addEventListener('close', () => markSeen());
+  // The Year frame's file fills the numbers; with no climatology the graphic shows dashes.
+  const openOverview = (opener: HTMLElement | null) => {
+    const url = zonalUrl(DATA, manifest, 'climate', 'year', '');
+    overview.open(null, opener);
+    if (url) void loadZonal(url).then((z) => overview.fill(z));
+  };
   const tourButton = document.createElement('button');
   tourButton.type = 'button';
   tourButton.className = 'tour-start';
   tourButton.textContent = 'Take the tour';
-  tourButton.addEventListener('click', () => {
-    setMenuOpen(false); // on phones the sheet would cover the card
-    tour.start(0);
-  });
-  document.querySelector('#menu .menu-head')!.after(tourButton);
+  tourButton.addEventListener('click', () => startTour(0));
+  const overviewButton = document.createElement('button');
+  overviewButton.type = 'button';
+  overviewButton.className = 'tour-start overview-open';
+  overviewButton.textContent = 'How the engine works';
+  overviewButton.addEventListener('click', () => openOverview(overviewButton));
+  const guides = document.createElement('div');
+  guides.className = 'menu-guides';
+  guides.append(tourButton, overviewButton);
+  document.querySelector('#menu .menu-head')!.after(guides);
   const zonalButton = document.createElement('button');
   zonalButton.type = 'button';
   zonalButton.className = 'zb-open';
@@ -667,7 +696,7 @@ async function start(): Promise<void> {
     zonalButton.setAttribute('aria-pressed', String(open));
     void app.setPanel(open);
   });
-  tourButton.after(zonalButton);
+  guides.after(zonalButton);
   const timebar = new TimeBar(
     document.getElementById('timebar')!, manifest.dates, date, (d) => app.setDate(d), (f) => app.setFrame(f), initial.frame,
   );
@@ -693,6 +722,9 @@ async function start(): Promise<void> {
     }
   });
   const onPhone = () => window.matchMedia('(max-width: 700px)').matches;
+  // A first visit opens the overview over the map, while the map loads behind it. The graphic is a desktop layout, so phones get
+  // it only from ?overview=1 (see docs/DECISIONS.md, milestone 20).
+  if (shouldAutoShow(params, readSeen) && (!onPhone() || params.get('overview') === '1')) openOverview(null);
 
   // ?debug exposes the map and particle layer to the console and the Playwright tests.
   if (params.has('debug')) Object.assign(window, { ehe: { map, particles, arrows } });
@@ -713,6 +745,7 @@ async function start(): Promise<void> {
   if (initial.panel) void app.setPanel(true);
   else void app.updateZonal();
   document.body.dataset.ready = 'true';
+  appReady();
   // From here on the address bar follows the app: replaceState, so Back isn't filled with
   // every pan; one write shortly after the last change.
   let timer = 0;
