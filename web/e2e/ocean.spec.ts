@@ -125,3 +125,17 @@ test('the info button explains the overlay', async ({ page }) => {
   await expect(page.locator('dialog#info[open] h2')).toHaveText('Ocean overturning (AMOC)');
   await expect(page.locator('dialog#info[open]')).toContainText('GLOBAL_ANALYSISFORECAST_PHY_001_024');
 });
+
+test('the AMOC trend panel charts the strength of every date and closes with Escape', async ({ page }) => {
+  await open(page);
+  const button = page.getByRole('button', { name: 'AMOC trend' });
+  await button.click();
+  await expect(page.locator('#amoc')).toBeVisible();
+  await expect(page.locator('#amoc canvas')).toHaveCount(1);
+  await expect(page.locator('#amoc .zb-place')).toContainText('26.5° N');
+  await page.locator('#amoc summary').click();
+  await expect(page.locator('#amoc .zb-summary')).toContainText('Daily AMOC strength on');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#amoc')).toBeHidden();
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
+});

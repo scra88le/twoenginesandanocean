@@ -27,6 +27,7 @@ import {
 import { decodePng, type DecodedPng } from './png';
 import { EngineStrip } from './enginestrip';
 import { ZonalPanel } from './zonalpanel';
+import { AmocPanel } from './amocpanel';
 import { loadZonal, zonalUrl } from './zonal';
 import { flowValues } from './energyflow';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
@@ -734,6 +735,16 @@ async function start(): Promise<void> {
   const oceanLayers = Object.fromEntries(
     OCEAN_LIMBS.map((l) => [l, new ParticleLayer(`ocean-${l}`, { colour: hexToRgb(manifest.ocean?.limbs[l]?.colour ?? '#ffffff') })]),
   ) as Record<OceanLimb, ParticleLayer>;
+  const toggleAmoc = (open: boolean) => {
+    if (open && zonalPanel.isOpen) closers.zonal(); // they share the same place on the screen
+    if (open) amocPanel.open();
+    else amocPanel.close();
+    document.querySelector('.ocean-trend')?.setAttribute('aria-pressed', String(open));
+  };
+  const amocPanel = new AmocPanel(document.getElementById('amoc')!, manifest.ocean ?? null, () => {
+    toggleAmoc(false);
+    (document.querySelector('.ocean-trend') as HTMLElement | null)?.focus();
+  });
   const app = new App(
     manifest, date, raster, particles, legend, menu, choice, readout, map, arrows, zonalPanel, strip, oceanLayers, initial.ocean,
   );
@@ -752,6 +763,7 @@ async function start(): Promise<void> {
   const oceanControls = new OceanControls(
     manifest, initial.ocean, (c) => void app.setOcean(c),
     (opener) => manifest.ocean && info.open(oceanInfoMeta(manifest.ocean), manifest.ocean.credit, opener),
+    () => toggleAmoc(!amocPanel.isOpen),
   );
   overlays.element.append(oceanControls.element);
   document.querySelector('#menu .menu-head')!.after(modeSwitch.element);
@@ -820,6 +832,7 @@ async function start(): Promise<void> {
   zonalButton.setAttribute('aria-controls', 'zonal');
   zonalButton.addEventListener('click', () => {
     const open = !zonalPanel.isOpen;
+    if (open && amocPanel.isOpen) toggleAmoc(false);
     zonalButton.setAttribute('aria-pressed', String(open));
     void app.setPanel(open);
   });

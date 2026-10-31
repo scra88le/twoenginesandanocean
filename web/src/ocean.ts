@@ -147,3 +147,39 @@ export function describeLimb(name: string, transport: number, u: number, v: numb
   const where = speed < 0.0005 ? 'still' : `${speed < 0.1 ? speed.toFixed(3) : speed.toFixed(2)} m/s toward ${compassTo(u, v)}`;
   return `${name}: ${t} m²/s, ${where}`;
 }
+
+export interface AmocTrend {
+  dates: string[];
+  t: number[]; // seconds since the epoch (UTC midnight), for the chart's time axis
+  daily: number[]; // AMOC strength across the section, Sv
+  mean: (number | null)[]; // 30-day mean's strength; null until the window is in
+}
+
+/** The overturning strength at the section for every date with ocean data, oldest first. */
+export function amocTrend(o: OceanMeta): AmocTrend {
+  const dates = Object.keys(o.dates).sort();
+  return {
+    dates,
+    t: dates.map((d) => Date.parse(`${d}T00:00:00Z`) / 1000),
+    daily: dates.map((d) => o.dates[d]!.daily.psi_max_sv),
+    mean: dates.map((d) => o.dates[d]!.mean?.psi_max_sv ?? null),
+  };
+}
+
+/** The trend as sentences, for the text fold-out and the chart's accessible name. */
+export function amocTrendText(tr: AmocTrend): string[] {
+  const n = tr.dates.length;
+  if (!n) return [];
+  const last = n - 1;
+  const lines = [`${n} day${n === 1 ? '' : 's'} of ocean currents, ${tr.dates[0]} to ${tr.dates[last]}.`];
+  lines.push(`Daily AMOC strength on ${tr.dates[last]}: ${tr.daily[last]!.toFixed(1)} Sv.`);
+  const m = tr.mean[last];
+  if (m != null) lines.push(`30-day mean to ${tr.dates[last]}: ${m.toFixed(1)} Sv.`);
+  const means = tr.mean.filter((x): x is number => x != null);
+  if (means.length > 1) {
+    const first = means[0]!;
+    const change = means[means.length - 1]! - first;
+    lines.push(`The 30-day mean moved ${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)} Sv over the period shown (from ${first.toFixed(1)} Sv).`);
+  }
+  return lines;
+}

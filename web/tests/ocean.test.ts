@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import {
-  compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, resolveAvg, type LimbMeta, type OceanMeta,
+  amocTrend, amocTrendText, compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, resolveAvg, type LimbMeta, type OceanMeta,
 } from '../src/ocean';
 
 const enc = { lo: 0, hi: 1, log: false, scale: 1, offset: 0 };
@@ -65,4 +65,21 @@ test('limb depths and colours', () => {
   expect(limbDepth(limb(null))).toBe('below 1,100 m');
   expect(hexToRgb('#ff8000').map((x) => +x.toFixed(3))).toEqual([1, 0.502, 0]);
   expect(hexToRgb('nope')).toEqual([1, 1, 1]);
+});
+
+test('the trend lists every date oldest first, with the mean null until its window is in', () => {
+  const tr = amocTrend(O);
+  expect(tr.dates).toEqual(['2026-10-17', '2026-10-18']);
+  expect(tr.daily).toEqual([16.84, 16.84]);
+  expect(tr.mean).toEqual([null, 17.04]);
+  expect(tr.t[1]! - tr.t[0]!).toBe(86_400);
+});
+
+test('the trend text states the latest strength and the change of the mean', () => {
+  expect(amocTrendText(amocTrend(O))).toEqual([
+    '2 days of ocean currents, 2026-10-17 to 2026-10-18.',
+    'Daily AMOC strength on 2026-10-18: 16.8 Sv.',
+    '30-day mean to 2026-10-18: 17.0 Sv.',
+  ]);
+  expect(amocTrendText({ dates: [], t: [], daily: [], mean: [] })).toEqual([]);
 });

@@ -29,6 +29,9 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 #menu .overlays { padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 8px; }
 .overlay-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 2px; }
 .overlay-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ocean-trend { background: rgba(255, 255, 255, 0.06); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; padding: 2px 8px; font: inherit; cursor: pointer; }
+.ocean-trend:hover, .ocean-trend[aria-pressed='true'] { border-color: var(--text); }
+.ocean-trend:disabled { opacity: 0.5; cursor: default; }
 .particles-level, .ocean-select { background: rgba(255, 255, 255, 0.06); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; padding: 2px 4px; font: inherit; }
 .particles-level option, .ocean-select option { background: #151a24; }
 #credits { left: 12px; right: 12px; bottom: max(8px, env(safe-area-inset-bottom)); font-size: 10px; color: var(--muted); padding: 4px 8px; }
@@ -143,7 +146,7 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
   background: transparent; color: var(--text); font-size: 18px; line-height: 1; cursor: pointer;
 }
 .zb-close:hover { border-color: var(--text); }
-#zonal {
+#zonal, #amoc {
   left: calc(12px + min(340px, calc(100vw - 48px)) + 24px + 12px); top: 12px; width: min(480px, calc(100vw - 740px));
   min-width: 320px; max-height: calc(100vh - 210px); overflow-y: auto; z-index: 1;
 }
