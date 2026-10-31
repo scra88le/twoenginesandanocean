@@ -426,6 +426,44 @@ def amoc_strength(edges: np.ndarray, psi: np.ndarray) -> tuple[float, float]:
     return float(psi[k]), float(edges[k])
 
 
+def latitude_overturning(
+    v, depth, lat_deg, lon_deg, basin, grid_lat
+) -> tuple[np.ndarray, np.ndarray]:
+    """The overturning streamfunction of a basin on a latitude-depth section, Sv.
+
+    psi(lat, z) = the northward volume transport of the basin above depth z, summed along the
+    latitude circle (`basin` picks the columns). v is (nz, nlat, nlon) in m s-1, NaN on land and
+    below the sea floor (no flow), read one level at a time; `basin` is (nlat, nlon) on the same
+    grid. Rows of the model are averaged into the bins of `grid_lat` (ascending centres, evenly
+    spaced), which smooths eddies without changing the zonal integral's meaning.
+
+    Returns (psi, wet), both (nz, n_lat), one row per level: psi at the level's bottom edge (so
+    the maximum over depth is the true maximum of the streamfunction); wet is True where the
+    basin holds water at that level and latitude."""
+    lat = np.asarray(lat_deg, dtype="float64")
+    grid = np.asarray(grid_lat, dtype="float64")
+    step = float(grid[1] - grid[0])
+    bins = np.rint((lat - grid[0]) / step).astype(int)
+    inside = (bins >= 0) & (bins < len(grid))
+    dlam = np.deg2rad(abs(float(lon_deg[1]) - float(lon_deg[0])))
+    dx = EARTH_RADIUS * np.cos(np.deg2rad(lat)) * dlam
+    basin = np.asarray(basin, dtype=bool)
+    rows = np.bincount(bins[inside], minlength=len(grid)).astype("float64")
+    edges = level_edges(depth)
+    nz = len(depth)
+    transport = np.zeros((nz, len(grid)))
+    wet = np.zeros((nz, len(grid)), dtype=bool)
+    for k in range(nz):
+        vk = np.asarray(v[k], dtype="float64")
+        ok = np.isfinite(vk) & basin
+        per_row = np.where(ok, vk, 0.0).sum(axis=1) * dx
+        transport[k] = np.bincount(bins[inside], weights=per_row[inside], minlength=len(grid))
+        wet[k] = np.bincount(bins[inside], weights=ok.any(axis=1)[inside], minlength=len(grid)) > 0
+    transport = np.divide(transport, rows, out=np.zeros_like(transport), where=rows > 0)
+    cum = np.vstack([np.zeros(len(grid)), np.cumsum(transport * np.diff(edges)[:, None], axis=0)])
+    return cum[1:] / SVERDRUP, wet
+
+
 def section_transport(vv, lon_deg, lat_deg: float) -> float:
     """Northward transport of a limb across a latitude section, Sv, from its depth-integrated
     northward transport per metre V (m2 s-1) along the section; NaN counts as no flow."""

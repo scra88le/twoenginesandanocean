@@ -126,15 +126,25 @@ test('the info button explains the overlay', async ({ page }) => {
   await expect(page.locator('dialog#info[open]')).toContainText('GLOBAL_ANALYSISFORECAST_PHY_001_024');
 });
 
-test('the AMOC trend panel charts the strength of every date and closes with Escape', async ({ page }) => {
+test('the AMOC panel draws the latitude-depth section and the trend, and closes with Escape', async ({ page }) => {
   await open(page);
-  const button = page.getByRole('button', { name: 'AMOC trend' });
+  const button = page.getByRole('button', { name: 'AMOC section' });
   await button.click();
   await expect(page.locator('#amoc')).toBeVisible();
-  await expect(page.locator('#amoc canvas')).toHaveCount(1);
+  await expect(page.locator('#amoc canvas.amoc-heat')).toHaveAttribute('aria-label', /30-day mean to 2026-10-01\. Strongest overturning: 18\.0 Sv at \d+\.\d° N, 1,100 m deep/);
+  // The heat map is painted: a warm pixel at 30° N, 1100 m (the fixture's peak), a dark one at 70° S (no water).
+  const warm = await page.locator('#amoc canvas.amoc-heat').evaluate((c: HTMLCanvasElement) => {
+    const px = c.getContext('2d')!.getImageData(Math.round(c.width * 0.62), Math.round(c.height * 0.45), 1, 1).data;
+    return px[0]! > px[2]!;
+  });
+  expect(warm).toBe(true);
+  await expect(page.locator('#amoc .amoc-strength canvas, #amoc .amoc-strength .u-over')).not.toHaveCount(0);
+  await expect(page.locator('#amoc .amoc-chart')).toBeVisible();
   await expect(page.locator('#amoc .zb-place')).toContainText('26.5° N');
-  await page.locator('#amoc summary').click();
-  await expect(page.locator('#amoc .zb-summary')).toContainText('Daily AMOC strength on');
+  await page.locator('#amoc summary').first().click();
+  await expect(page.locator('#amoc .amoc-heat-text')).toContainText('The equator');
+  await page.locator('#amoc summary').last().click();
+  await expect(page.locator('#amoc .amoc-trend-text')).toContainText('Daily AMOC strength on');
   await page.keyboard.press('Escape');
   await expect(page.locator('#amoc')).toBeHidden();
   await expect(button).toHaveAttribute('aria-pressed', 'false');

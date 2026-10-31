@@ -342,3 +342,28 @@ def test_layers_are_dataarrays_on_the_grid():
         assert isinstance(f.values, xr.DataArray)
         assert f.values.shape == (NLAT, NLON)
         assert f.masked.dtype == bool
+
+
+def test_latitude_overturning_of_a_uniform_flow_and_a_closed_basin():
+    # Four model rows per 0.5-degree bin, two bins; 6 columns, three of them in the basin.
+    lat = np.array([10.0, 10.05, 10.1, 10.15, 10.5, 10.55, 10.6, 10.65])
+    lon = np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    depth = np.array([5.0, 15.0, 30.0])  # edges 0, 10, 20, 40
+    basin = np.zeros((8, 6), dtype=bool)
+    basin[:, :3] = True
+    v = np.full((3, 8, 6), 0.1)
+    v[2, :, 3:] = np.nan  # the deepest level is sea floor outside the basin
+    v[2, 0, 0] = np.nan  # ... and in one basin cell of the first row
+    psi, wet = d.latitude_overturning(v, depth, lat, lon, basin, np.array([10.0, 10.5]))
+    assert psi.shape == wet.shape == (3, 2)
+    dx = d.EARTH_RADIUS * np.cos(np.deg2rad(lat)) * np.deg2rad(0.1)
+    # Level 0's bottom edge is 10 m down: psi = 0.1 m/s x 3 columns x dx x 10 m.
+    expected = 0.1 * 3 * dx[[0, 1, 2, 3]].mean() * 10 / d.SVERDRUP
+    assert psi[0, 0] == pytest.approx(expected)
+    # Flow only adds with depth, so psi grows down the column, and is wet everywhere here.
+    assert (np.diff(psi, axis=0) > 0).all() and wet.all()
+    # No v at all in a bin: no transport and not wet.
+    v2 = v.copy()
+    v2[:, 4:, :] = np.nan
+    psi2, wet2 = d.latitude_overturning(v2, depth, lat, lon, basin, np.array([10.0, 10.5]))
+    assert (psi2[:, 1] == 0).all() and not wet2[:, 1].any() and wet2[:, 0].all()

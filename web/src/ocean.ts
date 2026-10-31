@@ -38,8 +38,18 @@ export interface Section {
   amoc_deep_sv: number;
 }
 
+/** The latitude-depth section's grid: latitude bins and the model's depth levels. */
+export interface SectionGrid {
+  lat0: number;
+  dlat: number;
+  n_lat: number;
+  depth_edges_m: number[]; // nz + 1 edges, 0 at the surface
+  unit_sv: number; // the file's integers are multiples of this
+}
+
 export interface OceanDate {
   window_days: number;
+  section?: { daily: boolean; mean: boolean };
   daily: Section;
   mean: Section | null; // null until enough days of the 30-day window are in
 }
@@ -50,7 +60,8 @@ export interface OceanMeta {
   split_m: number;
   window_days: number;
   section: { lat: number; lon: [number, number] };
-  files: { field: string; uv: string; avg: Record<OceanAvg, string> };
+  files: { field: string; uv: string; section?: string; avg: Record<OceanAvg, string> };
+  section_grid?: SectionGrid | null;
   limbs: Record<OceanLimb, LimbMeta>;
   dates: Record<string, OceanDate>;
   info: LayerInfo;
@@ -180,6 +191,93 @@ export function amocTrendText(tr: AmocTrend): string[] {
     const first = means[0]!;
     const change = means[means.length - 1]! - first;
     lines.push(`The 30-day mean moved ${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)} Sv over the period shown (from ${first.toFixed(1)} Sv).`);
+  }
+  return lines;
+}
+
+/** The streamfunction on the latitude-depth section: psi[k][j] in Sv at the bottom edge of
+ * level k and latitude bin j, NaN where the basin has no water. */
+export interface SectionField {
+  psi: number[][];
+  lat: number[];
+  edges: number[];
+}
+
+/** Which averaging has a section for the date, or null. */
+export function sectionAvg(o: OceanMeta | null | undefined, date: string, wanted: OceanAvg): OceanAvg | null {
+  const s = o?.dates[date]?.section;
+  if (!o?.section_grid || !o.files.section || !s) return null;
+  if (s[wanted]) return wanted;
+  const other: OceanAvg = wanted === 'mean' ? 'daily' : 'mean';
+  return s[other] ? other : null;
+}
+
+export function sectionUrl(base: string, o: OceanMeta, date: string, avg: OceanAvg): string {
+  const vars: Record<string, string> = { date, avg: o.files.avg[avg] };
+  return `${base}/${o.files.section!.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '')}`;
+}
+
+/** Check and unpack a section file against the manifest's grid. */
+export function parseSection(raw: unknown, grid: SectionGrid): SectionField {
+  const rows = (raw as { psi?: unknown } | null)?.psi;
+  const nz = grid.depth_edges_m.length - 1;
+  if (!Array.isArray(rows) || rows.length !== nz) throw new Error('ocean section: wrong number of levels');
+  const psi = rows.map((r: unknown) => {
+    if (!Array.isArray(r) || r.length !== grid.n_lat) throw new Error('ocean section: wrong number of latitudes');
+    return r.map((x) => (typeof x === 'number' ? x * grid.unit_sv : NaN));
+  });
+  return { psi, lat: Array.from({ length: grid.n_lat }, (_, j) => grid.lat0 + j * grid.dlat), edges: grid.depth_edges_m };
+}
+
+/** The overturning strength at each latitude: the largest psi down the column, and its depth. */
+export function sectionStrength(sec: SectionField): { sv: number[]; z: number[] } {
+  const sv: number[] = [];
+  const z: number[] = [];
+  for (let j = 0; j < sec.lat.length; j++) {
+    let best = NaN;
+    let at = NaN;
+    for (let k = 0; k < sec.psi.length; k++) {
+      const v = sec.psi[k]![j]!;
+      if (Number.isFinite(v) && !(v <= best)) {
+        best = v;
+        at = sec.edges[k + 1]!;
+      }
+    }
+    sv.push(best);
+    z.push(at);
+  }
+  return { sv, z };
+}
+
+const NEUTRAL: [number, number, number] = [27, 31, 39];
+const WARM = [240, 138, 93];
+const COLD = [111, 182, 242];
+
+/** Colour of a streamfunction value: warm for the clockwise (northward-above) overturning, cold for
+ * the reverse, dark at zero; `vmax` Sv is the full colour. */
+export function psiColour(v: number, vmax: number): [number, number, number] {
+  if (!Number.isFinite(v)) return [0, 0, 0];
+  const t = Math.min(1, Math.abs(v) / vmax);
+  const to = v >= 0 ? WARM : COLD;
+  return [0, 1, 2].map((c) => Math.round(NEUTRAL[c]! + (to[c]! - NEUTRAL[c]!) * t)) as [number, number, number];
+}
+
+/** The section as sentences, for the fold-out and the heatmap's accessible name. */
+export function sectionText(sec: SectionField, o: OceanMeta): string[] {
+  const { sv, z } = sectionStrength(sec);
+  let jMax = -1;
+  sv.forEach((x, j) => {
+    if (Number.isFinite(x) && (jMax < 0 || x > sv[jMax]!)) jMax = j;
+  });
+  if (jMax < 0) return ['No water in the section.'];
+  const at = (lat: number) => {
+    const j = Math.round((lat - sec.lat[0]!) / (sec.lat[1]! - sec.lat[0]!));
+    return sv[j] != null && Number.isFinite(sv[j]!) ? `${sv[j]!.toFixed(1)} Sv at ${Math.round(z[j]!).toLocaleString('en-GB')} m` : null;
+  };
+  const lines = [`Strongest overturning: ${sv[jMax]!.toFixed(1)} Sv at ${Math.abs(sec.lat[jMax]!).toFixed(1)}° ${sec.lat[jMax]! < 0 ? 'S' : 'N'}, ${Math.round(z[jMax]!).toLocaleString('en-GB')} m deep.`];
+  for (const lat of [-34, 0, o.section.lat, 45]) {
+    const a = at(lat);
+    if (a) lines.push(`${lat === 0 ? 'The equator' : `${Math.abs(lat)}° ${lat < 0 ? 'S' : 'N'}`}: ${a}.`);
   }
   return lines;
 }

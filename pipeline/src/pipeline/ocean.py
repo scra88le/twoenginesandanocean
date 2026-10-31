@@ -79,6 +79,7 @@ PACIFIC_DIVIDE = (
 NLAT, NLON = 360, 720
 GRID_LAT = 89.75 - 0.5 * np.arange(NLAT)
 GRID_LON = -179.75 + 0.5 * np.arange(NLON)
+SECTION_GRID_LAT = np.arange(-40.0, 80.0 + 1e-6, 0.5)  # latitude bins of the latitude-depth section
 SECTION_KEYS = ("psi_max_sv", "z_max_m", "amoc_upper_sv", "amoc_deep_sv")
 SUFFIX = {"daily": "", "mean": "_30d"}
 
@@ -227,6 +228,12 @@ class OceanDay:
     limbs: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]  # id -> (U, V, H)
     section: dict[str, float]  # SECTION_KEYS
     days: int = 1  # how many days were averaged
+    # The Atlantic's streamfunction on the latitude-depth section (Sv, (nz, len(SECTION_GRID_LAT))
+    # at the levels' bottom edges), where the basin holds water, and the levels' depths (m).
+    # None for a day saved before the section existed.
+    psi: np.ndarray | None = None
+    psi_wet: np.ndarray | None = None
+    depth: np.ndarray | None = None
 
 
 def reduce_day(u, v, depth, lat, lon) -> OceanDay:
@@ -237,6 +244,7 @@ def reduce_day(u, v, depth, lat, lon) -> OceanDay:
     integrals = d.limb_transports(u, v, depth, [(s.top_m, s.bottom_m) for s in specs])
     rg = regridder(lat, lon)
     wet = np.isfinite(np.asarray(u[0], dtype="float64"))
+    ocean_fraction = rg.mean(wet.astype("float64"))
     j = int(np.argmin(abs(lat - SECTION_LAT)))
     cols = np.flatnonzero((lon >= SECTION_LON[0]) & (lon <= SECTION_LON[1]))
     edges, psi = d.overturning(
@@ -248,7 +256,16 @@ def reduce_day(u, v, depth, lat, lon) -> OceanDay:
     for s, (uu, vv, h) in zip(specs, integrals, strict=True):
         section[f"{s.id}_sv"] = d.section_transport(vv[j, cols], lon[cols], lat[j])
         limbs[s.id] = (rg.mean(uu), rg.mean(vv), rg.mean(h))
-    return OceanDay(rg.mean(wet.astype("float64")), limbs, section)
+    # The basin on the model's own grid, for the zonal integral at every latitude.
+    basin = basin_mask(ocean_fraction)
+    rows = np.clip(np.floor((90.0 - lat) / 0.5).astype(int), 0, NLAT - 1)
+    cols_native = np.clip(np.floor((lon + 180.0) / 0.5).astype(int), 0, NLON - 1)
+    psi, psi_wet = d.latitude_overturning(
+        v, depth, lat, lon, basin[np.ix_(rows, cols_native)], SECTION_GRID_LAT
+    )
+    return OceanDay(
+        ocean_fraction, limbs, section, psi=psi, psi_wet=psi_wet, depth=np.asarray(depth, "float64")
+    )
 
 
 def window_mean(days: list[OceanDay]) -> OceanDay:
@@ -260,7 +277,13 @@ def window_mean(days: list[OceanDay]) -> OceanDay:
         for lid in days[0].limbs
     }
     section = {k: float(np.mean([x.section[k] for x in days])) for k in SECTION_KEYS}
-    return OceanDay(days[0].ocean_fraction, limbs, section, days=len(days))
+    with_psi = [x for x in days if x.psi is not None]
+    psi = np.mean([x.psi for x in with_psi], axis=0) if with_psi else None
+    wet = np.any([x.psi_wet for x in with_psi], axis=0) if with_psi else None
+    return OceanDay(
+        days[0].ocean_fraction, limbs, section, days=len(days), psi=psi, psi_wet=wet,
+        depth=with_psi[0].depth if with_psi else None,
+    )  # fmt: skip
 
 
 def save_day(path: Path, day: OceanDay) -> None:
@@ -268,6 +291,9 @@ def save_day(path: Path, day: OceanDay) -> None:
     for lid, (uu, vv, h) in day.limbs.items():
         arrays |= {f"{lid}_U": uu, f"{lid}_V": vv, f"{lid}_H": h}
     arrays = {k: np.asarray(a, dtype="float32") for k, a in arrays.items()}
+    if day.psi is not None:
+        arrays |= {"psi": day.psi.astype("float32"), "depth": np.asarray(day.depth, "float32")}
+        arrays["psi_wet"] = day.psi_wet.astype("uint8")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp.npz")
     np.savez_compressed(tmp, **arrays, section=np.array([day.section[k] for k in SECTION_KEYS]))
@@ -280,7 +306,13 @@ def load_saved(path: Path) -> OceanDay:
             lid: tuple(z[f"{lid}_{c}"].astype("float64") for c in "UVH") for lid in OCEAN_LIMBS
         }
         section = dict(zip(SECTION_KEYS, (float(x) for x in z["section"]), strict=True))
-        return OceanDay(z["ocean_fraction"].astype("float64"), limbs, section)
+        has_psi = "psi" in z.files
+        return OceanDay(
+            z["ocean_fraction"].astype("float64"), limbs, section,
+            psi=z["psi"].astype("float64") if has_psi else None,
+            psi_wet=z["psi_wet"].astype(bool) if has_psi else None,
+            depth=z["depth"].astype("float64") if has_psi else None,
+        )  # fmt: skip
 
 
 # ---- encoding and publishing -----------------------------------------------------------
@@ -301,6 +333,17 @@ def encode_limb(spec: LimbSpec, uu, vv, h, basin) -> tuple[bytes, bytes]:
     return scalar_png(mag), vector_png(cu, cv)
 
 
+def encode_section(psi: np.ndarray, wet: np.ndarray) -> bytes:
+    """`section{avg}.json`: the streamfunction in tenths of a Sv, level-major (rows are the
+    model's levels, columns the latitude bins); null where the basin has no water."""
+    tenths = np.rint(np.asarray(psi, dtype="float64") * 10).astype(int)
+    rows = [
+        [int(x) if w else None for x, w in zip(r, wr, strict=True)]
+        for r, wr in zip(tenths, wet, strict=True)
+    ]
+    return json.dumps({"psi": rows}, separators=(",", ":")).encode()
+
+
 def encode_ocean(daily: OceanDay, mean: OceanDay | None) -> dict[str, bytes]:
     """Every file of one date: each limb, daily and (if there is one) its 30-day mean."""
     basin = basin_mask(daily.ocean_fraction)
@@ -312,6 +355,8 @@ def encode_ocean(daily: OceanDay, mean: OceanDay | None) -> dict[str, bytes]:
             png, uv = encode_limb(OCEAN_LIMBS[lid], uu, vv, h, basin)
             files[f"{lid}{SUFFIX[avg]}.png"] = png
             files[f"{lid}{SUFFIX[avg]}_uv.png"] = uv
+        if x.psi is not None:
+            files[f"section{SUFFIX[avg]}.json"] = encode_section(x.psi, x.psi_wet)
     return files
 
 
@@ -319,9 +364,15 @@ def _rounded(section: dict[str, float]) -> dict[str, float]:
     return {k: round(float(section[k]), 2) for k in SECTION_KEYS}
 
 
-def date_entry(daily: OceanDay, mean: OceanDay | None, days_in_window: int) -> dict:
+def date_entry(
+    daily: OceanDay, mean: OceanDay | None, days_in_window: int, psi_days: int = 0
+) -> dict:
     return {
         "window_days": days_in_window,
+        # The latitude-depth section: the days of the window that have it, and which averages
+        # were drawn (the mean needs MIN_WINDOW_DAYS of them).
+        "psi_days": psi_days,
+        "section": {"daily": daily.psi is not None, "mean": bool(mean and mean.psi is not None)},
         "daily": _rounded(daily.section),
         "mean": _rounded(mean.section) if mean is not None else None,
     }
@@ -343,8 +394,21 @@ def _limb_meta(s: LimbSpec) -> dict:
     }
 
 
-def ocean_block(dates: dict[str, dict]) -> dict:
-    """The manifest's `ocean` block."""
+def section_grid(depth) -> dict:
+    """The latitude-depth section's grid: the latitude bins and the model's levels (m)."""
+    return {
+        "lat0": float(SECTION_GRID_LAT[0]),
+        "dlat": float(SECTION_GRID_LAT[1] - SECTION_GRID_LAT[0]),
+        "n_lat": len(SECTION_GRID_LAT),
+        "depth_edges_m": [round(float(x), 1) for x in d.level_edges(depth)],
+        "unit_sv": 0.1,
+    }
+
+
+def ocean_block(dates: dict[str, dict], depth=None, grid: dict | None = None) -> dict:
+    """The manifest's `ocean` block. `grid` (the section's) is carried forward when this run
+    saw no day with a depth axis."""
+    grid = section_grid(depth) if depth is not None else grid
     return {
         "product": PRODUCT_ID,
         "dataset": DATASET_ID,
@@ -354,8 +418,10 @@ def ocean_block(dates: dict[str, dict]) -> dict:
         "files": {
             "field": "ocean/{date}/{limb}{avg}.png",
             "uv": "ocean/{date}/{limb}{avg}_uv.png",
+            "section": "ocean/{date}/section{avg}.json",
             "avg": dict(SUFFIX),
         },
+        "section_grid": grid,
         "limbs": {lid: _limb_meta(s) for lid, s in OCEAN_LIMBS.items()},
         "dates": dict(sorted(dates.items())),
         "info": asdict(OCEAN_INFO),
@@ -366,11 +432,14 @@ def ocean_block(dates: dict[str, dict]) -> dict:
     }
 
 
-def write_ocean_manifest(out: Path, dates: dict[str, dict]) -> None:
+def write_ocean_manifest(out: Path, dates: dict[str, dict], depth=None) -> None:
     """Rewrite the manifest's `ocean` block, keeping everything else as it is."""
     manifest = _read_manifest(out)
     published = set(manifest.get("dates", []))
-    manifest["ocean"] = ocean_block({k: v for k, v in dates.items() if k in published})
+    previous = (manifest.get("ocean") or {}).get("section_grid")
+    manifest["ocean"] = ocean_block(
+        {k: v for k, v in dates.items() if k in published}, depth, previous
+    )
     _write_manifest(out, manifest)
 
 
@@ -413,16 +482,30 @@ def run_ocean(
     state = work / "ocean"
     saved = lambda day: state / f"{day.isoformat()}.npz"  # noqa: E731
 
-    def window_count(day: date) -> int:
-        return sum(saved(x).is_file() for x in _window(day))
+    section_known: dict[Path, bool] = {}
+
+    def has_section(day: date) -> bool:
+        """The saved day carries the latitude-depth section (older saves don't)."""
+        path = saved(day)
+        if not path.is_file():
+            return False
+        if path not in section_known:
+            with np.load(path, allow_pickle=False) as z:
+                section_known[path] = "psi" in z.files
+        return section_known[path]
 
     def stale(day: date) -> bool:
         entry = entries.get(day.isoformat())
-        return entry is None or entry.get("window_days", 0) < WINDOW_DAYS
+        return (
+            entry is None
+            or entry.get("window_days", 0) < WINDOW_DAYS
+            or entry.get("psi_days", 0) < entry["window_days"]
+        )
 
     todo = [x for x in sorted(dates, reverse=True) if stale(x)]
     wanted = list(dict.fromkeys([*todo, *(w for x in todo for w in _window(x))]))
-    missing = [x for x in wanted if not saved(x).is_file()][:max_fetch]
+    # A day saved before the section existed is fetched again (it still serves until then).
+    missing = [x for x in wanted if not has_section(x)][:max_fetch]
     for day in missing:
         try:
             nc = fetch(day, state / "raw")
@@ -434,16 +517,23 @@ def run_ocean(
             result.failed[day] = f"{type(e).__name__}: {e}"
             log(f"ocean {day}: not fetched: {result.failed[day]}")
             continue
+        section_known.pop(saved(day), None)
         result.fetched.append(day)
         result.saved.append(saved(day))
         log(f"ocean {day}: fetched")
 
+    depth = None
     for day in todo:
         if not saved(day).is_file():
             continue
         key = day.isoformat()
         window = [x for x in _window(day) if saved(x).is_file()]
-        if key in entries and entries[key].get("window_days") == len(window):
+        psi_days = sum(has_section(x) for x in window)
+        if (
+            key in entries
+            and entries[key].get("window_days") == len(window)
+            and entries[key].get("psi_days") == psi_days
+        ):
             continue  # nothing new in its window
         daily = load_saved(saved(day))
         mean = (
@@ -451,8 +541,12 @@ def run_ocean(
             if len(window) >= MIN_WINDOW_DAYS
             else None
         )
+        if mean is not None and psi_days < MIN_WINDOW_DAYS:
+            mean.psi = mean.psi_wet = None  # too few days with the section for a mean of it
+        if daily.depth is not None:
+            depth = daily.depth
         _swap_in(out / "ocean", key, encode_ocean(daily, mean))
-        entries[key] = date_entry(daily, mean, len(window))
+        entries[key] = date_entry(daily, mean, len(window), psi_days)
         result.built.append(key)
         s = entries[key]["daily"]
         log(
@@ -470,7 +564,7 @@ def run_ocean(
         for p in state.glob("*.npz"):
             if date.fromisoformat(p.stem) < oldest:
                 p.unlink()
-    write_ocean_manifest(out, entries)  # last
+    write_ocean_manifest(out, entries, depth)  # last
     return result
 
 

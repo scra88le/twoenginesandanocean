@@ -468,7 +468,9 @@ OCEAN_INFO = LayerInfo(
         "how densely they are drawn follows the transport |(U, V)|. The 26.5° N figures integrate v "
         "across the Atlantic from Florida to Africa at full resolution: the overturning "
         "streamfunction ψ(z) = ∫∫ v dx dz from the surface down to z, and its maximum is the AMOC "
-        "strength (1 Sv = 10⁶ m³ s⁻¹)."
+        "strength (1 Sv = 10⁶ m³ s⁻¹). The AMOC panel's latitude–depth section repeats that sum at "
+        "every latitude from 40° S to 80° N over the whole Atlantic basin, in 0.5° latitude bins: "
+        "ψ(lat, z) is the northward volume transport of the basin above depth z."
     ),
     sign="Directions as on the map: north is up, east is right. Northward transport across 26.5° N is positive.",
     meaning=(
@@ -484,7 +486,9 @@ OCEAN_INFO = LayerInfo(
         "A single day is dominated by eddies; the 30-day mean shows the pathways. The split at a "
         f"fixed {_SPLIT} suits 26.5° N and is approximate elsewhere. Model values, not "
         "observations: compare the 26.5° N figure with RAPID's. GLO12 runs about a day behind real "
-        "time; the overlay follows the map's dates."
+        "time; the overlay follows the map's dates. The section's ψ is taken from the surface down, "
+        "so it ends at the net transport across the latitude (which should be near zero) and is "
+        "not corrected for it; the Gulf of Mexico and Mediterranean are inside the basin mask."
     ),
     mask="Grey: land, water outside the Atlantic, or less water in the limb than it needs (50 m for the upper limb, 200 m for the deep).",
     anomaly="No anomaly: GLO12 covers about the last two years, so there is no 1991–2020 normal.",

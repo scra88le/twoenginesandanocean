@@ -28,7 +28,8 @@
   The ocean overlay (ocean/{date}/, manifest `ocean`): water over 80 W - 0 E, 40 S - 75 N; the
   upper limb carries 220 m2/s north (0.2 m/s over 1100 m), the deep limb 150 m2/s south (0.05
   m/s over 3000 m). The newest date has the daily field and the 30-day mean, the middle date the
-  daily field only (12 days in its window), the oldest date nothing.
+  daily field only (12 days in its window), the oldest date nothing. Each also has the
+  latitude-depth section: 18 Sv at 30 N, 1100 m, in the same shape on both averages.
 """
 
 from pathlib import Path
@@ -236,6 +237,13 @@ def ocean_fixtures(data: Path) -> None:
     water = (lon > -80) & (lon < 0) & (lat > -40) & (lat < 75)
     box = (lon > -100) & (lon < 25) & (lat > -40) & (lat < 80)
     f = lambda x: np.where(box, np.where(water, x, 0.0), np.nan)  # noqa: E731
+    # The latitude-depth section: 18 Sv peaking at 30 N, at 1100 m, and no water south of 40 S or
+    # north of 75 N (the model's bottom edges 10, 22.5, 315, 1100, 2300 and 3750 m).
+    depth = np.array([5.0, 15.0, 30.0, 600.0, 1600.0, 3000.0])
+    lats = ocean.SECTION_GRID_LAT
+    profile = np.array([0.05, 0.1, 0.7, 1.0, 0.3, 0.0])
+    psi = profile[:, None] * 18.0 * np.exp(-(((lats - 30.0) / 25.0) ** 2))[None, :]
+    wet = np.broadcast_to((lats > -40) & (lats < 75), psi.shape).copy()
     day = ocean.OceanDay(
         f(1.0),
         {
@@ -243,13 +251,16 @@ def ocean_fixtures(data: Path) -> None:
             "amoc_deep": (f(0.0), f(-150.0), f(3000.0)),
         },
         {"psi_max_sv": 17.04, "z_max_m": 1153.5, "amoc_upper_sv": 16.2, "amoc_deep_sv": -15.47},
+        psi=psi,
+        psi_wet=wet,
+        depth=depth,
     )
     entries = {}
     for name, window in ((E2E_DATES[-1], 30), (E2E_DATES[-2], 12)):
         mean = day if window >= ocean.MIN_WINDOW_DAYS else None
         ocean._swap_in(data / "ocean", name, ocean.encode_ocean(day, mean))
-        entries[name] = ocean.date_entry(day, mean, window)
-    ocean.write_ocean_manifest(data, entries)
+        entries[name] = ocean.date_entry(day, mean, window, window)
+    ocean.write_ocean_manifest(data, entries, depth)
 
 
 def e2e_fixtures() -> None:

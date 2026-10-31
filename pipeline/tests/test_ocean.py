@@ -171,7 +171,9 @@ def _decode(files, name, lid):
 
 def test_encode_ocean_writes_transport_and_velocity(day):
     files = ocean.encode_ocean(day, None)
-    assert set(files) == {f"{lid}{s}.png" for lid in OCEAN_LIMBS for s in ("", "_uv")}
+    assert set(files) == {f"{lid}{s}.png" for lid in OCEAN_LIMBS for s in ("", "_uv")} | {
+        "section.json"
+    }
     j, i = _cell(-50.25, 27.25)
     mag, codes = _decode(files, "amoc_upper.png", "amoc_upper")
     assert mag[j, i] == pytest.approx(110, rel=0.005)
@@ -187,6 +189,23 @@ def test_encode_ocean_writes_transport_and_velocity(day):
 def test_encode_ocean_adds_the_mean_files(day):
     files = ocean.encode_ocean(day, day)
     assert "amoc_deep_30d_uv.png" in files and "amoc_upper_30d.png" in files
+    assert "section_30d.json" in files
+
+
+def test_the_section_peaks_at_the_split_and_agrees_with_the_26n_figure(day):
+    rows = json.loads(ocean.encode_section(day.psi, day.psi_wet))["psi"]
+    assert len(rows) == day.psi.shape[0] and len(rows[0]) == len(ocean.SECTION_GRID_LAT)
+    k = int(np.argmin(abs(ocean.SECTION_GRID_LAT - ocean.SECTION_LAT)))
+    column = day.psi[:, k]
+    top = int(np.argmax(column))
+    # The synthetic flow reverses at 1100 m, so psi peaks at the last level above it...
+    assert day.depth[top] < 1100 <= day.depth[top + 1]
+    # ... and at that latitude it is the 26.5 N strength (the section there is the same water).
+    assert column[top] == pytest.approx(day.section["psi_max_sv"], rel=0.15)
+    # Tenths of a Sv in the file; null where the basin has no water (below the shelf).
+    assert rows[top][k] == round(column[top] * 10)
+    assert any(r[k] is None for r in rows) or day.psi_wet[:, k].all()
+    assert day.psi_wet[0, k] and not day.psi_wet[:, 0].any()  # 40 S is outside the synthetic box
 
 
 # ---- fetching -------------------------------------------------------------------------
@@ -367,3 +386,28 @@ def test_bad_credentials_change_nothing(tmp_path):
     with pytest.raises(RuntimeError, match="credentials"):
         ocean.run_ocean_daily(store, tmp_path / "o", tmp_path / "w", check=lambda: False)
     assert store.list("") == before
+
+
+def test_days_saved_without_the_section_are_fetched_again_and_the_entry_says_so(tmp_path):
+    out = _out(tmp_path, [LATEST])
+    fake = Fake()
+    work = tmp_path / "work"
+    ocean.run_ocean(out, work, max_fetch=1, fetch=fake.fetch, load=fake.load)
+    entry = json.loads((out / "manifest.json").read_text())["ocean"]["dates"][LATEST.isoformat()]
+    assert entry["psi_days"] == 1 and entry["section"] == {"daily": True, "mean": False}
+    assert (out / "ocean" / LATEST.isoformat() / "section.json").is_file()
+    grid = json.loads((out / "manifest.json").read_text())["ocean"]["section_grid"]
+    assert grid["n_lat"] == len(ocean.SECTION_GRID_LAT) and len(grid["depth_edges_m"]) == 6
+    # An older save: the same day without psi.
+    path = work / "ocean" / f"{LATEST}.npz"
+    day = ocean.load_saved(path)
+    day.psi = day.psi_wet = day.depth = None
+    ocean.save_day(path, day)
+    m = json.loads((out / "manifest.json").read_text())
+    m["ocean"]["dates"][LATEST.isoformat()].pop("psi_days")  # as written before the section
+    (out / "manifest.json").write_text(json.dumps(m))
+    fake.days.clear()
+    r = ocean.run_ocean(out, work, max_fetch=1, fetch=fake.fetch, load=fake.load)
+    assert fake.days == [LATEST] and r.built == [LATEST.isoformat()]
+    entry = json.loads((out / "manifest.json").read_text())["ocean"]["dates"][LATEST.isoformat()]
+    assert entry["psi_days"] == 1

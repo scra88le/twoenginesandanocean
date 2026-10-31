@@ -107,7 +107,7 @@ export class OceanControls {
       <label class="overlay-toggle"><input type="checkbox" class="ocean-on" /> Ocean overturning</label>
       <select class="ocean-select ocean-limbs" aria-label="Which limbs of the overturning"></select>
       <select class="ocean-select ocean-avg" aria-label="Daily or 30-day mean currents"></select>
-      <button type="button" class="ocean-trend" aria-pressed="false" aria-controls="amoc">AMOC trend</button>
+      <button type="button" class="ocean-trend" aria-pressed="false" aria-controls="amoc">AMOC section</button>
       <button type="button" class="info-button ocean-info" aria-label="About the ocean overturning">i</button>`;
     this.checkbox = this.element.querySelector('.ocean-on')!;
     this.limbs = this.element.querySelector('.ocean-limbs')!;

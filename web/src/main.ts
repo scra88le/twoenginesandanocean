@@ -93,6 +93,8 @@ class App {
   private zonalRequest = 0;
   /** Called after anything the URL records changes; main.ts writes the address bar. */
   onStateChange: (() => void) | null = null;
+  /** The date or mode may have changed (every such change reloads the ocean): the AMOC panel follows. */
+  onViewChange: ((date: string, climate: boolean) => void) | null = null;
   private chartRequest = 0;
   private codes: Uint16Array | null = null;
   private wind: WindCodes | null = null;
@@ -472,6 +474,7 @@ class App {
   async updateOcean(): Promise<void> {
     const request = ++this.oceanRequest;
     const o = this.manifest.ocean;
+    this.onViewChange?.(this.date, this.mode === 'climate');
     const off = (note: string | null, state: string) => {
       for (const l of OCEAN_LIMBS) this.oceanLayers[l].setWind(null);
       this.oceanCodes = [];
@@ -741,13 +744,14 @@ async function start(): Promise<void> {
     else amocPanel.close();
     document.querySelector('.ocean-trend')?.setAttribute('aria-pressed', String(open));
   };
-  const amocPanel = new AmocPanel(document.getElementById('amoc')!, manifest.ocean ?? null, () => {
+  const amocPanel = new AmocPanel(document.getElementById('amoc')!, manifest.ocean ?? null, DATA, () => {
     toggleAmoc(false);
     (document.querySelector('.ocean-trend') as HTMLElement | null)?.focus();
   });
   const app = new App(
     manifest, date, raster, particles, legend, menu, choice, readout, map, arrows, zonalPanel, strip, oceanLayers, initial.ocean,
   );
+  app.onViewChange = (d, climate) => amocPanel.setView(d, climate);
   closers.close = () => app.unpin();
   closers.zonal = () => {
     void app.setPanel(false);

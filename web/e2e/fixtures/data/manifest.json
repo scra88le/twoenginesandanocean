@@ -1483,10 +1483,26 @@
   "files": {
    "field": "ocean/{date}/{limb}{avg}.png",
    "uv": "ocean/{date}/{limb}{avg}_uv.png",
+   "section": "ocean/{date}/section{avg}.json",
    "avg": {
     "daily": "",
     "mean": "_30d"
    }
+  },
+  "section_grid": {
+   "lat0": -40.0,
+   "dlat": 0.5,
+   "n_lat": 241,
+   "depth_edges_m": [
+    0.0,
+    10.0,
+    22.5,
+    315.0,
+    1100.0,
+    2300.0,
+    3700.0
+   ],
+   "unit_sv": 0.1
   },
   "limbs": {
    "amoc_upper": {
@@ -1549,6 +1565,11 @@
   "dates": {
    "2026-09-30": {
     "window_days": 12,
+    "psi_days": 12,
+    "section": {
+     "daily": true,
+     "mean": false
+    },
     "daily": {
      "psi_max_sv": 17.04,
      "z_max_m": 1153.5,
@@ -1559,6 +1580,11 @@
    },
    "2026-10-01": {
     "window_days": 30,
+    "psi_days": 30,
+    "section": {
+     "daily": true,
+     "mean": true
+    },
     "daily": {
      "psi_max_sv": 17.04,
      "z_max_m": 1153.5,
