@@ -23,7 +23,8 @@ test('the site loads its data and draws a map', async ({ page }) => {
   page.on('response', (r) => r.status() >= 400 && failed.push(`${r.status()} ${r.url()}`));
   const manifestResponse = page.waitForResponse((r) => /manifest\.json/.test(r.url()));
   // A fixed view of the open South Atlantic, where every deployment has point data.
-  await page.goto('./?center=0.25,-35.25&zoom=4&particles=off');
+  // Today mode: the front end opens in the Climate view (Year frame) by default, which has no date.
+  await page.goto('./?mode=today&center=0.25,-35.25&zoom=4&particles=off');
   const res = await manifestResponse;
   expect(res.status()).toBe(200);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
@@ -56,6 +57,22 @@ test('the site loads its data and draws a map', async ({ page }) => {
     await expect(page.locator('body')).toHaveAttribute('data-readout', /.+/, { timeout: 30_000 });
     await expect(page.locator('body')).toHaveAttribute('data-chart', /:\d+/, { timeout: 30_000 });
   }
+  expect(failed, 'requests that failed').toEqual([]);
+  expect(errors, 'page errors').toEqual([]);
+});
+
+test('the site opens in the Climate view with the annual mean, its zonal budget and no failed requests', async ({ page }) => {
+  const failed: string[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('response', (r) => r.status() >= 400 && failed.push(`${r.status()} ${r.url()}`));
+  const zonal = page.waitForResponse((r) => /clim\/zonal\/year\.json/.test(r.url()));
+  await page.goto('./?overview=0&particles=off');
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-mode', 'climate');
+  await expect(page.locator('.tb-date')).toHaveText('Annual mean');
+  expect((await zonal).status()).toBe(200); // the strip and the overview read the Year frame's budget
+  await expect(page.locator('#strip')).not.toContainText('—', { timeout: 30_000 });
   expect(failed, 'requests that failed').toEqual([]);
   expect(errors, 'page errors').toEqual([]);
 });
