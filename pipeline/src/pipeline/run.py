@@ -22,7 +22,7 @@ from .tidy import build_tidy, write_tidy
 from .validate import check, global_means, write_log
 
 RAW_KEEP_DAYS = 30  # spec: keep native files for 30 days
-TIDY_KEEP_DAYS = 90  # the map's window; tidy files feed later point/series builds
+TIDY_KEEP_DAYS = 365  # the published window; tidy files feed later point/series builds
 
 
 def _tidy_path(work: Path, day: date) -> Path:

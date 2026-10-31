@@ -200,3 +200,13 @@ def test_manifest_publishes_modes_and_default_mode():
     assert m["layers"]["j_ratio"]["modes"] == ["climate"]
     assert m["layers"]["wind10"]["modes"] == ["today"]
     assert m["layers"]["human_q"]["modes"] == [] and m["layers"]["human_q"]["default_mode"] is None
+
+
+def test_the_default_window_is_365_dates(tmp_path):
+    assert publish.KEEP_DAYS == 365
+    start = date(2026, 1, 1)
+    days = [(start + timedelta(days=i)).isoformat() for i in range(367)]
+    for day in days:
+        publish.publish_date(tmp_path, day, {"x.png": b"x"})
+    m = json.loads((tmp_path / "manifest.json").read_text())
+    assert m["dates"] == days[2:]

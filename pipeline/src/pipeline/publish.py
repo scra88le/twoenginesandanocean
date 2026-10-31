@@ -23,7 +23,7 @@ from .layers import EXTRAS, GROUP_BLURBS, GROUPS, LAYERS, LayerSpec
 from .points import POINT_FIELDS, TILE, point_tiles
 
 MANIFEST_VERSION = 1
-KEEP_DAYS = 90
+KEEP_DAYS = 365  # the published window; it grows by one date a day from 90 (no backfill)
 
 
 def encode_date(

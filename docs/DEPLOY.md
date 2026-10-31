@@ -1,7 +1,7 @@
 # Deploying the Earth Heat Engine Map
 
 > **Status (2026-10-23):** deployed and verified once end to end. The site is live at
-> https://scra88le.github.io/twoenginesandanocean/, reading 90 dates from a Cloudflare R2 bucket;
+> https://scra88le.github.io/twoenginesandanocean/, reading up to 365 dates (90 at the start, one more a day) from a Cloudflare R2 bucket;
 > the Site workflow and one manual Daily build run both passed on GitHub's runners, including the
 > live smoke test. **Not yet shown:** the schedule running unattended on its own for days, and the
 > keep-alive step doing its job over a real 60-day gap. Provider steps come from their
@@ -151,7 +151,7 @@ or run **Actions → Daily build** with `ocean_days` set to 60 twice.
   Dates whose tidy file has expired need `backfill` again.
 - **Roll back a bad publish:** keep a copy of `manifest.json` (turn on bucket versioning, or
   download it now and then). Re-uploading the previous manifest makes the site list the previous
-  dates again. Each publish deletes the files of dates beyond the 90-day window, so the oldest
+  dates again. Each publish deletes the files of dates beyond the 365-day window, so the oldest
   date in the old manifest may be gone and show "No data"; everything else is still there. The
   series files are self-describing, so they stay correct either way.
 - **Cloudflare Pages instead of GitHub Pages:** skip `site.yml`'s `deploy` and `smoke` jobs and
@@ -161,7 +161,11 @@ or run **Actions → Daily build** with `ocean_days` set to 60 twice.
 
 ## Costs and limits
 
-- **Storage:** 3.4 GB for 90 days: maps 0.9 GB, point chunks 1.4 GB, series 1.0 GB,
+- **Storage:** the window is 365 days (`publish.KEEP_DAYS`), reached by one new date a day from the
+  90 that were backfilled; nothing older is fetched. The bucket grows about 37 MB a day (maps 10 MB,
+  points 16 MB, series 11 MB) and passes R2's 10 GB free tier at about 260 dates, around April 2027.
+  Lower `KEEP_DAYS` (and `TIDY_KEEP_DAYS`) before then, or accept R2's price beyond 10 GB
+  (USD 0.015 per GB-month). At 90 days it was 3.4 GB: maps 0.9 GB, point chunks 1.4 GB, series 1.0 GB,
   climatology 0.2 GB. The ocean overlay adds about 0.15 GB: eight PNGs of 50–100 kB per date
   (`ocean/`) and one 0.7 MB file per day of state (`state/ocean/`, 120 days). R2's free tier is 10 GB.
 - **Writes:** a daily run uploads about 15 000 objects (the rebuilt series plus a day's maps and

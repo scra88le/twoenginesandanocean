@@ -67,7 +67,7 @@ test('the close button and Escape close the readout and remove the pin', async (
 test('a cell without published chunks says so', async ({ page }) => {
   await open(page, '&pin=60.25,10.25');
   await expect(page.locator('.ro-message')).toHaveText('No point data for 2026-10-01.');
-  await expect(page.locator('.ro-chart-note')).toHaveText('No 90-day series for Temperature seen from space, T_e yet.');
+  await expect(page.locator('.ro-chart-note')).toHaveText('No daily series for Temperature seen from space, T_e yet.');
 });
 
 test('an energy-flow diagram above the table: sunlight in, heat out, the rest into the surface', async ({ page }) => {

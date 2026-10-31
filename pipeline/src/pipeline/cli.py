@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--raw", type=Path, default=Path("raw"))
     rebuild.add_argument("--work", type=Path, default=Path("work"))
 
-    series = sub.add_parser("series", help="rebuild the 90-day series chunks")
+    series = sub.add_parser("series", help="rebuild the daily series chunks")
     series.add_argument("--out", type=Path, required=True)
 
     store_default = os.environ.get("STORE_URL")

@@ -4,7 +4,7 @@
 files go up first, then the series, then the log, and the manifest, which is what the front
 end reads first, goes up last. A failure before that leaves yesterday's site exactly as it
 was (the new files are unreferenced extras). Only after the new manifest is in place are the
-files of dates that fell out of the 90-day window deleted.
+files of dates that fell out of the 365-day window deleted.
 
 `download_state` brings back what a daily run needs from the store: the manifest, the
 validation log, the in-flight CDS requests, the climatology, and the scalar maps of the

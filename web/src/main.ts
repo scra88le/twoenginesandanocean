@@ -245,7 +245,7 @@ class App {
       return;
     }
     if (!series) {
-      this.readout.showChartMessage('The 90-day series has not been published yet.');
+      this.readout.showChartMessage('The daily series has not been published yet.');
       return;
     }
     const layer = this.layerId;
@@ -253,7 +253,7 @@ class App {
     try {
       s = parseSeries(await this.loadChunk(tileUrl(DATA, series.file, { layer, tx: pin.tx, ty: pin.ty })), tile);
     } catch {
-      if (request === this.chartRequest) this.readout.showChartMessage(`No 90-day series for ${meta.title} yet.`);
+      if (request === this.chartRequest) this.readout.showChartMessage(`No daily series for ${meta.title} yet.`);
       return;
     }
     const clim = await this.climatologyAt(layer, pin, tile);

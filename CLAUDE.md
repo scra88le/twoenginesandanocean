@@ -4,7 +4,7 @@
 
 A windy.com-style global map that explains the atmosphere as a heat engine, following Axel Kleidon's thermodynamic Earth-system view, and compares human energy flows with natural ones.
 
-- **Prototype target:** global, daily, 0.5° grid, 24 layers, last 90 days.
+- **Prototype target:** global, daily, 0.5° grid, 24 layers, last 90 days at the start, growing to 365 (2026-10-31: `publish.KEEP_DAYS`; no backfill, one new date a day).
 - **Architecture:** a daily Python batch pipeline writes files to object storage. A static TypeScript front end reads them and does all rendering and point sampling in the browser.
 - **No backend server.**
 
@@ -327,7 +327,7 @@ Full-bleed dark map with six overlays:
 ### Time bar
 
 - Climate mode: 12 months (slider) and a separate Year button, ← → step the frames, Play loops January to December and skips Year, all 13 frames of the active layer are pre-fetched. The rest of this section is Today / Today vs normal.
-- Last 90 available days, newest on the right.
+- The available days (90 on 2026-10-31, growing by one a day to 365), newest on the right.
 - Play / pause / step, plus arrow keys.
 - Shows the data date and the note "ERA5, about 6 days behind real time".
 - Pre-fetches ±3 days of the active layer, and of the particle level's u, v field when particles are on.

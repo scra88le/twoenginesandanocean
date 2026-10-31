@@ -443,3 +443,7 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - **Checked on the live site:** `clim/zonal/{year,07}.json` and `zonal/{2026-07-27,2026-10-22}.json` return 200; the manifest lists 90 dates (2026-07-27 to 10-24) with the plain-first titles; the live smoke test passes.
 - **The live smoke test was out of date, not the site.** It expected the time bar to show the newest date, but since milestone 16 the site opens in Climate (Year). It now opens `?mode=today` for the daily checks, and a second test checks the default Climate view, `clim/zonal/year.json`, a filled strip and no failed requests. The Site workflow had failed since milestone 18 (missing `zonal/` files, then this).
 - **Not done:** the daily job's own manifest writes and the milestone 23 ocean job run only once milestone 23 is pushed.
+
+## 2026-10-31: published window raised from 90 to 365 days
+
+`publish.KEEP_DAYS` and `run.TIDY_KEEP_DAYS` are 365. Nothing is backfilled: the 90 published dates stay and each daily run adds one, so the window reaches 365 in October 2027. Series chunks already carry their own date list, and the front end reads the manifest's dates, so only wording changed ("90-day" became "daily"). Storage grows about 37 MB a day and passes R2's 10 GB free tier at about 260 dates (around April 2027): lower the constants, or pay about USD 0.015 per GB-month. The daily job's state download (maps of every published date) and the series rebuild grow in step; recheck the runner time as the window fills.

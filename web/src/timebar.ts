@@ -1,4 +1,4 @@
-// Time bar. Today and Today vs normal: the last 90 available days, newest on the right, with
+// Time bar. Today and Today vs normal: the available days (up to 365), newest on the right, with
 // play / pause / step. Climate: twelve months and a separate Year stop; play cycles January to
 // December and loops, skipping Year.
 import { FRAMES, frameName, playFrame, stepFrame, type Frame } from './modes';
@@ -84,7 +84,7 @@ export class TimeBar {
     return this.frame;
   }
 
-  /** Switch between the 90 days and the 13 climate frames (without firing the callbacks). */
+  /** Switch between the daily dates and the 13 climate frames (without firing the callbacks). */
   setKind(kind: Kind): void {
     if (kind !== this.kind) this.pause();
     this.kind = kind;

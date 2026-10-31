@@ -1,4 +1,4 @@
-// Point readout ("local engine"): every stage of the heat engine at one cell, and a 90-day
+// Point readout ("local engine"): every stage of the heat engine at one cell, and a daily
 // chart of the active layer there. Values come from point and series chunks.
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
@@ -195,7 +195,7 @@ export class ReadoutPanel {
     }
   }
 
-  /** The 90-day chart of the active layer at this point, marking the date on the map. */
+  /** The daily chart of the active layer at this point, marking the date on the map. */
   showChart(
     meta: LayerMeta, dates: string[], codes: Uint16Array, current: string,
     clim: { byMonth: (number | null)[]; period: string } | string,
