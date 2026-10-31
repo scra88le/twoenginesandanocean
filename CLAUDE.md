@@ -28,12 +28,12 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 
 ```
 /pipeline/pyproject.toml
-/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, climatology.py, publish.py, validate.py, run.py, store.py, deploy.py, daily.py, cli.py
+/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, climatology.py, publish.py, validate.py, run.py, store.py, deploy.py, daily.py, ocean.py, cli.py
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
 /web/src/overview      desktop.svg, the overview infographic (read by overview.ts)
-/web/src/layers        raster.ts, particles.ts, arrows.ts
+/web/src/layers        raster.ts, particles.ts (wind, and the ocean limbs: colour + density weight), arrows.ts
 /web/public/basemap    Natural Earth 1:50m coastlines and borders (public domain, minified)
 /web/tests/fixtures    PNGs from the real encoder, for decoder tests
 /web/e2e/fixtures/data a small data root (manifest, three rasters, uniform 10 m and 250 hPa winds, zonal JSON for the 13 frames and two dates, 15 built layers with Climate views for the tour's) for the Playwright tests
@@ -67,6 +67,8 @@ python -m pipeline.cli climatology --out ./out [--wait]      # one-off: fetch ER
 python -m pipeline.cli rebuild --out ./out                   # afterwards: adds {layer}_anom.png to the published dates
 python -m pipeline.cli upload --store s3://BUCKET --out ./out        # publish a data root (manifest last); file:///dir works too
 python -m pipeline.cli daily --store s3://BUCKET [--days 10]         # the daily job: collect/submit, build, validate, publish
+pip install -e "./pipeline[ocean]"                                   # the ocean overlay needs the copernicusmarine toolbox
+python -m pipeline.cli ocean [--store s3://BUCKET] [--max-fetch 15]  # AMOC overlay for the published dates (Copernicus Marine GLO12)
 
 # Front end
 cd web && npm install
@@ -109,6 +111,7 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | Anthropogenic heat flux | Gridded global dataset, **to be chosen** (see Open questions) | `human_q` | static |
 | Our World in Data energy | CSV, CC BY | Fallback human layer: country totals spread over land area | annual |
 | ENTSO-E Transparency | REST API, token | Later only: European daily wind/solar output | ~1 day |
+| Copernicus Marine GLO12 | `copernicusmarine` toolbox, free account (`COPERNICUSMARINE_SERVICE_USERNAME`/`_PASSWORD`); `GLOBAL_ANALYSISFORECAST_PHY_001_024`, dataset `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m` | The ocean overlay: daily-mean `uo`, `vo`, 50 levels, 1/12°, Atlantic box | ~1 day |
 
 ### Ingestion rules
 
@@ -193,6 +196,8 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 | `human_ratio` | r_H = q_human / D_BL | 5 Humans
 | `div_e` | (1 − L²∇²) D_s = D, with D = `p86.162` | 2 Engine two
 | `flux_e` | ∇²χ = D_s − ⟨D_s⟩; F_div = ∇χ | 2 Engine two
+| ocean limbs | U = ∫u dz, V = ∫v dz over 0–1100 m and 1100 m–floor; H = water thickness; velocity (U, V) / H | ocean overlay (not a layer)
+| AMOC at 26.5° N | ψ(z) = ∫∫ v dx dz from the surface to z; strength = max ψ | ocean overlay, in Sv
 
 **Spherical solver for `div_e` and `flux_e`.** One finite-volume operator on the 0.5° grid (earth radius a = 6.371e6 m): FFT in longitude, then a tridiagonal solve in latitude for each zonal wavenumber. Fluxes through the pole edges are zero because cos(±90°) = 0. The same operator gives both the smoothing and the Poisson solve.
 
@@ -241,7 +246,7 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 ### Storage layout
 
 ```
-/manifest.json                      dates, built_layers, layers (metadata, encoding, info text), radiative (⟨ASR⟩ and T_r per date), credits, build time
+/manifest.json                      dates, built_layers, layers (metadata, encoding, info text), radiative (⟨ASR⟩ and T_r per date), credits, build time, ocean (the ocean overlay's limbs, files, dates with their 26.5° N figures; written by `pipeline.ocean`, carried forward by every other manifest write)
 /fields/{YYYY-MM-DD}/{layer}.png
 /fields/{YYYY-MM-DD}/{layer}_uv.png        vector layers only: u, v components
 /fields/{YYYY-MM-DD}/{layer}_anom.png
@@ -256,6 +261,10 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 /clim/zonal/{MM|year}.json          zonal means, transport (PW), global means; Year adds two_box, transport_ocean, budget_residual
 /zonal/{YYYY-MM-DD}.json            the same for a daily date (no two_box or ocean)
 /clim/clim.json                     period, layers and file templates; copied into the manifest's `clim` (null until published)
+/ocean/{YYYY-MM-DD}/{limb}.png            ocean overlay: transport |(U, V)| of `amoc_upper` / `amoc_deep` (log); sets particle density
+/ocean/{YYYY-MM-DD}/{limb}_uv.png         depth-mean velocity (U, V) / H, m/s; moves the particles
+/ocean/{YYYY-MM-DD}/{limb}_30d[_uv].png   the same for the 30-day mean ending on the date (once 24 of 30 days are in)
+/state/ocean/{YYYY-MM-DD}.npz             the day's 0.5° limb integrals and 26.5° N figures (pipeline-only), kept for the window
 /static/human_q.png
 /logs/global_means.csv              daily validation log
 /state/pending.json                 in-flight CDS request IDs (pipeline-only, not read by the front end)
@@ -380,6 +389,16 @@ The text lives in `pipeline/src/pipeline/info.py`, next to the formulas, and is 
 - In Climate mode the arrows read `clim/{frame}/flux_e_uv.png` and use `clim.flux_ref`, one reference for all 13 frames (the 98th percentile of |F|), so lengths compare across months. `flux_e` as a raster stays Today-only.
 - An "Transport arrows" checkbox in the Overlays section (`?arrows=1` until URL state lands), disabled until `flux_e` is published.
 
+### Ocean overlay
+
+The two limbs of the Atlantic overturning (AMOC) from Copernicus Marine GLO12 (docs/PROPOSALS-v2.md F14; `pipeline.ocean`, `web/src/ocean.ts`).
+
+- **Pipeline.** Per published date: fetch the day's `uo`, `vo` over 100°W–25°E, 40°S–80°N, all depths; integrate the upper limb (0–1100 m, `derived.AMOC_SPLIT_M`) and the deep limb (1100 m to the sea floor) over depth (`derived.limb_transports`: U, V in m² s⁻¹ and the water thickness H); the overturning streamfunction across 26.5°N, 81°W–13°W at full resolution (`derived.overturning`, `amoc_strength`, `section_transport`); average to 0.5° with land as no flow; keep the Atlantic (`basin_mask`). Encode the day and its 30-day mean: transport magnitude (log) and depth-mean velocity, masked under 50 m (upper) or 200 m (deep) of water. At most 15 downloads a run (`MAX_FETCH`): missing dates newest first, then their windows. The daily workflow runs it as a second job after the ERA5 build, never alongside it; skipped while the secrets are unset.
+- **Front end.** One `ParticleLayer` per limb, coloured (upper `#f08a5d`, deep `#6fb6f2`) and weighted: a respawning particle is kept with probability transport / `density_ref`, else parked off the map for a frame, so density follows the transport and speed the velocity (each limb on its own `speed_hi`). Drawn under the wind particles.
+- **Menu:** "Ocean overturning" checkbox, limbs (both, upper, deep), averaging (30-day mean, daily) and an (i) with the manifest's `ocean.info`. Off by default. Disabled until a date has ocean files.
+- **Legend:** a swatch per limb drawn and "Ocean overturning (GLO12, 30-day mean to DATE): across 26.5° N, upper limb X Sv north, deep limb Y Sv south; AMOC Z Sv at D m". A date without the mean falls back to daily with a note; a date without currents says so; Climate mode says there is no 1991–2020 normal and draws nothing. Hover: each limb's transport, speed and direction ("Upper limb: 220 m²/s, 0.20 m/s toward N").
+- **Tour:** steps switch it off (the cards don't list it).
+
 ### Story mode
 
 "Take the tour" (a button at the top of the layer menu; `?tour=N` opens it at step N) runs 12 steps in an opening, three chapters and a close, set by each card's `chapter`. Each step sets the layer, mode, frame, overlays, panel and view, and shows a card from `/story/NN-*.md`. All steps are Climate, Year unless noted.
@@ -419,8 +438,9 @@ The numbers the cards quote were checked against the published data on 2026-10-3
 
 The query string holds layer, mode, frame, overlays, date, centre, zoom and pinned point, and updates on every change (`web/src/urlstate.ts`):
 
-`?layer=t_emit&mode=anom&frame=year&date=2026-10-01&center=0.25,-35.25&zoom=4&particles=wind100&arrows=1&pin=0.25,-35.25`
+`?layer=t_emit&mode=anom&frame=year&date=2026-10-01&center=0.25,-35.25&zoom=4&particles=wind100&arrows=1&ocean=both&pin=0.25,-35.25`
 
+- `ocean` (`both`, `upper` or `deep`) switches the ocean overlay on and `ocean_avg=daily` picks daily currents; both are written only when on (and daily), and anything else reads as off.
 - `layer`, `mode` (`climate`, `today` or `anom`), `frame` (`01`–`12` or `year`), `date`, `center` (lng,lat, 2 decimals), `zoom` and `particles` (`off`, `wind10`, `wind100` or `jet250`) are always written; `arrows=1`, `panel=zonal` and `pin=lng,lat` only when on or set. `anom=1` is read as `mode=anom`. A mode the layer can't show falls back to its default.
 - It is written with `history.replaceState` (so Back isn't filled with every pan), 120 ms after the last change and after every map move.
 - Reading validates each value and falls back to its default one by one: an unpublished or unbuilt layer, a date that isn't published, a bad number, a latitude beyond the map, a zoom outside 0–22. The page then rewrites the URL with the valid values. Longitudes wrap into −180…180.
@@ -482,6 +502,9 @@ Phone layout under 700 px:
 20. Overview infographic (docs/PROPOSALS-v2.md F13): (**Done** 2026-10-31, desktop only, see `docs/DECISIONS.md`. The Year frame's `global` block carries the infographic's slots; `web/src/overview.ts` and `web/src/overview/desktop.svg`; first-visit logic, menu button, tests. The phone variant is deferred with the rest of the mobile work. Works against local `./out`; nothing is uploaded, the bucket is still the mixed state of milestones 14–15.)
 
 21. Readability (docs/PROPOSALS-v2.md F11): (**Done** 2026-10-31, see `docs/DECISIONS.md`. `rain`, `deep` and `amp` exported reversed so low is dark; a static "Loading map…" until the first raster draws; plain-first layer titles and readout names; the readout's energy-flow diagram (`web/src/energyflow.ts`). Desktop-only, local `./out`; the bucket keeps the old titles until the next `rebuild`.)
+22. Globe spike (docs/PROPOSALS-v2.md F12): not started. 23 came before it, by request of the user (2026-10-31):
+
+23. Ocean overlay (docs/PROPOSALS-v2.md F14): (**Code and tests done** 2026-10-31, see `docs/DECISIONS.md`: `pipeline.ocean`, the AMOC formulas in `pipeline.derived`, `ocean` CLI command and daily job, the coloured and density-weighted particle layer, controls, legend, URL state, fixtures. **Open:** never run against Copernicus Marine (unreachable from the sandbox it was written in); needs the two secrets and a first run, then the checks listed in the decision entry.)
 
 ## Acceptance criteria
 

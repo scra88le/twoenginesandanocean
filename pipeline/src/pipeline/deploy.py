@@ -72,9 +72,9 @@ def upload(
     remote = store.list("")
     result = UploadResult()
     maps = {**_local(out, "fields"), **_local(out, "points"),
-            **_local(out, "zonal"), **_local(out, "clim")}  # fmt: skip
+            **_local(out, "zonal"), **_local(out, "clim"), **_local(out, "ocean")}  # fmt: skip
     stages = [
-        ("maps, points and climatology", maps),
+        ("maps, points, climatology and ocean", maps),
         ("series", _local(out, "series")),
         ("validation log", {k: p for k, p in _local(out, "logs").items() if k == LOG_KEY}),
     ]  # fmt: skip
@@ -88,7 +88,7 @@ def upload(
     keep = set(manifest["dates"])
     expired = [
         k for k in remote
-        if k.split("/", 1)[0] in ("fields", "points", "zonal")
+        if k.split("/", 1)[0] in ("fields", "points", "zonal", "ocean")
         and k.split("/")[1].removesuffix(".json") not in keep
     ]  # fmt: skip
     store.delete(expired)

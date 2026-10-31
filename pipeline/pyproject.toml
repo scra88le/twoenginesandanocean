@@ -25,6 +25,10 @@ dev = [
 deploy = [
     "boto3",
 ]
+# The ocean overlay: Copernicus Marine GLO12 currents (pipeline.ocean)
+ocean = [
+    "copernicusmarine>=2.0",
+]
 # One-off tools: exporting colour maps for the front end (pipeline/scripts/)
 tools = [
     "matplotlib",

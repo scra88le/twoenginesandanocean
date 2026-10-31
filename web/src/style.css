@@ -21,12 +21,16 @@ html, body { margin: 0; height: 100%; background: var(--ground); color: var(--te
 .legend-wind { margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .legend-arrows { margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .legend-arrows::before { content: '→'; margin-right: 6px; color: #fff; }
+.legend-ocean { margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ocean-swatches { display: inline-flex; gap: 3px; margin-right: 6px; vertical-align: 2px; }
+.ocean-swatch { display: inline-block; width: 12px; height: 3px; border-radius: 1px; }
+.ocean-row .info-button { margin: 0; }
 .legend-wind::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: 6px; vertical-align: 3px; background: #fff; }
 #menu .overlays { padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 8px; }
 .overlay-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 2px; }
 .overlay-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.particles-level { background: rgba(255, 255, 255, 0.06); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; padding: 2px 4px; font: inherit; }
-.particles-level option { background: #151a24; }
+.particles-level, .ocean-select { background: rgba(255, 255, 255, 0.06); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; padding: 2px 4px; font: inherit; }
+.particles-level option, .ocean-select option { background: #151a24; }
 #credits { left: 12px; right: 12px; bottom: max(8px, env(safe-area-inset-bottom)); font-size: 10px; color: var(--muted); padding: 4px 8px; }
 .fatal { max-width: 32em; margin: 20vh auto; padding: 0 16px; font-size: 16px; line-height: 1.5; }
 
@@ -224,7 +228,7 @@ body.tour-active #readout {
   .layer-item input { flex: none; width: 18px; height: 18px; margin-top: 1px; }
   .info-button { position: relative; margin: 9px 6px 0 0; }
   .info-button::after { content: ''; position: absolute; inset: -10px; } /* a 42 px tap area */
-  .particles-level { min-height: 36px; padding: 4px 8px; }
+  .particles-level, .ocean-select { min-height: 36px; padding: 4px 8px; }
   .overlay-toggle { min-height: 36px; }
   .overlay-toggle input { flex: none; width: 18px; height: 18px; }
   .tour-start { min-height: 40px; }

@@ -10,7 +10,10 @@ export interface InfoSection {
 /** The first clause of a mask explanation, for the legend and hover text. */
 export const maskLabel = (text: string) => text.split(/[:.](?:\s|$)/)[0]!.trim();
 
-export function infoSections(meta: LayerMeta, credits: string): InfoSection[] {
+/** What the info panel needs: a layer, or an overlay with the same kind of text. */
+export type InfoSubject = Pick<LayerMeta, 'title' | 'units' | 'info'>;
+
+export function infoSections(meta: InfoSubject, credits: string): InfoSection[] {
   const i = meta.info;
   const sections: InfoSection[] = [
     { label: 'Source', text: i.source },
@@ -34,7 +37,7 @@ export class InfoPanel {
     dialog.addEventListener('click', (e) => e.target === dialog && dialog.close()); // backdrop
   }
 
-  open(meta: LayerMeta, credits: string, opener: HTMLElement): void {
+  open(meta: InfoSubject, credits: string, opener: HTMLElement): void {
     this.opener = opener;
     const d = this.dialog;
     d.innerHTML = '';

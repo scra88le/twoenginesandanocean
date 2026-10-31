@@ -8,6 +8,11 @@
 // When the view moves, the old trail texture is redrawn at its old map position, so trails
 // stay attached to the ground while panning and zooming. Particles that leave the view, die
 // of age or land on a cell with no data respawn at a random point in the view.
+//
+// The ocean overlay uses the same layer twice, once per limb of the overturning, with two
+// additions: a colour, and a weight field (the limb's transport). A respawning particle is
+// kept with probability weight / reference, else parked off the map to try again next frame,
+// so particles are drawn as densely as the water is carried while moving at its velocity.
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import type { EncodeRange } from '../codes';
 import { clipToMercator, invert } from '../mat4';
@@ -27,6 +32,12 @@ uniform float u_dt;
 uniform float u_life;
 uniform uint u_seed;
 uniform bool u_reset;
+uniform usampler2D u_weight; // scalar RGB codes, same grid as u_wind
+uniform bool u_weighted;
+uniform float u_wscale;
+uniform float u_woffset;
+uniform bool u_wlog;
+uniform float u_wref;
 in vec4 a_state; // xy = position now, zw = position one step ago
 in float a_age;  // seconds left to live
 out vec4 v_state;
@@ -69,6 +80,18 @@ vec2 windAt(vec2 merc, out bool ok) {
   return ok ? sum / wsum : vec2(0.0);
 }
 
+// The weight (layer units) in the cell containing a mercator point; 0 where there's no data.
+float weightAt(vec2 merc) {
+  float lon = fract(merc.x) * 360.0 - 180.0;
+  float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * merc.y))));
+  ivec2 c = ivec2(floor(vec2((lon + 180.0) / 360.0 * float(u_size.x), (90.0 - lat) / 180.0 * float(u_size.y))));
+  uvec4 t = texelFetch(u_weight, wrap(c), 0);
+  int code = int(t.r) * 256 + int(t.g);
+  if (code < 2) return 0.0;
+  float x = u_woffset + u_wscale * float(code - 2);
+  return u_wlog ? pow(10.0, x) : x;
+}
+
 void main() {
   uint id = uint(gl_VertexID) * 3u;
   vec2 p = a_state.xy;
@@ -76,6 +99,11 @@ void main() {
   bool outside = p.x < u_bounds.x || p.y < u_bounds.y || p.x > u_bounds.z || p.y > u_bounds.w;
   if (u_reset || age <= 0.0 || outside) {
     vec2 q = mix(u_bounds.xy, u_bounds.zw, vec2(rand(id ^ u_seed), rand((id + 1u) ^ u_seed)));
+    if (u_weighted && rand((id + 3u) ^ u_seed) * u_wref >= weightAt(q)) {
+      v_state = vec4(q.x, -1.0, q.x, -1.0); // parked above the map: tries again next frame
+      v_age = 0.0;
+      return;
+    }
     v_state = vec4(q, q);
     // A random first life spreads the respawns out, so they don't pulse.
     v_age = u_life * (u_reset ? rand((id + 2u) ^ u_seed) : 0.5 + 0.5 * rand((id + 2u) ^ u_seed));
@@ -103,8 +131,9 @@ void main() {
 const LINE_FRAGMENT = `#version 300 es
 precision mediump float;
 uniform float u_alpha;
+uniform vec3 u_colour;
 out vec4 frag;
-void main() { frag = vec4(u_alpha); } // premultiplied white`;
+void main() { frag = vec4(u_colour * u_alpha, u_alpha); } // premultiplied`;
 
 // Draws a texture onto a quad: the old trails at their old map position, or the trails on screen.
 const QUAD_VERTEX = `#version 300 es
@@ -134,6 +163,12 @@ export interface WindField {
   rgba: Uint8Array; // u in R+G, v in B+A
   encode: EncodeRange; // shared by u and v
   speedHi: number; // top of the level's colour range, m/s
+  /** Optional: draw particles as densely as this scalar field (packed RGB, same grid) up to `ref`. */
+  weight?: { rgb: Uint8Array; encode: EncodeRange; ref: number };
+}
+
+export interface ParticleOptions {
+  colour?: [number, number, number]; // 0..1; white by default
 }
 
 const STATE_FLOATS = 5; // vec4 state + float age
@@ -175,6 +210,7 @@ export class ParticleLayer implements CustomLayerInterface {
   private lines?: WebGLProgram;
   private quad?: WebGLProgram;
   private windTex?: WebGLTexture;
+  private weightTex?: WebGLTexture;
   private states: WebGLBuffer[] = [];
   private updateVaos: WebGLVertexArrayObject[] = [];
   private lineVaos: WebGLVertexArrayObject[] = [];
@@ -192,7 +228,14 @@ export class ParticleLayer implements CustomLayerInterface {
   private loc: Record<string, WebGLUniformLocation | null> = {};
   private stateRequests: ((state: Float32Array) => void)[] = [];
 
-  constructor(readonly id: string) {}
+  private readonly colour: [number, number, number];
+
+  constructor(
+    readonly id: string,
+    options: ParticleOptions = {},
+  ) {
+    this.colour = options.colour ?? [1, 1, 1];
+  }
 
   /**
    * For tests and debugging: the particle state after the next update, as [x, y, prev x,
@@ -232,10 +275,12 @@ export class ParticleLayer implements CustomLayerInterface {
     const find = (prefix: string, p: WebGLProgram, names: string[]) => {
       for (const n of names) this.loc[`${prefix}.${n}`] = gl.getUniformLocation(p, n);
     };
-    find('up', this.update, ['u_wind', 'u_size', 'u_scale', 'u_offset', 'u_bounds', 'u_step', 'u_dt', 'u_life', 'u_seed', 'u_reset']);
-    find('ln', this.lines, ['u_matrix', 'u_alpha']);
+    find('up', this.update, ['u_wind', 'u_size', 'u_scale', 'u_offset', 'u_bounds', 'u_step', 'u_dt', 'u_life', 'u_seed', 'u_reset',
+      'u_weight', 'u_weighted', 'u_wscale', 'u_woffset', 'u_wlog', 'u_wref']);
+    find('ln', this.lines, ['u_matrix', 'u_alpha', 'u_colour']);
     find('qd', this.quad, ['u_matrix', 'u_tex', 'u_fade']);
     this.windTex = gl.createTexture()!;
+    this.weightTex = gl.createTexture()!;
     this.feedback = gl.createTransformFeedback()!;
     this.quadBuffer = gl.createBuffer()!;
     this.quadVao = gl.createVertexArray()!;
@@ -320,10 +365,18 @@ export class ParticleLayer implements CustomLayerInterface {
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.bindTexture(gl.TEXTURE_2D, this.windTex!);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8UI, w.width, w.height, 0, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, w.rgba);
-    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST],
-      [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) {
-      gl.texParameteri(gl.TEXTURE_2D, k, v);
-    }
+    const nearest = () => {
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST],
+        [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) {
+        gl.texParameteri(gl.TEXTURE_2D, k, v);
+      }
+    };
+    nearest();
+    gl.bindTexture(gl.TEXTURE_2D, this.weightTex!);
+    // Without a weight field the shader never reads this texture; it still needs a valid one.
+    if (w.weight) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8UI, w.width, w.height, 0, gl.RGB_INTEGER, gl.UNSIGNED_BYTE, w.weight.rgb);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8UI, 1, 1, 0, gl.RGB_INTEGER, gl.UNSIGNED_BYTE, new Uint8Array(3));
+    nearest();
   }
 
   /** Mercator corners of the view, in the order bottom-left, bottom-right, top-left, top-right. */
@@ -370,6 +423,14 @@ export class ParticleLayer implements CustomLayerInterface {
     gl.uniform1f(this.loc['up.u_life']!, LIFE_S);
     gl.uniform1ui(this.loc['up.u_seed']!, (this.frame * 2654435761) >>> 0);
     gl.uniform1i(this.loc['up.u_reset']!, this.reset ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.weightTex!);
+    gl.uniform1i(this.loc['up.u_weight']!, 1);
+    gl.uniform1i(this.loc['up.u_weighted']!, wind.weight ? 1 : 0);
+    gl.uniform1f(this.loc['up.u_wscale']!, wind.weight?.encode.scale ?? 1);
+    gl.uniform1f(this.loc['up.u_woffset']!, wind.weight?.encode.offset ?? 0);
+    gl.uniform1i(this.loc['up.u_wlog']!, wind.weight?.encode.log ? 1 : 0);
+    gl.uniform1f(this.loc['up.u_wref']!, wind.weight?.ref ?? 1);
     const next = 1 - this.current;
     gl.bindVertexArray(this.updateVaos[this.current]!);
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback!);
@@ -419,6 +480,7 @@ export class ParticleLayer implements CustomLayerInterface {
     gl.useProgram(this.lines!);
     gl.uniformMatrix4fv(this.loc['ln.u_matrix']!, false, matrix);
     gl.uniform1f(this.loc['ln.u_alpha']!, LINE_ALPHA);
+    gl.uniform3f(this.loc['ln.u_colour']!, ...this.colour);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindVertexArray(this.lineVaos[this.current]!);
@@ -458,6 +520,7 @@ export class ParticleLayer implements CustomLayerInterface {
       gl.deleteFramebuffer(t.fbo);
     }
     if (this.windTex) gl.deleteTexture(this.windTex);
+    if (this.weightTex) gl.deleteTexture(this.weightTex);
     if (this.feedback) gl.deleteTransformFeedback(this.feedback);
   }
 }

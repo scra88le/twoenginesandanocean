@@ -78,6 +78,8 @@ gh secret set CDSAPI_URL        # https://cds.climate.copernicus.eu/api
 gh secret set CDSAPI_KEY        # your CDS personal access token
 gh secret set AWS_ACCESS_KEY_ID
 gh secret set AWS_SECRET_ACCESS_KEY
+gh secret set COPERNICUSMARINE_SERVICE_USERNAME   # the ocean overlay; optional
+gh secret set COPERNICUSMARINE_SERVICE_PASSWORD
 gh variable set STORE_URL        --body "s3://earth-heat-engine"
 gh variable set S3_ENDPOINT_URL  --body "https://<account-id>.r2.cloudflarestorage.com"
 gh variable set DATA_URL         --body "https://<the bucket's public address>"
@@ -88,6 +90,7 @@ gh variable set DATA_URL         --body "https://<the bucket's public address>"
 | `CDSAPI_URL` | secret | `https://cds.climate.copernicus.eu/api` |
 | `CDSAPI_KEY` | secret | your CDS personal access token (the licences for both ERA5 daily-statistics datasets must already be accepted on the CDS website) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | secrets | the R2 API token's key pair |
+| `COPERNICUSMARINE_SERVICE_USERNAME`, `_PASSWORD` | secrets | a free Copernicus Marine account (register at https://data.marine.copernicus.eu). Optional: without them the daily run's `ocean` job is skipped with a notice and the site works without the ocean overlay |
 | `STORE_URL` | variable | `s3://<bucket>` (optionally `s3://<bucket>/<prefix>`) |
 | `S3_ENDPOINT_URL` | variable | `https://<account-id>.r2.cloudflarestorage.com` (AWS S3: leave empty) |
 | `DATA_URL` | variable | the bucket's **public** address, no trailing slash |
@@ -111,6 +114,19 @@ python -m pipeline.cli upload --store s3://<bucket> --out ./out
 `upload` skips whatever the bucket already has, so it can be repeated and resumed. The full data
 root for 90 dates is 3.4 GB in 88 420 objects.
 
+The ocean overlay needs 119 days of Copernicus Marine currents for its first full window (the 90
+dates and the 29 days before the oldest), about 0.5 GB and 1–2 minutes each to download. The
+daily job fetches 15 a run, so it fills in over about eight days by itself, newest dates first.
+To do it in one go, from your machine (after the ERA5 data is in the bucket):
+
+```bash
+export COPERNICUSMARINE_SERVICE_USERNAME=... COPERNICUSMARINE_SERVICE_PASSWORD=...
+pip install -e "./pipeline[deploy,ocean]"
+python -m pipeline.cli ocean --store s3://<bucket> --max-fetch 120   # 2-4 hours
+```
+
+or run **Actions → Daily build** with `ocean_days` set to 60 twice.
+
 ### 4. First deploy
 
 1. **Actions → Site → Run workflow.** It builds with `DATA_URL`, publishes to Pages and runs the
@@ -126,7 +142,10 @@ root for 90 dates is 3.4 GB in 88 420 objects.
 - **A date that fails validation** is skipped and logged (`logs/global_means.csv` has a `failed`
   row and the problems) and the run is marked failed; other dates still publish.
 - **Run by hand:** Actions → Daily build → Run workflow; the `days` input widens the window if
-  you were away.
+  you were away, and `ocean_days` lets the ocean job download more than 15 days.
+- **The ocean overlay** is a second job in the same workflow, after the ERA5 build and never at the
+  same time (both write the manifest). It runs even when the build failed, and a day it cannot
+  download is logged as an error, retried the next run, and does not stop the other dates.
 - **Change what a date contains** (a new layer, a different encoding): `rebuild` re-runs every
   published date from the cached tidy files in `./work` and `upload` publishes the result.
   Dates whose tidy file has expired need `backfill` again.
@@ -143,7 +162,8 @@ root for 90 dates is 3.4 GB in 88 420 objects.
 ## Costs and limits
 
 - **Storage:** 3.4 GB for 90 days: maps 0.9 GB, point chunks 1.4 GB, series 1.0 GB,
-  climatology 0.2 GB. R2's free tier is 10 GB.
+  climatology 0.2 GB. The ocean overlay adds about 0.15 GB: eight PNGs of 50–100 kB per date
+  (`ocean/`) and one 0.7 MB file per day of state (`state/ocean/`, 120 days). R2's free tier is 10 GB.
 - **Writes:** a daily run uploads about 15 000 objects (the rebuilt series plus a day's maps and
   points), about 450 000 a month. R2's free tier is 1 million write operations a month.
 - **Runner time:** the run downloads about 425 MB of state (about 2 000 files; measured against
@@ -177,11 +197,15 @@ root for 90 dates is 3.4 GB in 88 420 objects.
 | `Number queued requests for this dataset is temporarily limited` | CDS's per-user queue limit; the job keeps two requests per dataset and retries on the next run |
 | The newest date is days behind | CDS is slow (requests can sit for hours); the smoke test starts failing after 14 days |
 | A date is missing from the map | It failed validation: see its row in `logs/global_means.csv` |
+| `Ocean overlay skipped` notice | The Copernicus Marine secrets are not set |
+| `Copernicus Marine credentials are missing or not valid` | The account's username or password is wrong (checked before anything is downloaded or changed) |
+| `ocean <date> not fetched` errors | Copernicus Marine was down or slow; the day is retried on the next run |
 | The site 404s on its own files | `DATA_URL` or Pages' source setting is wrong; the build is relative, so any path works |
 
 ## Security
 
-- The CDS key and the storage credentials are repository secrets and are only handed to the
-  daily job; nothing prints them. Scope the storage credential to the one bucket.
+- The CDS key, the Copernicus Marine account and the storage credentials are repository secrets
+  and are only handed to the daily job (the Copernicus Marine account to its `ocean` job only);
+  nothing prints them. Scope the storage credential to the one bucket.
 - The site is static and has no accounts or backend. The only requests it makes are for files in
   the bucket and its own assets.

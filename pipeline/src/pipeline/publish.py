@@ -108,8 +108,9 @@ def build_manifest(
     built_layers: list[str] | None = None,
     clim: dict | None = None,
     radiative: dict[str, dict[str, float]] | None = None,
+    ocean: dict | None = None,
 ) -> dict:
-    return {
+    manifest = {
         "version": MANIFEST_VERSION,
         "built_at": built_at,
         "dates": dates,
@@ -143,6 +144,9 @@ def build_manifest(
         "series": {"file": "series/{layer}/{tx}_{ty}.bin", "magic": "EHS1"},
         "credits": _credits(int(built_at[:4])),
     }
+    if ocean:  # the ocean overlay's block, written by `pipeline.ocean` and carried forward
+        manifest["ocean"] = ocean
+    return manifest
 
 
 def _write_file(path: Path, data: bytes) -> None:
@@ -178,6 +182,7 @@ def refresh_manifest(out: Path, built_at: str | None = None) -> None:
             old.get("built_layers", []),
             _clim_index(out),
             old.get("radiative", {}),
+            old.get("ocean"),
         ),
     )
 
@@ -242,8 +247,12 @@ def publish_date(
     kept = {d: v for d, v in old.get("radiative", {}).items() if d in dates}
     if radiative is not None:
         kept[day] = radiative
-    _write_manifest(out, build_manifest(dates, built_at, built, _clim_index(out), kept))
+    ocean = old.get("ocean")
+    if ocean:
+        ocean = {**ocean, "dates": {k: v for k, v in ocean["dates"].items() if k in dates}}
+    _write_manifest(out, build_manifest(dates, built_at, built, _clim_index(out), kept, ocean))
     for gone in set(previous) - set(dates):
         shutil.rmtree(fields / gone, ignore_errors=True)
+        shutil.rmtree(out / "ocean" / gone, ignore_errors=True)
         shutil.rmtree(out / "points" / gone, ignore_errors=True)
         (out / "zonal" / f"{gone}.json").unlink(missing_ok=True)

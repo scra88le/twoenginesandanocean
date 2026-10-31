@@ -7,7 +7,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { anomalyView } from './anomaly';
 import { baseStyle } from './basemap';
 import { parseSeries, pointCodes, seriesCodes, tileOf } from './chunks';
-import { MASKED, decodeAll, scalarCodes, vectorCodes } from './codes';
+import { MASKED, decodeAll, decodeValue, scalarCodes, vectorCodes } from './codes';
 import { lutBytes } from './colormaps';
 import { formatValue } from './format';
 import { cellIndex } from './grid';
@@ -19,7 +19,11 @@ import { Legend } from './legend';
 import { anomalyUrl, climUrl, climUvUrl, fieldUrl, loadManifest, tileUrl, uvUrl, type LayerMeta, type Manifest } from './manifest';
 import { LayerMenu, menuGroups } from './menu';
 import { FRAMES, frameName, meanFlowText, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
-import { ArrowsSwitch, ModeSwitch, OverlayControls, type ParticleChoice } from './overlays';
+import { ArrowsSwitch, ModeSwitch, OceanControls, OverlayControls, type ParticleChoice } from './overlays';
+import {
+  AVG_LABELS, LIMB_CHOICES, OCEAN_LIMBS, describeLimb, hexToRgb, limbDepth, oceanCaption, oceanInfoMeta, oceanUrl, resolveAvg,
+  type OceanChoice, type OceanLimb,
+} from './ocean';
 import { decodePng, type DecodedPng } from './png';
 import { EngineStrip } from './enginestrip';
 import { ZonalPanel } from './zonalpanel';
@@ -58,6 +62,13 @@ interface Pin {
   k: number; // index within the tile
 }
 
+interface OceanCodes {
+  limb: OceanLimb;
+  mag: Uint16Array; // transport, m2 s-1
+  u: Uint16Array; // depth-mean velocity, m s-1
+  v: Uint16Array;
+}
+
 interface WindCodes {
   level: ParticleChoice['level'];
   mean: boolean; // the 1991–2020 mean flow of a climate frame, not a day
@@ -87,6 +98,8 @@ class App {
   private layerId = '';
   private request = 0;
   private windRequest = 0;
+  private oceanRequest = 0;
+  private oceanCodes: OceanCodes[] = [];
 
   constructor(
     private readonly manifest: Manifest,
@@ -101,6 +114,8 @@ class App {
     private readonly arrows: ArrowLayer,
     private readonly zonal: ZonalPanel,
     private readonly strip: EngineStrip,
+    private readonly oceanLayers: Record<OceanLimb, ParticleLayer>,
+    private oceanChoice: OceanChoice,
   ) {}
 
   private loadChunk(url: string): Promise<ArrayBuffer> {
@@ -129,6 +144,7 @@ class App {
       frame: this.frame,
       particles: this.particleChoice,
       arrows: this.arrowsOn,
+      ocean: this.oceanChoice,
       panel: this.zonal.isOpen,
       center: [wrapLng(c.lng), c.lat],
       zoom: this.map.getZoom(),
@@ -284,10 +300,11 @@ class App {
     }
   }
 
-  private prefetch(url: (date: string) => string): void {
+  private prefetch(url: (date: string) => string | null): void {
     const i = this.manifest.dates.indexOf(this.date);
     for (const d of nearbyDates(this.manifest.dates, i, PREFETCH_DAYS)) {
-      this.load(url(d)).catch(() => undefined);
+      const u = url(d);
+      if (u) this.load(u).catch(() => undefined);
     }
   }
 
@@ -324,6 +341,7 @@ class App {
       this.select(this.layerId || DEFAULT_LAYER),
       this.updateParticles(),
       this.updateArrows(),
+      this.updateOcean(),
       this.updateReadout(),
       this.updateZonal(),
     ]);
@@ -398,12 +416,13 @@ class App {
     this.timebar?.set(this.date, this.frame);
     this.particleChoice = { on: step.particles !== null, level: step.particles ?? level };
     this.arrowsOn = step.arrows;
+    this.oceanChoice = { ...this.oceanChoice, on: false }; // the tour's cards don't list it
     if (step.panel) this.zonal.open();
     else this.zonal.close();
     this.onStateChange?.();
     this.flyTo(step.view);
     await Promise.all([
-      this.select(step.layer), this.updateParticles(), this.updateArrows(), this.updateReadout(), this.updateZonal(),
+      this.select(step.layer), this.updateParticles(), this.updateArrows(), this.updateOcean(), this.updateReadout(), this.updateZonal(),
     ]);
   }
 
@@ -423,7 +442,10 @@ class App {
     this.mode = mode;
     this.timebar?.setKind(mode === 'climate' ? 'frames' : 'dates');
     this.onStateChange?.();
-    await Promise.all([this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateArrows(), this.updateReadout(), this.updateZonal()]);
+    await Promise.all([
+      this.select(this.layerId || DEFAULT_LAYER), this.updateParticles(), this.updateArrows(), this.updateOcean(), this.updateReadout(),
+      this.updateZonal(),
+    ]);
   }
 
   async setFrame(frame: Frame): Promise<void> {
@@ -433,9 +455,73 @@ class App {
       this.select(this.layerId || DEFAULT_LAYER),
       this.updateParticles(),
       this.updateArrows(),
+      this.updateOcean(),
       this.updateReadout(),
       this.updateZonal(),
     ]);
+  }
+
+  setOcean(choice: OceanChoice): Promise<void> {
+    this.oceanChoice = choice;
+    this.onStateChange?.();
+    return this.updateOcean();
+  }
+
+  /** Load the ocean currents for the current date into the two limb layers, or switch them off. */
+  async updateOcean(): Promise<void> {
+    const request = ++this.oceanRequest;
+    const o = this.manifest.ocean;
+    const off = (note: string | null, state: string) => {
+      for (const l of OCEAN_LIMBS) this.oceanLayers[l].setWind(null);
+      this.oceanCodes = [];
+      this.legend.showOcean(note);
+      document.body.dataset.ocean = state;
+    };
+    if (!this.oceanChoice.on || !o) return off(null, 'off');
+    if (this.mode === 'climate') {
+      return off('Ocean overturning: no 1991–2020 normal (GLO12 covers about two years). Switch the timescale to Today.', 'missing');
+    }
+    const date = this.date;
+    const avg = resolveAvg(o, date, this.oceanChoice.avg);
+    if (!avg) return off(`No ocean currents for ${date} yet`, 'missing');
+    const limbs = LIMB_CHOICES[this.oceanChoice.limbs].limbs;
+    let loaded: { limb: OceanLimb; uv: DecodedPng; mag: DecodedPng }[];
+    try {
+      loaded = await Promise.all(
+        limbs.map(async (limb) => {
+          const [uv, mag] = await Promise.all([
+            this.load(oceanUrl(DATA, o, date, limb, avg, true)), this.load(oceanUrl(DATA, o, date, limb, avg, false)),
+          ]);
+          return { limb, uv, mag };
+        }),
+      );
+    } catch {
+      if (request === this.oceanRequest) off(`No ocean currents for ${date}`, 'missing');
+      return;
+    }
+    if (request !== this.oceanRequest) return; // a later change won
+    for (const l of OCEAN_LIMBS) {
+      const got = loaded.find((x) => x.limb === l);
+      const meta = o.limbs[l];
+      this.oceanLayers[l].setWind(
+        got
+          ? {
+            width: got.uv.width, height: got.uv.height, rgba: got.uv.data, encode: meta.uv_encode, speedHi: meta.speed_hi,
+            weight: { rgb: got.mag.data, encode: meta.encode, ref: meta.density_ref },
+          }
+          : null,
+      );
+    }
+    this.oceanCodes = loaded.map(({ limb, uv, mag }) => ({ limb, mag: scalarCodes(mag), ...vectorCodes(uv) }));
+    const fallback = avg !== this.oceanChoice.avg ? ` (${AVG_LABELS[this.oceanChoice.avg].toLowerCase()} not available for this date)` : '';
+    this.legend.showOcean(
+      oceanCaption(o, date, this.oceanChoice, avg) + fallback,
+      limbs.map((l) => ({ colour: o.limbs[l].colour, label: `${o.limbs[l].title} (${limbDepth(o.limbs[l])})` })),
+    );
+    document.body.dataset.ocean = this.oceanChoice.limbs;
+    for (const l of limbs) {
+      for (const uv of [true, false]) this.prefetch((d) => (resolveAvg(o, d, avg) === avg ? oceanUrl(DATA, o, d, l, avg, uv) : null));
+    }
   }
 
   setParticles(choice: ParticleChoice): Promise<void> {
@@ -509,6 +595,7 @@ class App {
       this.timebar?.setKind(mode === 'climate' ? 'frames' : 'dates');
       void this.updateParticles();
       void this.updateArrows();
+      void this.updateOcean();
       void this.updateReadout();
       void this.updateZonal();
     }
@@ -557,6 +644,7 @@ class App {
 
   hover(lng: number, lat: number): void {
     this.hoverWind(lng, lat);
+    this.hoverOcean(lng, lat);
     const meta = this.view;
     const cell = cellIndex(lng, lat, this.manifest.grid);
     if (!meta || !this.codes || !cell) return this.legend.showValue(null);
@@ -572,7 +660,24 @@ class App {
     this.legend.showWind(w ? `${label}: ${describeWind(w)}` : this.windCaption());
   }
 
+  private hoverOcean(lng: number, lat: number): void {
+    const o = this.manifest.ocean;
+    const cell = cellIndex(lng, lat, this.manifest.grid);
+    if (!o || !this.oceanCodes.length) return;
+    if (!cell) return this.legend.showOceanHover(null);
+    const k = cell.j * this.manifest.grid.nlon + cell.i;
+    const lines = this.oceanCodes.map(({ limb, mag, u, v }) => {
+      const meta = o.limbs[limb];
+      const name = limb === 'amoc_upper' ? 'Upper limb' : 'Deep limb';
+      return describeLimb(
+        name, decodeValue(mag[k]!, meta.encode), decodeValue(u[k]!, meta.uv_encode), decodeValue(v[k]!, meta.uv_encode),
+      );
+    });
+    this.legend.showOceanHover(lines.join('; '));
+  }
+
   hoverEnd(): void {
+    this.legend.showOceanHover(null);
     this.legend.showValue(null);
     if (this.wind) this.legend.showWind(this.windCaption());
   }
@@ -623,7 +728,13 @@ async function start(): Promise<void> {
   const arrows = new ArrowLayer('arrows');
   const zonalPanel = new ZonalPanel(document.getElementById('zonal')!, () => void closers.zonal());
   const strip = new EngineStrip(document.getElementById('strip')!, (id, opener) => info.open(manifest.layers[id]!, manifest.credits, opener));
-  const app = new App(manifest, date, raster, particles, legend, menu, choice, readout, map, arrows, zonalPanel, strip);
+  // The ocean overlay: one particle layer per limb of the overturning, in its own colour.
+  const oceanLayers = Object.fromEntries(
+    OCEAN_LIMBS.map((l) => [l, new ParticleLayer(`ocean-${l}`, { colour: hexToRgb(manifest.ocean?.limbs[l]?.colour ?? '#ffffff') })]),
+  ) as Record<OceanLimb, ParticleLayer>;
+  const app = new App(
+    manifest, date, raster, particles, legend, menu, choice, readout, map, arrows, zonalPanel, strip, oceanLayers, initial.ocean,
+  );
   closers.close = () => app.unpin();
   closers.zonal = () => {
     void app.setPanel(false);
@@ -636,6 +747,11 @@ async function start(): Promise<void> {
   const modeSwitch = new ModeSwitch(initial.mode, (m) => void app.setMode(m));
   const arrowSwitch = new ArrowsSwitch(manifest, initial.arrows, (on) => void app.setArrows(on));
   overlays.element.append(arrowSwitch.element);
+  const oceanControls = new OceanControls(
+    manifest, initial.ocean, (c) => void app.setOcean(c),
+    (opener) => manifest.ocean && info.open(oceanInfoMeta(manifest.ocean), manifest.ocean.credit, opener),
+  );
+  overlays.element.append(oceanControls.element);
   document.querySelector('#menu .menu-head')!.after(modeSwitch.element);
   app.modeSwitch = modeSwitch;
   app.setModeFlags(initial.mode, initial.frame);
@@ -652,6 +768,7 @@ async function start(): Promise<void> {
     (step) => {
       overlays.set({ on: step.particles !== null, level: step.particles ?? overlays.choice.level });
       arrowSwitch.set(step.arrows);
+      oceanControls.set({ ...oceanControls.choice, on: false });
       zonalButton.setAttribute('aria-pressed', String(step.panel));
       void app.showStep(step, overlays.choice.level);
     },
@@ -735,11 +852,12 @@ async function start(): Promise<void> {
   if (shouldAutoShow(params, readSeen) && (!onPhone() || params.get('overview') === '1')) openOverview(null);
 
   // ?debug exposes the map and particle layer to the console and the Playwright tests.
-  if (params.has('debug')) Object.assign(window, { ehe: { map, particles, arrows } });
+  if (params.has('debug')) Object.assign(window, { ehe: { map, particles, arrows, ocean: oceanLayers } });
 
   await new Promise((resolve) => map.once('load', resolve));
   map.addLayer(raster, 'coastline-halo');
   map.addLayer(arrows); // under the particles, over the coastlines
+  for (const l of [...OCEAN_LIMBS].reverse()) map.addLayer(oceanLayers[l]); // deep under upper, both under the wind
   map.addLayer(particles);
   try {
     await app.select(first);
@@ -753,6 +871,7 @@ async function start(): Promise<void> {
     );
   }
   void app.updateArrows();
+  void app.updateOcean();
   map.on('mousemove', (e) => app.hover(e.lngLat.lng, e.lngLat.lat));
   map.on('mouseout', () => app.hoverEnd());
   map.on('click', (e) => {

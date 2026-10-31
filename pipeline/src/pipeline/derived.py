@@ -331,3 +331,104 @@ def compute_extras(tidy: xr.Dataset) -> dict[str, LayerField]:
         )
 
     return {"t_skin": field(skt, np.zeros_like(ocean)), "j_opt": field(j_opt, ocean)}
+
+
+# ---- the ocean: the two limbs of the Atlantic overturning (AMOC) -----------------------
+#
+# Inputs are the Copernicus Marine GLO12 daily-mean currents u, v (m s-1) on the model's own
+# depth levels, NaN below the sea floor. At 26.5 N the overturning reverses at about 1100 m
+# (RAPID), so the upper limb is the water above AMOC_SPLIT_M and the deep limb the water
+# below it. Integrating u and v over a limb gives its transport per metre of width (m2 s-1):
+# the map shows where each limb's water goes and how much of it there is.
+
+AMOC_SPLIT_M = 1100.0  # m; depth of the overturning maximum at 26.5 N; shown in the info text
+SVERDRUP = 1e6  # m3 s-1
+
+
+def level_edges(depth) -> np.ndarray:
+    """Edges of the model levels from their centres, m: 0 at the surface, midpoints between
+    centres, and a bottom edge as far below the last centre as the edge above it is above."""
+    z = np.asarray(depth, dtype="float64")
+    mid = (z[1:] + z[:-1]) / 2
+    return np.concatenate([[0.0], mid, [z[-1] + (z[-1] - mid[-1])]])
+
+
+def limb_thickness(depth, top: float, bottom: float) -> np.ndarray:
+    """How much of each level lies between depths `top` and `bottom`, m, shape (nz,)."""
+    e = level_edges(depth)
+    return np.clip(np.minimum(e[1:], bottom) - np.maximum(e[:-1], top), 0.0, None)
+
+
+def limb_transports(u, v, depth, limbs) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """Depth-integrated transport of each limb in `limbs` ((top, bottom) pairs, m).
+
+    u, v have the level first and NaN below the sea floor; levels are read one at a time,
+    and only if some limb needs them, so a lazily loaded netCDF variable never has to fit in
+    memory. Returns one (U, V, H) per limb: U = integral of u dz and V = integral of v dz over
+    the limb (m2 s-1, volume transport per metre of width), and H, the thickness of water in
+    the limb (m), which is less than the limb where the sea floor cuts it off.
+    """
+    dz = [limb_thickness(depth, top, bottom) for top, bottom in limbs]
+    out: list[list[np.ndarray] | None] = [None] * len(limbs)
+    for k in range(len(depth)):
+        if not any(t[k] > 0 for t in dz):
+            continue
+        uk = np.asarray(u[k], dtype="float64")
+        vk = np.asarray(v[k], dtype="float64")
+        wet = np.isfinite(uk) & np.isfinite(vk)
+        uk, vk = np.where(wet, uk, 0.0), np.where(wet, vk, 0.0)
+        for i, t in enumerate(dz):
+            if t[k] == 0:
+                continue
+            if out[i] is None:
+                out[i] = [np.zeros(uk.shape) for _ in range(3)]
+            acc = out[i]
+            acc[0] += uk * t[k]
+            acc[1] += vk * t[k]
+            acc[2] += wet * t[k]
+    if all(a is None for a in out):
+        shape = np.shape(np.asarray(u[0]))
+        return [tuple(np.zeros(shape) for _ in range(3)) for _ in limbs]
+    shape = next(a for a in out if a is not None)[0].shape
+    return [tuple(a) if a is not None else tuple(np.zeros(shape) for _ in range(3)) for a in out]
+
+
+def depth_mean_velocity(uu, vv, h, min_thickness: float):
+    """Depth-mean velocity of a limb, U / H and V / H, m s-1: how fast its water moves.
+    Returns (u, v, masked); masked where the limb holds less than `min_thickness` of water."""
+    h = np.asarray(h, dtype="float64")
+    masked = ~(h >= min_thickness)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(masked, np.nan, uu / h), np.where(masked, np.nan, vv / h), masked
+
+
+def _section_dx(lon_deg, lat_deg: float) -> float:
+    """Width of one grid step along a latitude circle, m (evenly spaced longitudes)."""
+    dlam = np.deg2rad(abs(float(lon_deg[1]) - float(lon_deg[0])))
+    return EARTH_RADIUS * np.cos(np.deg2rad(lat_deg)) * dlam
+
+
+def overturning(v, depth, lon_deg, lat_deg: float) -> tuple[np.ndarray, np.ndarray]:
+    """Overturning streamfunction across a latitude section, Sv, at each level edge.
+
+    psi(z) = sum over the levels above z of (sum over the section of v dx) dz: the northward
+    volume transport above depth z, so psi(0) = 0. v is (nz, nx) in m s-1, NaN on land and
+    below the sea floor (no flow). Returns (edges in m, psi in Sv)."""
+    edges = level_edges(depth)
+    per_level = np.nansum(np.asarray(v, dtype="float64"), axis=1) * _section_dx(lon_deg, lat_deg)
+    psi = np.concatenate([[0.0], np.cumsum(per_level * np.diff(edges))]) / SVERDRUP
+    return edges, psi
+
+
+def amoc_strength(edges: np.ndarray, psi: np.ndarray) -> tuple[float, float]:
+    """The AMOC strength, the maximum of the streamfunction (Sv), and its depth (m)."""
+    k = int(np.argmax(psi))
+    return float(psi[k]), float(edges[k])
+
+
+def section_transport(vv, lon_deg, lat_deg: float) -> float:
+    """Northward transport of a limb across a latitude section, Sv, from its depth-integrated
+    northward transport per metre V (m2 s-1) along the section; NaN counts as no flow."""
+    return float(
+        np.nansum(np.asarray(vv, dtype="float64")) * _section_dx(lon_deg, lat_deg) / SVERDRUP
+    )

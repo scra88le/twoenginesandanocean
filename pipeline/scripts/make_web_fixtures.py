@@ -25,6 +25,10 @@
   so every card's layer has a Climate view.
   Climate vectors (clim/{frame}/*_uv.png): wind10 -4 m/s (+4 in July), wind100 +3, jet250 v = -20,
   flux_e 1e8 W m-1 eastward, with a shared arrow reference of 4e8.
+  The ocean overlay (ocean/{date}/, manifest `ocean`): water over 80 W - 0 E, 40 S - 75 N; the
+  upper limb carries 220 m2/s north (0.2 m/s over 1100 m), the deep limb 150 m2/s south (0.05
+  m/s over 3000 m). The newest date has the daily field and the 30-day mean, the middle date the
+  daily field only (12 days in its window), the oldest date nothing.
 """
 
 from pathlib import Path
@@ -32,6 +36,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from pipeline import ocean
 from pipeline.climatology import Climatology, encode_anomalies
 from pipeline.encode import quantise, scalar_png, vector_png
 from pipeline.layers import EXTRAS, LAYERS
@@ -226,6 +231,27 @@ def clim_points(data: Path) -> None:
             path.write_bytes(blob)
 
 
+def ocean_fixtures(data: Path) -> None:
+    lat, lon = 89.75 - 0.5 * j, -179.75 + 0.5 * i
+    water = (lon > -80) & (lon < 0) & (lat > -40) & (lat < 75)
+    box = (lon > -100) & (lon < 25) & (lat > -40) & (lat < 80)
+    f = lambda x: np.where(box, np.where(water, x, 0.0), np.nan)  # noqa: E731
+    day = ocean.OceanDay(
+        f(1.0),
+        {
+            "amoc_upper": (f(0.0), f(220.0), f(1100.0)),
+            "amoc_deep": (f(0.0), f(-150.0), f(3000.0)),
+        },
+        {"psi_max_sv": 17.04, "z_max_m": 1153.5, "amoc_upper_sv": 16.2, "amoc_deep_sv": -15.47},
+    )
+    entries = {}
+    for name, window in ((E2E_DATES[-1], 30), (E2E_DATES[-2], 12)):
+        mean = day if window >= ocean.MIN_WINDOW_DAYS else None
+        ocean._swap_in(data / "ocean", name, ocean.encode_ocean(day, mean))
+        entries[name] = ocean.date_entry(day, mean, window)
+    ocean.write_ocean_manifest(data, entries)
+
+
 def e2e_fixtures() -> None:
     import json
 
@@ -290,6 +316,7 @@ def e2e_fixtures() -> None:
     for p in (data / "series").rglob("*.bin"):
         if p.name not in FIXTURE_TILES:
             p.unlink()
+    ocean_fixtures(data)
 
 
 if __name__ == "__main__":

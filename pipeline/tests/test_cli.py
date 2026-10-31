@@ -121,3 +121,31 @@ def test_upload_publishes_a_data_root(tmp_path, capsys):
     assert main(["upload", "--store", f"file://{tmp_path / 'bucket'}", "--out", str(out)]) == 0
     assert (tmp_path / "bucket" / "manifest.json").is_file()
     assert "uploaded" in capsys.readouterr().out
+
+
+def test_ocean_runs_locally_or_against_a_store_and_fails_the_run_on_a_failed_fetch(
+    monkeypatch, capsys
+):
+    from datetime import date
+
+    from pipeline import ocean
+    from pipeline.cli import main
+
+    seen = {}
+
+    def fake_local(out, work, n, log):
+        seen["local"] = (str(out), n)
+        return ocean.OceanResult(built=["2026-10-01"])
+
+    def fake_daily(store, out, work, n, log):
+        seen["daily"] = (store, n)
+        return ocean.OceanResult(failed={date(2026, 10, 1): "ConnectionError: down"})
+
+    monkeypatch.setattr(ocean, "run_ocean", fake_local)
+    monkeypatch.setattr(ocean, "run_ocean_daily", fake_daily)
+    monkeypatch.setattr("pipeline.store.open_store", lambda url: f"store:{url}")
+    assert main(["ocean"]) == 0
+    assert seen["local"] == ("out", ocean.MAX_FETCH)
+    assert main(["ocean", "--store", "s3://b", "--max-fetch", "3"]) == 1
+    assert seen["daily"] == ("store:s3://b", 3)
+    assert "::error::ocean 2026-10-01 not fetched" in capsys.readouterr().err

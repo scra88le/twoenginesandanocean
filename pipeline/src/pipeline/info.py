@@ -9,7 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .derived import H_LIFT_M, MIN_SURFACE_SOLAR, MIN_TURBULENT_FLUX, SIGMA, SMOOTH_LENGTH_M
+from .derived import (
+    AMOC_SPLIT_M,
+    H_LIFT_M,
+    MIN_SURFACE_SOLAR,
+    MIN_TURBULENT_FLUX,
+    SIGMA,
+    SMOOTH_LENGTH_M,
+)
 
 
 @dataclass(frozen=True)
@@ -443,3 +450,42 @@ INFO: dict[str, LayerInfo] = {
     lid: LayerInfo(**text, anomaly=_anomaly_text(lid))  # type: ignore[arg-type]
     for lid, text in _TEXT.items()
 }
+
+# The ocean overlay (`pipeline.ocean`): not a map layer, so it has its own text.
+_SPLIT = f"{AMOC_SPLIT_M:,.0f} m"
+OCEAN_INFO = LayerInfo(
+    summary="The Atlantic overturning: warm water flowing north near the surface, cold water returning south at depth.",
+    source=(
+        "Copernicus Marine Service, Global Ocean Physics Analysis and Forecast (GLO12, "
+        "GLOBAL_ANALYSISFORECAST_PHY_001_024), daily-mean eastward and northward currents (uo, vo) "
+        "on 50 depth levels at 1/12°. A model that assimilates satellite sea level and sea-surface "
+        "temperature, sea ice and Argo profiles: satellites see the surface, the model carries it to depth."
+    ),
+    formula=(
+        f"Upper limb 0–{_SPLIT}, deep limb {_SPLIT} to the sea floor. For each limb, U = ∫u dz and "
+        "V = ∫v dz (m² s⁻¹, water carried per metre of width) and H, the thickness of water in it. "
+        "Averaged onto 0.5° with land as no flow. Particles move at the depth-mean velocity (U, V) / H; "
+        "how densely they are drawn follows the transport |(U, V)|. The 26.5° N figures integrate v "
+        "across the Atlantic from Florida to Africa at full resolution: the overturning "
+        "streamfunction ψ(z) = ∫∫ v dx dz from the surface down to z, and its maximum is the AMOC "
+        "strength (1 Sv = 10⁶ m³ s⁻¹)."
+    ),
+    sign="Directions as on the map: north is up, east is right. Northward transport across 26.5° N is positive.",
+    meaning=(
+        "The ocean is the engine's second carrier of heat. In the Atlantic, warm upper water flows "
+        "north, gives its heat to the air at high latitudes, sinks, and returns south at depth. "
+        "That overturning carries about 1 PW of heat north across 26.5° N, part of why northwest "
+        f"Europe is mild. The overturning reverses near {_SPLIT} at 26.5° N, which is where the two "
+        "limbs are split; RAPID's moorings there measure about 17 Sv."
+    ),
+    caveats=(
+        "The transport includes the wind-driven gyres and eddies, not only the overturning: the "
+        "Gulf Stream carries far more than 17 Sv, most of it recirculating within the subtropics. "
+        "A single day is dominated by eddies; the 30-day mean shows the pathways. The split at a "
+        f"fixed {_SPLIT} suits 26.5° N and is approximate elsewhere. Model values, not "
+        "observations: compare the 26.5° N figure with RAPID's. GLO12 runs about a day behind real "
+        "time; the overlay follows the map's dates."
+    ),
+    mask="Grey: land, water outside the Atlantic, or less water in the limb than it needs (50 m for the upper limb, 200 m for the deep).",
+    anomaly="No anomaly: GLO12 covers about the last two years, so there is no 1991–2020 normal.",
+)

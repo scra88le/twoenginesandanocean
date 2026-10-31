@@ -1,4 +1,4 @@
-"""Command-line entry point: fetch, build, backfill, climatology, daily, upload."""
+"""Command-line entry point: fetch, build, backfill, climatology, daily, ocean, upload."""
 
 import argparse
 import os
@@ -52,6 +52,22 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--out", type=Path, default=Path("out"))
     daily.add_argument("--raw", type=Path, default=Path("raw"))
     daily.add_argument("--work", type=Path, default=Path("work"))
+
+    ocean = sub.add_parser(
+        "ocean",
+        help="build the AMOC overlay (Copernicus Marine GLO12) for the published dates",
+    )
+    ocean.add_argument(
+        "--store",
+        default=None,
+        help="the daily job: state from and publish to this store (file:///dir or "
+        "s3://bucket[/prefix]); without it ./out is updated in place",
+    )
+    ocean.add_argument(
+        "--max-fetch", type=int, default=None, help="days to download in this run (default 15)"
+    )
+    ocean.add_argument("--out", type=Path, default=Path("out"))
+    ocean.add_argument("--work", type=Path, default=Path("work"))
 
     upload = sub.add_parser("upload", help="publish a local data root to a store")
     upload.add_argument(
@@ -160,6 +176,22 @@ def _daily(args: argparse.Namespace) -> int:
     return 1 if result.failed else 0
 
 
+def _ocean(args: argparse.Namespace) -> int:
+    from . import ocean
+    from .store import open_store
+
+    log = lambda msg: print(msg, flush=True)  # noqa: E731
+    n = args.max_fetch if args.max_fetch is not None else ocean.MAX_FETCH
+    if args.store:
+        result = ocean.run_ocean_daily(open_store(args.store), args.out, args.work, n, log=log)
+    else:
+        result = ocean.run_ocean(args.out, args.work, n, log=log)
+    print(f"ocean: fetched {len(result.fetched)} days, built {len(result.built)} dates")
+    for day, problem in result.failed.items():
+        print(f"::error::ocean {day} not fetched: {problem}", file=sys.stderr)
+    return 1 if result.failed else 0
+
+
 def _upload(args: argparse.Namespace) -> int:
     from .deploy import upload
     from .store import open_store
@@ -260,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
         return _daily(args)
     if args.command == "upload":
         return _upload(args)
+    if args.command == "ocean":
+        return _ocean(args)
     if args.command == "climatology":
         return _climatology(args)
     print(f"{args.command}: not implemented yet", file=sys.stderr)

@@ -4,8 +4,16 @@ name: Daily build
 # publishes them to the object store (manifest last). Never waits on the CDS queue: requests are
 # remembered in the store (state/pending.json) and collected on a later run.
 #
+# Then, in a second job that never runs at the same time as the first (both write the
+# manifest), the ocean overlay: Copernicus Marine GLO12 currents for the published dates,
+# reduced to the two limbs of the Atlantic overturning (pipeline.ocean). Its daily depth
+# integrals are kept in the store (state/ocean/) for the 30-day means. Skipped, with a notice,
+# until the Copernicus Marine secrets are set.
+#
 # Setup: docs/DEPLOY.md. Needs these in Settings > Secrets and variables > Actions:
-#   secrets   CDSAPI_URL, CDSAPI_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#   secrets   CDSAPI_URL, CDSAPI_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+#             COPERNICUSMARINE_SERVICE_USERNAME, COPERNICUSMARINE_SERVICE_PASSWORD (ocean job;
+#             a free account at https://data.marine.copernicus.eu)
 #   variables STORE_URL (s3://bucket[/prefix]), S3_ENDPOINT_URL (R2 or another S3-compatible
 #             service; leave empty for AWS S3), SITE_URL (optional: smoke-test the site after)
 
@@ -17,6 +25,9 @@ on:
       days:
         description: How many recent dates to attempt
         default: "10"
+      ocean_days:
+        description: How many days of ocean currents to download (about 0.5 GB and 1-2 min each)
+        default: "15"
 
 concurrency:
   group: daily-build
@@ -68,10 +79,48 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh api --method PUT "/repos/${{ github.repository }}/actions/workflows/daily.yml/enable"
 
+  ocean:
+    # After the ERA5 build, never alongside it: both jobs write the manifest. Runs even when
+    # the build failed (a failed date still leaves the other dates published).
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      STORE_URL: ${{ vars.STORE_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
+      AWS_DEFAULT_REGION: auto
+      COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
+      COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
+      OCEAN_DAYS: ${{ inputs.ocean_days || '15' }}
+    steps:
+      - name: Check the configuration
+        id: config
+        run: |
+          if [ -z "$COPERNICUSMARINE_SERVICE_USERNAME" ] || [ -z "$COPERNICUSMARINE_SERVICE_PASSWORD" ]; then
+            echo "::notice::Ocean overlay skipped: set COPERNICUSMARINE_SERVICE_USERNAME and _PASSWORD. See docs/DEPLOY.md."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.skip != '1'
+      - uses: actions/setup-python@v5
+        if: steps.config.outputs.skip != '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+      - run: pip install -e "./pipeline[deploy,ocean]"
+        if: steps.config.outputs.skip != '1'
+      - name: Build and publish the ocean overlay
+        if: steps.config.outputs.skip != '1'
+        run: python -m pipeline.cli ocean --store "$STORE_URL" --max-fetch "$OCEAN_DAYS"
+
   smoke:
     # Is the site up, with data of today's vintage, and readable from the browser?
-    needs: build
-    if: ${{ vars.SITE_URL != '' }}
+    needs: [build, ocean]
+    if: ${{ !cancelled() && vars.SITE_URL != '' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

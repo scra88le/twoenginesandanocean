@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .derived import AMOC_SPLIT_M
+
 
 @dataclass(frozen=True)
 class LayerSpec:
@@ -293,3 +295,46 @@ EXTRAS: dict[str, PointSpec] = {
         PointSpec("j_opt", "Max-power convective flux", "W m-2", (0, 300), 0.25),
     )
 }
+
+
+@dataclass(frozen=True)
+class LimbSpec:
+    """One limb of the Atlantic overturning, drawn as coloured particles (the ocean overlay).
+
+    Each date gets two files per limb and averaging: `{id}.png`, the depth-integrated transport
+    per metre of width |(U, V)| (m2 s-1, log packing), which sets how densely particles are
+    drawn, and `{id}_uv.png`, the depth-mean velocity (U, V) / H (m s-1), which moves them.
+    """
+
+    id: str
+    title: str
+    top_m: float  # depth range of the limb, m
+    bottom_m: float
+    colour: str  # particle colour, hex
+    display: tuple[float, float]  # transport, m2 s-1 (log)
+    encode: tuple[float, float]
+    resolution: float  # log10 decades
+    uv_encode: tuple[float, float]  # depth-mean velocity, m s-1
+    uv_resolution: float
+    min_thickness_m: float  # less water than this in the limb: masked
+    speed_hi: float  # m s-1 that moves at the particle layer's top screen speed
+    density_ref: float  # m2 s-1 at and above which every particle is drawn
+    units: str = "m2 s-1"
+    uv_units: str = "m s-1"
+
+
+OCEAN_LIMBS: dict[str, LimbSpec] = {
+    s.id: s
+    for s in (
+        LimbSpec(
+            "amoc_upper", "Upper limb: warm water flowing north", 0.0, AMOC_SPLIT_M,
+            "#f08a5d", (1, 1000), (1e-2, 1e5), 0.002, (-3, 3), 0.001,
+            min_thickness_m=50.0, speed_hi=0.3, density_ref=200.0,
+        ),
+        LimbSpec(
+            "amoc_deep", "Deep limb: cold water returning south", AMOC_SPLIT_M, float("inf"),
+            "#6fb6f2", (1, 1000), (1e-2, 1e5), 0.002, (-1, 1), 0.0005,
+            min_thickness_m=200.0, speed_hi=0.05, density_ref=150.0,
+        ),
+    )
+}  # fmt: skip

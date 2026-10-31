@@ -429,6 +429,20 @@ Record the findings in `docs/DECISIONS.md` and recommend: globe by default, a to
 
 ---
 
+## F14 — The ocean overlay: the Atlantic overturning (AMOC)
+
+**New overlay**, not a map layer: the two limbs of the Atlantic Meridional Overturning Circulation as coloured particles, usable over any raster in Today and Today vs normal.
+
+- **Data.** Copernicus Marine Service, Global Ocean Physics Analysis and Forecast (GLO12, `GLOBAL_ANALYSISFORECAST_PHY_001_024`), dataset `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m`: daily-mean `uo`, `vo` on 50 depth levels at 1/12°. It assimilates satellite sea level and SST, sea ice and Argo profiles; satellites see only the surface, so the deep limb has to come from the model. Free account; credentials `COPERNICUSMARINE_SERVICE_USERNAME` and `_PASSWORD`; `copernicusmarine` toolbox (optional dependency group `ocean`).
+- **Subset.** The Atlantic box 100°W–25°E, 40°S–80°N, all depths, one day per request (about 0.5 GB).
+- **Limbs.** Upper 0–1100 m (warm, northward), deep 1100 m to the sea floor (cold, southward); 1100 m is where the overturning at 26.5°N reverses (RAPID). For each: U = ∫u dz, V = ∫v dz (m² s⁻¹) and the water thickness H, in `pipeline.derived` (`limb_transports`, read one level at a time).
+- **Encoding.** Conservative average to the 0.5° grid (land counts as no flow), Atlantic only (`ocean.basin_mask`: cells with ≥ 30 % ocean connected to the open North Atlantic, east of the Central American divide). Per limb: `{limb}.png`, the transport |(U, V)| (log, 0.01–10⁵ m² s⁻¹), which sets particle **density**; `{limb}_uv.png`, the depth-mean velocity (U, V) / H (m s⁻¹), which sets particle **speed and direction**. Masked where the limb holds less than 50 m (upper) or 200 m (deep) of water.
+- **Averaging.** The day, and the 30-day mean ending on it (mean U, V, H; velocity = mean U / mean H), published once 24 of the 30 days are in. The front end falls back to the daily field and says so.
+- **26.5°N diagnostics**, at full resolution, Florida to Africa (81°W–13°W): the overturning streamfunction ψ(z) and its maximum (the AMOC strength, Sv) and depth, and each limb's net northward transport. Shown in the legend; comparable with RAPID's ~17 Sv.
+- **Storage.** `ocean/{date}/{limb}{_30d}{_uv}.png` (outside `fields/`, so an ERA5 rebuild can't delete it); `state/ocean/{date}.npz`, the daily 0.5° integrals, kept for the window; manifest `ocean` block (limbs, file templates, per-date window count and 26.5°N figures, info text, credit). ERA5 manifest writes carry the block forward.
+- **Schedule.** A second job in `daily.yml`, after the ERA5 build and never alongside it (both write the manifest). At most 15 downloads a run: missing published dates first, newest first, then their windows. Skipped with a notice while the secrets are unset.
+- **Front end.** One particle layer per limb (orange upper, blue deep), the wind particle layer with two options: a colour, and a weight field (a respawning particle is kept with probability transport / `density_ref`, else parked off the map until the next frame). Menu: "Ocean overturning" toggle, limbs (both, upper, deep), averaging (30-day mean, daily), (i). Legend line with swatches, the period and the 26.5°N figures; hover gives each limb's transport, speed and direction. URL `ocean=both|upper|deep`, `ocean_avg=daily`. Off in Climate mode (no 1991–2020 normal) and in tour steps.
+
 ## Milestones
 
 Continue the numbering from `CLAUDE.md`. Stop and summarise after each, as before.
@@ -451,6 +465,7 @@ Continue the numbering from `CLAUDE.md`. Stop and summarise after each, as befor
 20. **Overview infographic** (F13): desktop and phone SVGs, value slots from `clim/zonal/year.json`, highlight chips, links into tour steps, first-visit logic, menu entry, text alternative. This comes after milestone 19 because its links reuse the new tour cards.
 21. **Readability:** colour scales, loading state, plain labels, readout energy-flow diagram (F11).
 22. **Globe spike (optional):** findings and recommendation only (F12).
+23. **Ocean overlay** (F14): the AMOC formulas in `pipeline.derived` (test-first), `pipeline.ocean`, the `ocean` CLI command and daily job, the coloured and density-weighted particle layer, controls, legend, URL state, fixtures and tests.
 
 ## Acceptance criteria
 
@@ -469,6 +484,7 @@ Continue the numbering from `CLAUDE.md`. Stop and summarise after each, as befor
 - [ ] A first visit shows the overview infographic and a return visit doesn't. The menu reopens it on desktop and phone. Every element opens its tour step with the right map state. Every value is filled from the annual-mean climatology, and the text alternative lists the same content.
 - [ ] Low values are dark on every sequential layer. A loading indicator shows until the first raster draws.
 - [ ] Payload and performance targets from `CLAUDE.md` still hold with the strip and panel loaded.
+- [ ] The ocean overlay shows both limbs over the Atlantic for every published date with its 30-day mean, the deep limb flowing south along the American slope, and a 26.5°N AMOC strength within a few Sv of RAPID's (F14).
 - [ ] `CLAUDE.md` and `docs/DECISIONS.md` are updated for every change above.
 
 ## Open questions

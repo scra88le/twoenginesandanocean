@@ -1,5 +1,6 @@
 // Types and loading for manifest.json, written by pipeline/src/pipeline/publish.py.
 import type { EncodeRange } from './codes';
+import type { OceanMeta } from './ocean';
 
 export interface Grid {
   nlon: number;
@@ -58,6 +59,7 @@ export interface Manifest {
   points?: PointsMeta; // absent in manifests from before milestone 9
   series?: { file: string; magic: string };
   credits: string;
+  ocean?: OceanMeta | null; // the ocean overlay (Copernicus Marine GLO12); absent until it is built
 }
 
 export interface ClimMeta {

@@ -8,6 +8,8 @@ export class Legend {
   private readonly value: HTMLElement;
   private readonly wind: HTMLElement;
   private readonly arrows: HTMLElement;
+  private readonly ocean: HTMLElement;
+  private oceanText = '';
   private meta?: LayerMeta;
   private signed = false;
 
@@ -20,10 +22,12 @@ export class Legend {
       <div class="legend-notes"></div>
       <div class="legend-value" aria-live="polite">Hover over the map for a value</div>
       <div class="legend-wind" hidden></div>
-      <div class="legend-arrows" hidden></div>`;
+      <div class="legend-arrows" hidden></div>
+      <div class="legend-ocean" hidden><span class="ocean-swatches"></span><span class="ocean-text"></span></div>`;
     this.value = root.querySelector('.legend-value')!;
     this.wind = root.querySelector('.legend-wind')!;
     this.arrows = root.querySelector('.legend-arrows')!;
+    this.ocean = root.querySelector('.legend-ocean')!;
   }
 
   /** `extra` notes go after the standard ones; `signed` shows values with a sign (anomalies);
@@ -70,6 +74,29 @@ export class Legend {
   showArrows(text: string | null): void {
     this.arrows.hidden = text === null;
     this.arrows.textContent = text ?? '';
+  }
+
+  /** The ocean line: a swatch per limb drawn and what they show. null hides it. */
+  showOcean(text: string | null, swatches: { colour: string; label: string }[] = []): void {
+    this.ocean.hidden = text === null;
+    this.oceanText = text ?? '';
+    this.ocean.querySelector('.ocean-text')!.textContent = this.oceanText;
+    const box = this.ocean.querySelector('.ocean-swatches')!;
+    box.replaceChildren(
+      ...swatches.map((s) => {
+        const el = document.createElement('span');
+        el.className = 'ocean-swatch';
+        el.style.background = s.colour;
+        el.title = s.label;
+        return el;
+      }),
+    );
+  }
+
+  /** The ocean line while hovering: the currents under the cursor, or back to the caption. */
+  showOceanHover(text: string | null): void {
+    if (this.ocean.hidden) return;
+    this.ocean.querySelector('.ocean-text')!.textContent = text ?? this.oceanText;
   }
 
   showMessage(text: string): void {

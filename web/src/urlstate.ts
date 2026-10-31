@@ -4,6 +4,7 @@
 // the keys fixed and leaves parameters it doesn't own (like ?debug) alone.
 import type { Manifest } from './manifest';
 import { DEFAULT_FRAME, isFrame, isMode, resolveMode, type Frame, type Mode } from './modes';
+import { DEFAULT_OCEAN, isOceanLimbs, type OceanChoice } from './ocean';
 import type { ParticleChoice } from './overlays';
 import { isWindLevel } from './wind';
 
@@ -14,6 +15,7 @@ export interface ViewState {
   frame: Frame; // the Climate frame: "01".."12" or "year"
   particles: ParticleChoice;
   arrows: boolean;
+  ocean: OceanChoice;
   panel: boolean; // the zonal budget panel is open
   center: [number, number]; // lng, lat
   zoom: number;
@@ -28,7 +30,7 @@ export const DEFAULT_PARTICLES: ParticleChoice = { on: true, level: 'wind10' };
 const MAX_LAT = 85.05;
 const MAX_ZOOM = 22;
 // Keys written in this order; `tour` and `overview` are dropped (they only open the tour or overview, once).
-const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'panel', 'pin', 'tour', 'overview'];
+const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'ocean', 'ocean_avg', 'panel', 'pin', 'tour', 'overview'];
 
 /** "lng,lat" -> numbers, or null if it isn't two finite numbers. */
 export function parseCenter(text: string | null): [number, number] | null {
@@ -44,6 +46,16 @@ export const wrapLng = (lng: number) => ((((lng + 180) % 360) + 360) % 360) - 18
 export function parseParticles(text: string | null): ParticleChoice {
   if (text === 'off') return { on: false, level: DEFAULT_PARTICLES.level };
   return { on: true, level: isWindLevel(text) ? text : DEFAULT_PARTICLES.level };
+}
+
+/** ?ocean=both|upper|deep switches the ocean overlay on; ?ocean_avg=daily picks daily currents. */
+export function parseOcean(params: URLSearchParams): OceanChoice {
+  const limbs = params.get('ocean');
+  return {
+    on: isOceanLimbs(limbs),
+    limbs: isOceanLimbs(limbs) ? limbs : DEFAULT_OCEAN.limbs,
+    avg: params.get('ocean_avg') === 'daily' ? 'daily' : DEFAULT_OCEAN.avg,
+  };
 }
 
 /** The view state a URL asks for, with anything invalid replaced by a default. */
@@ -72,6 +84,7 @@ export function readState(params: URLSearchParams, m: Manifest): ViewState {
     frame: isFrame(frameText) ? frameText : DEFAULT_FRAME,
     particles: parseParticles(params.get('particles')),
     arrows: params.get('arrows') === '1',
+    ocean: parseOcean(params),
     panel: params.get('panel') === 'zonal',
     center: center && Math.abs(center[1]) <= MAX_LAT ? [wrapLng(center[0]), center[1]] : DEFAULT_CENTER,
     zoom: Number.isFinite(zoom) && zoom >= 0 && zoom <= MAX_ZOOM ? zoom : DEFAULT_ZOOM,
@@ -90,6 +103,8 @@ export function stateQuery(current: string | URLSearchParams, s: ViewState): str
   out.set('zoom', s.zoom.toFixed(2));
   out.set('particles', s.particles.on ? s.particles.level : 'off');
   if (s.arrows) out.set('arrows', '1');
+  if (s.ocean.on) out.set('ocean', s.ocean.limbs);
+  if (s.ocean.on && s.ocean.avg === 'daily') out.set('ocean_avg', 'daily');
   if (s.panel) out.set('panel', 'zonal');
   if (s.pin) out.set('pin', `${s.pin[0].toFixed(2)},${s.pin[1].toFixed(2)}`);
   for (const [k, v] of new URLSearchParams(current)) if (!OWNED.includes(k)) out.append(k, v);
