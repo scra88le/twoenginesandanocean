@@ -66,7 +66,7 @@ test('touch targets are about 40 px, and the small info button has a larger tap 
     expect((await size(sel)).height, sel).toBeGreaterThanOrEqual(32);
   }
   // A tap 9 px outside the 22 px circle still opens the panel.
-  const button = page.getByRole('button', { name: 'About Net radiation, TOA' });
+  const button = page.getByRole('button', { name: 'About Net radiation, top of atmosphere' });
   await button.scrollIntoViewIfNeeded(); // it is further down the sheet since the menu was regrouped
   const info = (await button.boundingBox())!;
   await page.touchscreen.tap(info.x - 9, info.y - 9);

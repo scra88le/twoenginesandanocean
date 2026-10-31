@@ -25,7 +25,7 @@ test('the anomaly switch shows the difference from the monthly mean, centred on 
   await expect(page.locator('.mode-switch')).toContainText('Today vs normal');
   await page.locator('.mode-anom').check();
   await expect(page.locator('body')).toHaveAttribute('data-mode', 'anom');
-  await expect(page.locator('.legend-title')).toHaveText('Effective emission temperature, anomaly (K)');
+  await expect(page.locator('.legend-title')).toHaveText('Temperature seen from space, T_e, anomaly (K)');
   await expect(page.locator('.legend-timescale')).toHaveText('2026-10-01 minus the October 1991–2020 mean');
   const c = await centre(page);
   await page.mouse.move(c.x, c.y);
@@ -68,7 +68,7 @@ test('a layer without an anomaly switches to Today and says why', async ({ page 
 
 test('the info panel explains how the anomaly is made', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'About Local Carnot limit' }).click();
+  await page.getByRole('button', { name: 'About Efficiency ceiling, Carnot limit' }).click();
   await expect(page.locator('#info')).toContainText('approximation');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'About Wind 10 m' }).click();

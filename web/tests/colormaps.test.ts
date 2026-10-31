@@ -22,3 +22,23 @@ test('css gradient lists stops from 0% to 100%', () => {
 test('unknown scale throws', () => {
   expect(() => lutBytes('jet')).toThrow(/jet/);
 });
+
+// Relative luminance (sRGB, Rec. 709 weights): enough to say which end of a scale is brighter.
+const luminance = ([r, g, b]: [number, number, number]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+test('sequential scales get brighter from low to high, so low values are dark on the dark theme', () => {
+  const diverging = ['BrBG', 'balance']; // centred on a pale or neutral middle, by design
+  for (const name of MAP_NAMES.filter((n) => !diverging.includes(n))) {
+    const [lo, mid, hi] = [0, 0.5, 1].map((t) => luminance(colourAt(name, t)));
+    expect(lo, `${name}: low`).toBeLessThan(mid!);
+    expect(mid, `${name}: mid`).toBeLessThan(hi!);
+    expect(lo, `${name}: low is dark`).toBeLessThan(70);
+  }
+});
+
+test('the water and heat scales that used to start near white are the reversed ones', () => {
+  expect(colourAt('rain', 0)).toEqual([34, 27, 56]);
+  expect(colourAt('rain', 1)).toEqual([238, 237, 243]);
+  expect(colourAt('deep', 0)).toEqual([40, 26, 44]);
+  expect(colourAt('amp', 0)).toEqual([60, 9, 18]);
+});

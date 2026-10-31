@@ -53,14 +53,14 @@ test('a manifest from before the regrouping still builds a menu, in its own orde
 test('only built layers are enabled', () => {
   const enabled = menuGroups(manifest).flatMap((g) => g.layers).filter((l) => l.enabled).map((l) => l.id);
   expect(enabled.sort()).toEqual([
-    'asr_sfc', 'carnot', 'diss_bl', 'div_e', 'evap_frac', 'flux_e', 'j_ratio', 'jet250', 'ke_col', 'net_sfc',
-    'net_toa', 'precip', 't_emit', 'wind10', 'wind100',
+    'asr_sfc', 'carnot', 'diss_bl', 'div_e', 'evap_frac', 'flux_e', 'j_ratio', 'jet250', 'ke_col', 'lh', 'net_sfc',
+    'net_toa', 'precip', 'sh', 't_emit', 'wind10', 'wind100',
   ]);
 });
 
 test('each menu entry carries its one-line summary', () => {
   const olr = menuGroups(manifest).flatMap((g) => g.layers).find((l) => l.id === 'olr')!;
-  expect(olr.title).toBe('Outgoing longwave');
+  expect(olr.title).toBe('Heat radiated to space, OLR');
   expect(olr.summary).toBe(manifest.layers.olr!.info.summary);
 });
 

@@ -4,20 +4,21 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { FIRST_VALID, MASKED, NODATA, decodeValue, type EncodeRange } from './codes';
 import { formatReading, prettyUnits } from './format';
+import { renderFlow, type Flow } from './energyflow';
 import type { LayerMeta, Manifest } from './manifest';
 
-/** The table rows from the spec, with short names for each quantity. */
+/** The table rows from the spec. Each quantity is named in plain words first and its symbol second. */
 export const READOUT_ROWS: { label: string; items: [string, string][] }[] = [
-  { label: 'Fuel', items: [['asr_sfc', 'Absorbed solar, surface']] },
-  { label: 'Hot side', items: [['t_skin', 'T_s']] },
-  { label: 'Cold side', items: [['t_emit', 'T_e']] },
-  { label: 'Ceiling', items: [['carnot', 'η_C']] },
-  { label: 'Max power', items: [['j_opt', 'J_opt'], ['g_max', 'G_max']] },
-  { label: 'Actual', items: [['j_conv', 'LE + H'], ['j_ratio', 'r_J']] },
-  { label: 'Split', items: [['lh', 'LE'], ['sh', 'H'], ['evap_frac', 'EF']] },
-  { label: 'Output', items: [['diss_bl', 'BL dissipation'], ['wind100', 'Wind 100 m']] },
-  { label: 'Water', items: [['precip', 'Precipitation'], ['p_lift', 'P_lift']] },
-  { label: 'Humans', items: [['human_q', 'q_human'], ['human_ratio', 'r_H']] },
+  { label: 'Fuel', items: [['asr_sfc', 'Sunlight absorbed at the surface']] },
+  { label: 'Hot side', items: [['t_skin', 'Surface temperature, T_s']] },
+  { label: 'Cold side', items: [['t_emit', 'Temperature seen from space, T_e']] },
+  { label: 'Ceiling', items: [['carnot', 'Efficiency ceiling, η_C']] },
+  { label: 'Max power', items: [['j_opt', 'Best heat flux, J_opt'], ['g_max', 'Maximum power, G_max']] },
+  { label: 'Actual', items: [['j_conv', 'Heat lifted by convection, LE + H'], ['j_ratio', 'Share of the optimum, r_J']] },
+  { label: 'Split', items: [['lh', 'Latent heat, LE'], ['sh', 'Sensible heat, H'], ['evap_frac', 'Evaporative fraction, EF']] },
+  { label: 'Output', items: [['diss_bl', 'Friction near the ground, BL dissipation'], ['wind100', 'Wind at 100 m']] },
+  { label: 'Water', items: [['precip', 'Precipitation'], ['p_lift', 'Power lifting water, P_lift']] },
+  { label: 'Humans', items: [['human_q', 'Human energy use, q_human'], ['human_ratio', 'Human ÷ natural, r_H']] },
 ];
 
 export interface ReadoutItem {
@@ -101,6 +102,7 @@ export function formatPlace(lng: number, lat: number): string {
 export class ReadoutPanel {
   private readonly title: HTMLElement;
   private readonly table: HTMLTableElement;
+  private readonly flow: HTMLElement;
   private readonly chartTitle: HTMLElement;
   private readonly chartBox: HTMLElement;
   private readonly chartNote: HTMLElement;
@@ -115,12 +117,14 @@ export class ReadoutPanel {
         <div><h2 class="ro-heading">Local engine</h2><div class="ro-place"></div></div>
         <button type="button" class="ro-close" aria-label="Close the readout">×</button>
       </div>
+      <div class="ro-flow" hidden></div>
       <table class="ro-table"></table>
       <div class="ro-chart-title"></div>
       <div class="ro-chart"></div>
       <div class="ro-chart-note"></div>`;
     this.title = root.querySelector('.ro-place')!;
     this.table = root.querySelector<HTMLTableElement>('.ro-table')!;
+    this.flow = root.querySelector('.ro-flow')!;
     this.chartTitle = root.querySelector('.ro-chart-title')!;
     this.chartBox = root.querySelector('.ro-chart')!;
     this.chartNote = root.querySelector('.ro-chart-note')!;
@@ -147,6 +151,11 @@ export class ReadoutPanel {
   /** `when` is the date, or the Climate frame ("July, 1991–2020"). */
   showPlace(lng: number, lat: number, when: string): void {
     this.title.textContent = `${formatPlace(lng, lat)} · ${when}`;
+  }
+
+  /** The surface energy-flow diagram above the table; null hides it. */
+  showFlow(f: Flow | null): void {
+    renderFlow(this.flow, f);
   }
 
   showTable(rows: { label: string; items: ReadoutItem[] }[] | string): void {

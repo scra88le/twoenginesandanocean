@@ -16,9 +16,11 @@
   "j_ratio",
   "jet250",
   "ke_col",
+  "lh",
   "net_sfc",
   "net_toa",
   "precip",
+  "sh",
   "t_emit",
   "wind10",
   "wind100"
@@ -108,7 +110,7 @@
  },
  "layers": {
   "asr_toa": {
-   "title": "Absorbed solar, TOA",
+   "title": "Sunlight absorbed, top of atmosphere",
    "group": 2,
    "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
@@ -162,7 +164,7 @@
    }
   },
   "asr_sfc": {
-   "title": "Absorbed solar, surface",
+   "title": "Sunlight absorbed, surface",
    "group": 1,
    "group_name": "Engine one: surface to sky",
    "units": "W m-2",
@@ -216,7 +218,7 @@
    }
   },
   "net_toa": {
-   "title": "Net radiation, TOA",
+   "title": "Net radiation, top of atmosphere",
    "group": 2,
    "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
@@ -270,7 +272,7 @@
    }
   },
   "olr": {
-   "title": "Outgoing longwave",
+   "title": "Heat radiated to space, OLR",
    "group": 2,
    "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
@@ -324,7 +326,7 @@
    }
   },
   "t_emit": {
-   "title": "Effective emission temperature",
+   "title": "Temperature seen from space, T_e",
    "group": 2,
    "group_name": "Engine two: tropics to poles",
    "units": "K",
@@ -378,7 +380,7 @@
    }
   },
   "carnot": {
-   "title": "Local Carnot limit",
+   "title": "Efficiency ceiling, Carnot limit",
    "group": 1,
    "group_name": "Engine one: surface to sky",
    "units": "%",
@@ -486,7 +488,7 @@
    }
   },
   "j_conv": {
-   "title": "Actual convective heat flux",
+   "title": "Heat lifted by convection, LE + H",
    "group": 1,
    "group_name": "Engine one: surface to sky",
    "units": "W m-2",
@@ -540,7 +542,7 @@
    }
   },
   "j_ratio": {
-   "title": "Actual \u00f7 max-power flux",
+   "title": "Share of the optimum, r_J",
    "group": 1,
    "group_name": "Engine one: surface to sky",
    "units": "ratio",
@@ -955,7 +957,7 @@
    }
   },
   "diss_bl": {
-   "title": "Boundary-layer dissipation",
+   "title": "Friction near the ground, BL dissipation",
    "group": 2,
    "group_name": "Engine two: tropics to poles",
    "units": "W m-2",
@@ -1171,7 +1173,7 @@
    }
   },
   "div_e": {
-   "title": "Divergence of total energy flux (smoothed)",
+   "title": "Heat exported by the air, energy flux divergence (smoothed)",
    "group": 2,
    "group_name": "Engine two: tropics to poles",
    "units": "W m-2",

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { decodePng } from '../src/png';
 
-// Fixture data root: 15 layers are built (see make_web_fixtures.py); carnot = 15% north, 0 south.
+// Fixture data root: 17 layers are built (see make_web_fixtures.py); carnot = 15% north, 0 south.
 const ready = (page: Page) =>
   expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
 
@@ -10,7 +10,7 @@ test('menu lists all 25 layers in 5 groups, with unbuilt layers disabled', async
   await ready(page);
   await expect(page.locator('#menu fieldset:not(.overlays):not(.mode-switch)')).toHaveCount(5);
   await expect(page.locator('#menu input[name=layer]')).toHaveCount(25);
-  await expect(page.locator('#menu input[name=layer]:enabled')).toHaveCount(15); // the layers the fixtures build
+  await expect(page.locator('#menu input[name=layer]:enabled')).toHaveCount(17); // the layers the fixtures build
   await expect(page.locator('#menu input[value=t_emit]')).toBeChecked();
   await expect(page.locator('#menu fieldset.overlays legend')).toHaveText('Overlays');
   await expect(page.locator('#menu fieldset.mode-switch legend')).toHaveText('Timescale');
@@ -21,9 +21,9 @@ test('menu lists all 25 layers in 5 groups, with unbuilt layers disabled', async
 test('selecting a layer switches the raster and legend', async ({ page }) => {
   await page.goto('/?layer=t_emit&particles=off');
   await ready(page);
-  await page.getByText('Net radiation, TOA', { exact: true }).click();
+  await page.getByText('Net radiation, top of atmosphere', { exact: true }).click();
   await expect(page.locator('body')).toHaveAttribute('data-layer', 'net_toa');
-  await expect(page.locator('.legend-title')).toHaveText('Net radiation, TOA (W m⁻²)');
+  await expect(page.locator('.legend-title')).toHaveText('Net radiation, top of atmosphere (W m⁻²)');
 });
 
 test('arrow keys move through enabled layers', async ({ page }) => {
@@ -33,7 +33,7 @@ test('arrow keys move through enabled layers', async ({ page }) => {
   await page.keyboard.press('ArrowDown'); // div_e is the next built layer of Engine two
   await expect(page.locator('body')).toHaveAttribute('data-layer', 'div_e');
   await page.locator('#menu input[value=carnot]').check();
-  await expect(page.locator('.legend-title')).toHaveText('Local Carnot limit (%)');
+  await expect(page.locator('.legend-title')).toHaveText('Efficiency ceiling, Carnot limit (%)');
   await expect(page.locator('.note-hatch')).toHaveText('Hatched: clamped at zero');
 });
 

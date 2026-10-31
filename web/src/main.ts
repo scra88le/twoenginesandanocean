@@ -24,6 +24,7 @@ import { decodePng, type DecodedPng } from './png';
 import { EngineStrip } from './enginestrip';
 import { ZonalPanel } from './zonalpanel';
 import { loadZonal, zonalUrl } from './zonal';
+import { flowValues } from './energyflow';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
 import { displayScale } from './scale';
 import { parseCards, type StoryStep, type StoryView } from './story';
@@ -163,6 +164,11 @@ class App {
     this.onStateChange?.();
   }
 
+  private showReadoutMessage(text: string): void {
+    this.readout.showTable(text);
+    this.readout.showFlow(null);
+  }
+
   private async updateReadout(): Promise<void> {
     const pin = this.pinned;
     const points = this.manifest.points;
@@ -179,14 +185,15 @@ class App {
         const codes = pointCodes(buf, points!.fields, points!.tile, pin.k);
         if (request !== this.pinRequest) return;
         this.readout.showTable(readoutItems(this.manifest, codes));
+        this.readout.showFlow(flowValues(this.manifest, codes));
         document.body.dataset.readout = `${pin.tx}_${pin.ty}_${pin.k}@${this.frame}`;
       } catch {
-        if (request === this.pinRequest) this.readout.showTable(`No climate point data for ${when}.`);
+        if (request === this.pinRequest) this.showReadoutMessage(`No climate point data for ${when}.`);
       }
       return;
     }
     if (!points) {
-      this.readout.showTable('Point data has not been published yet.');
+      this.showReadoutMessage('Point data has not been published yet.');
       return;
     }
     let codes: Map<string, number>;
@@ -194,11 +201,12 @@ class App {
       const buf = await this.loadChunk(tileUrl(DATA, points.file, { date, tx: pin.tx, ty: pin.ty }));
       codes = pointCodes(buf, points.fields, points.tile, pin.k);
     } catch {
-      if (request === this.pinRequest) this.readout.showTable(`No point data for ${date}.`);
+      if (request === this.pinRequest) this.showReadoutMessage(`No point data for ${date}.`);
       return;
     }
     if (request !== this.pinRequest) return;
     this.readout.showTable(readoutItems(this.manifest, codes));
+    this.readout.showFlow(flowValues(this.manifest, codes));
     document.body.dataset.readout = `${pin.tx}_${pin.ty}_${pin.k}@${date}`;
   }
 
@@ -733,7 +741,17 @@ async function start(): Promise<void> {
   map.addLayer(raster, 'coastline-halo');
   map.addLayer(arrows); // under the particles, over the coastlines
   map.addLayer(particles);
-  await app.select(first);
+  try {
+    await app.select(first);
+  } finally {
+    // The raster was uploaded in select(); it is on screen after the next two frames.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        document.getElementById('loading')?.remove();
+        document.body.dataset.drawn = 'true';
+      }),
+    );
+  }
   void app.updateArrows();
   map.on('mousemove', (e) => app.hover(e.lngLat.lng, e.lngLat.lat));
   map.on('mouseout', () => app.hoverEnd());

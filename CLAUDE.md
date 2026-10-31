@@ -19,7 +19,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 - Sign flips happen **once**, in `pipeline.convert`. Everything downstream uses the flipped, renamed fields (see **Ingestion rules**) and never negates them again.
 - Never overwrite good published data. A failed run must leave yesterday's site fully working. Write `manifest.json` **last**.
 - SI units throughout. Fluxes in W m⁻², temperatures in K (show °C in brackets in the UI).
-- Keep layer IDs exactly as listed in **Layer catalogue**. They are used in file paths, URLs and code.
+- Keep layer IDs exactly as listed in **Layer catalogue** (titles may change; they say the plain words first, then the symbol after a comma). They are used in file paths, URLs and code.
 - Don't add accounts, a backend, or a JS framework unless asked. Vanilla TS + Vite is the default; Svelte is acceptable only if the UI grows.
 - If a dataset ID or variable turns out to be unavailable, say so, use the documented fallback, and note it in `docs/DECISIONS.md`. Don't silently substitute.
 - Credit data sources in the footer and info panels (Copernicus Climate Change Service / ECMWF for ERA5).
@@ -142,15 +142,15 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 
 | ID | Layer | Group | Inputs | Units | Colour scale | Range |
 | --- | --- | --- | --- | --- | --- | --- |
-| `asr_toa` | Absorbed solar, TOA | 2 Engine two | `tsr` | W m⁻² | inferno | 0–450 |
-| `asr_sfc` | Absorbed solar, surface | 1 Engine one | `ssr` | W m⁻² | inferno | 0–350 |
-| `net_toa` | Net radiation, TOA | 2 Engine two | `tsr` − `olr` | W m⁻² | balance | −200 to 200 |
-| `olr` | Outgoing longwave | 2 Engine two | `olr` | W m⁻² | thermal | 100–320 |
-| `t_emit` | Effective emission temperature | 2 Engine two | derived (`olr`) | K | thermal | 200–290 |
-| `carnot` | Carnot limit | 1 Engine one | derived (`skt`, `tsr`) | % | viridis | 0–30 |
+| `asr_toa` | Sunlight absorbed, top of atmosphere | 2 Engine two | `tsr` | W m⁻² | inferno | 0–450 |
+| `asr_sfc` | Sunlight absorbed, surface | 1 Engine one | `ssr` | W m⁻² | inferno | 0–350 |
+| `net_toa` | Net radiation, top of atmosphere | 2 Engine two | `tsr` − `olr` | W m⁻² | balance | −200 to 200 |
+| `olr` | Heat radiated to space, OLR | 2 Engine two | `olr` | W m⁻² | thermal | 100–320 |
+| `t_emit` | Temperature seen from space, T_e | 2 Engine two | derived (`olr`) | K | thermal | 200–290 |
+| `carnot` | Efficiency ceiling, Carnot limit | 1 Engine one | derived (`skt`, `tsr`) | % | viridis | 0–30 |
 | `g_max` | Maximum convective power | 1 Engine one | derived (`ssr`, `skt`, `tsr`) | W m⁻² | magma | 0–15 |
-| `j_conv` | Actual convective heat flux | 1 Engine one | `le` + `h` | W m⁻² | magma | 0–300 |
-| `j_ratio` | Actual ÷ max-power flux | 1 Engine one | derived | ratio | balance, centred on 1 | 0–2 |
+| `j_conv` | Heat lifted by convection, LE + H | 1 Engine one | `le` + `h` | W m⁻² | magma | 0–300 |
+| `j_ratio` | Share of the optimum, r_J | 1 Engine one | derived | ratio | balance, centred on 1 | 0–2 |
 | `lh` | Latent heat flux | 1 Engine one | `le` | W m⁻² | deep | 0–300 |
 | `sh` | Sensible heat flux | 1 Engine one | `h` | W m⁻² | amp | −50 to 150 |
 | `evap_frac` | Evaporative fraction | 1 Engine one | `le`, `h` | 0–1 | BrBG | 0–1 |
@@ -158,11 +158,11 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | `wind100` | Wind 100 m | 2 Engine two | `u100`, `v100` | m s⁻¹ | viridis | 0–30 |
 | `jet250` | Jet stream 250 hPa | 2 Engine two | `u`, `v` @250 hPa | m s⁻¹ | viridis | 0–80 |
 | `ke_col` | Column kinetic energy | 2 Engine two | `p59.162` | MJ m⁻² | magma | 0–6 |
-| `diss_bl` | Boundary-layer dissipation | 2 Engine two | `bld` | W m⁻² | magma, log | 0.01–20 |
+| `diss_bl` | Friction near the ground, BL dissipation | 2 Engine two | `bld` | W m⁻² | magma, log | 0.01–20 |
 | `tcwv` | Column water vapour | 4 Water | `tcwv` | kg m⁻² | rain | 0–70 |
 | `precip` | Precipitation | 4 Water | `tp` | mm day⁻¹ | rain, log | 0.1–100 |
 | `p_lift` | Power lifting water (indicative) | 4 Water | derived (`tp`) | W m⁻² | deep, log | 0.01–10 |
-| `div_e` | Divergence of total energy flux (smoothed) | 2 Engine two | derived (`p86.162`) | W m⁻² | balance | auto |
+| `div_e` | Heat exported by the air, energy flux divergence (smoothed) | 2 Engine two | derived (`p86.162`) | W m⁻² | balance | auto |
 | `flux_e` | Divergent energy transport (arrows) | 2 Engine two | derived (`div_e`) | W m⁻¹ | cividis | auto |
 | `human_q` | Human energy use density | 5 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
 | `human_ratio` | Human ÷ natural dissipation | 5 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
@@ -326,6 +326,8 @@ Full-bleed dark map with six overlays:
 
 ### Legend
 
+- Until the first raster draws, a "Loading map…" indicator (`#loading`, in the static HTML so it shows from first paint; `body[data-drawn]` is set when it goes).
+
 - Colour bar with units and range; log scales labelled with powers of ten.
 - The value under the cursor is shown on hover.
 
@@ -348,6 +350,7 @@ Fetch one point chunk on click, then show:
 
 Below the table, a 90-day chart of the active layer at that point, with the climatology as a dashed line.
 
+- Above the table, an energy-flow diagram of the surface column (`energyflow.ts`): sunlight absorbed in, latent heat, sensible heat and infrared out, the net heat into (or out of) the surface. Arrow widths share one scale and every value is also text (the SVG's accessible name). It is hidden when `asr_sfc`, `lh`, `sh` or `net_sfc` is unbuilt or has no value at the cell (for instance Climate frames without them).
 - Opens on a click on the map (or `?pin=lng,lat` until URL state lands), at the clicked cell's centre, with a marker. The close button or Esc closes it. Under 700 px it is a full-height sheet.
 - T_s and J_opt come from the point chunk's extras; everything else is a layer. Masked values show "—" with the mask reason as a tooltip and accessible label; unbuilt layers say "not available yet".
 - The table follows the date; the chart follows the active layer and marks the date. The chart has one point per day with gaps where a date has no value or isn't published, and a log axis for log layers (uPlot). The dashed climatology line is each calendar month's 1991–2020 mean at that cell, from `clim/series`; layers without a climatology say so.
@@ -477,6 +480,8 @@ Phone layout under 700 px:
 18. Engine 2 and the global strip (docs/PROPOSALS-v2.md F7, F8): (**Done** 2026-10-30, see `docs/DECISIONS.md`. `web/src/zonal.ts`, `zonalpanel.ts`, `enginestrip.ts`; URL `panel=zonal`; desktop-only. Works against local `./out`: the daily `zonal/{date}.json` don't exist there until the final `rebuild`, and the bucket is still the mixed state of milestones 14–15.)
 19. Story and menu (docs/PROPOSALS-v2.md F9, F10): (**Done** 2026-10-30, see `docs/DECISIONS.md`. Five menu groups with "More layers" for the advanced layers; twelve tour cards with `mode`, `frame`, `panel` and `chapter` front matter, chapter breaks in the dots, every quoted number checked against the data; desktop-only. Works against local `./out` once the manifest carries the new groups, which needs the next `rebuild`; the bucket is still the mixed state of milestones 14–15. The "How the engine works" button came with milestone 20.)
 20. Overview infographic (docs/PROPOSALS-v2.md F13): (**Done** 2026-10-31, desktop only, see `docs/DECISIONS.md`. The Year frame's `global` block carries the infographic's slots; `web/src/overview.ts` and `web/src/overview/desktop.svg`; first-visit logic, menu button, tests. The phone variant is deferred with the rest of the mobile work. Works against local `./out`; nothing is uploaded, the bucket is still the mixed state of milestones 14–15.)
+
+21. Readability (docs/PROPOSALS-v2.md F11): (**Done** 2026-10-31, see `docs/DECISIONS.md`. `rain`, `deep` and `amp` exported reversed so low is dark; a static "Loading map…" until the first raster draws; plain-first layer titles and readout names; the readout's energy-flow diagram (`web/src/energyflow.ts`). Desktop-only, local `./out`; the bucket keeps the old titles until the next `rebuild`.)
 
 ## Acceptance criteria
 

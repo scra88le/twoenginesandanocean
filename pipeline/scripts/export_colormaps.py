@@ -13,9 +13,16 @@ import numpy as np
 
 from pipeline.layers import LAYERS
 
+# Sequential scales that start near white. On the dark theme that makes the lowest values the
+# brightest thing on the map, so they are exported reversed: low is dark, high is bright. The
+# names stay as the layers (and published manifests) know them. Docs: PROPOSALS-v2 F11.
+REVERSED = {"rain", "deep", "amp"}
+
 
 def table(name: str) -> str:
     cmap = getattr(cmocean.cm, name, None) or matplotlib.colormaps[name]
+    if name in REVERSED:
+        cmap = cmap.reversed()
     rgb = np.rint(cmap(np.linspace(0, 1, 256))[:, :3] * 255).astype(int)
     return "".join(f"{r:02x}{g:02x}{b:02x}" for r, g, b in rgb)
 

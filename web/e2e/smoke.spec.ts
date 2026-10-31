@@ -12,7 +12,7 @@ test('renders the layer with legend, hover value and the right colour', async ({
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   await page.goto(VIEW);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
-  await expect(page.locator('.legend-title')).toHaveText('Effective emission temperature (K)');
+  await expect(page.locator('.legend-title')).toHaveText('Temperature seen from space, T_e (K)');
   await expect(page.locator('#credits')).toContainText('Copernicus Climate Change Service');
 
   const box = (await page.locator('#map canvas').boundingBox())!;

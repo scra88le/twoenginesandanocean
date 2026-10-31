@@ -247,6 +247,8 @@ def e2e_fixtures() -> None:
             "asr_sfc": np.full_like(lat, 150.0),
             "ke_col": np.full_like(lat, 2.0),
             "net_sfc": np.full_like(lat, 10.0),
+            "lh": np.full_like(lat, 80.0),  # with asr_sfc and net_sfc: the readout's flow diagram
+            "sh": np.full_like(lat, 20.0),
         }
         winds = (
             {"wind10": (10.0, 0.0), "wind100": (-8.0, 0.0), "flux_e": (5e8, 0.0)}

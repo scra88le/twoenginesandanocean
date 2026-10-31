@@ -13,7 +13,7 @@ test('the site works from a sub-path: the map, the basemap, the data and the tou
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`${SITE}?particles=off&debug&layer=t_emit`);
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
-  await expect(page.locator('.legend-title')).toHaveText('Effective emission temperature (K)');
+  await expect(page.locator('.legend-title')).toHaveText('Temperature seen from space, T_e (K)');
   // The basemap (GeoJSON loaded in a worker) came from under /earth/, not from the site root.
   await expect.poll(() => page.evaluate(() => {
     const { map } = (window as unknown as { ehe: { map: { isSourceLoaded(id: string): boolean } } }).ehe;

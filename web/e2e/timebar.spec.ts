@@ -81,7 +81,7 @@ test('switching layers keeps the date', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-date', '2026-09-30');
-  await page.locator('#menu').getByText('Net radiation, TOA', { exact: true }).click();
+  await page.locator('#menu').getByText('Net radiation, top of atmosphere', { exact: true }).click();
   await expect(page.locator('body')).toHaveAttribute('data-layer', 'net_toa');
   await expect(page.locator('body')).toHaveAttribute('data-date', '2026-09-30');
 });

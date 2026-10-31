@@ -72,20 +72,40 @@ _W = "W m-2"
 
 # Encode ranges come from physical limits and the 2026-10-01 data (see docs/DECISIONS.md).
 _SPECS = [
-    LayerSpec("asr_toa", "Absorbed solar, TOA", 2, _W, "inferno", (0, 450), (0, 600)),
-    LayerSpec("asr_sfc", "Absorbed solar, surface", 1, _W, "inferno", (0, 350), (0, 500)),
     LayerSpec(
-        "net_toa", "Net radiation, TOA", 2, _W, "balance", (-200, 200), (-400, 400), centre=0
+        "asr_toa", "Sunlight absorbed, top of atmosphere", 2, _W, "inferno", (0, 450), (0, 600)
     ),
-    LayerSpec("olr", "Outgoing longwave", 2, _W, "thermal", (100, 320), (50, 400)),
+    LayerSpec("asr_sfc", "Sunlight absorbed, surface", 1, _W, "inferno", (0, 350), (0, 500)),
     LayerSpec(
-        "t_emit", "Effective emission temperature", 2, "K", "thermal", (200, 290), (150, 300)
+        "net_toa",
+        "Net radiation, top of atmosphere",
+        2,
+        _W,
+        "balance",
+        (-200, 200),
+        (-400, 400),
+        centre=0,
     ),
-    LayerSpec("carnot", "Local Carnot limit", 1, "%", "viridis", (0, 30), (0, 45), hatch_zero=True),
+    LayerSpec("olr", "Heat radiated to space, OLR", 2, _W, "thermal", (100, 320), (50, 400)),
+    LayerSpec(
+        "t_emit", "Temperature seen from space, T_e", 2, "K", "thermal", (200, 290), (150, 300)
+    ),
+    LayerSpec(
+        "carnot",
+        "Efficiency ceiling, Carnot limit",
+        1,
+        "%",
+        "viridis",
+        (0, 30),
+        (0, 45),
+        hatch_zero=True,
+    ),
     LayerSpec("g_max", "Maximum convective power", 1, _W, "magma", (0, 15), (0, 60)),
-    LayerSpec("j_conv", "Actual convective heat flux", 1, _W, "magma", (0, 300), (-300, 1500)),
     LayerSpec(
-        "j_ratio", "Actual ÷ max-power flux", 1, "ratio", "balance", (0, 2), (-50, 50), centre=1
+        "j_conv", "Heat lifted by convection, LE + H", 1, _W, "magma", (0, 300), (-300, 1500)
+    ),
+    LayerSpec(
+        "j_ratio", "Share of the optimum, r_J", 1, "ratio", "balance", (0, 2), (-50, 50), centre=1
     ),
     LayerSpec("lh", "Latent heat flux", 1, _W, "deep", (0, 300), (-200, 1200)),
     LayerSpec("sh", "Sensible heat flux", 1, _W, "amp", (-50, 150), (-300, 600)),
@@ -106,7 +126,14 @@ _SPECS = [
     ),  # fmt: skip
     LayerSpec("ke_col", "Column kinetic energy", 2, "MJ m-2", "magma", (0, 6), (0, 40)),
     LayerSpec(
-        "diss_bl", "Boundary-layer dissipation", 2, _W, "magma", (0.01, 20), (1e-4, 1e3), log=True
+        "diss_bl",
+        "Friction near the ground, BL dissipation",
+        2,
+        _W,
+        "magma",
+        (0.01, 20),
+        (1e-4, 1e3),
+        log=True,
     ),
     LayerSpec("tcwv", "Column water vapour", 4, "kg m-2", "rain", (0, 70), (0, 120)),
     LayerSpec("precip", "Precipitation", 4, "mm day-1", "rain", (0.1, 100), (1e-3, 1e3), log=True),
@@ -122,7 +149,7 @@ _SPECS = [
     ),  # fmt: skip
     LayerSpec(
         "div_e",
-        "Divergence of total energy flux (smoothed)",
+        "Heat exported by the air, energy flux divergence (smoothed)",
         2,
         _W,
         "balance",
