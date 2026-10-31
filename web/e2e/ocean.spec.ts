@@ -113,6 +113,9 @@ test('a date without the mean falls back to daily, a date without currents says 
   await expect(page.locator('body')).toHaveAttribute('data-ocean', 'missing');
   await expect(page.locator('.legend-ocean')).toHaveText('No ocean currents for 2026-09-29 yet');
   await page.locator('.mode-climate').check();
+  // Climate has no ocean normal: it draws the newest 30-day mean and says so.
+  await expect(page.locator('body')).toHaveAttribute('data-ocean', 'both');
+  await expect(page.locator('.legend-ocean')).toContainText('30-day mean to');
   await expect(page.locator('.legend-ocean')).toContainText('no 1991–2020 normal');
 });
 

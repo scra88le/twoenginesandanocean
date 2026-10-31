@@ -478,11 +478,12 @@ class App {
       document.body.dataset.ocean = state;
     };
     if (!this.oceanChoice.on || !o) return off(null, 'off');
-    if (this.mode === 'climate') {
-      return off('Ocean overturning: no 1991–2020 normal (GLO12 covers about two years). Switch the timescale to Today.', 'missing');
-    }
-    const date = this.date;
-    const avg = resolveAvg(o, date, this.oceanChoice.avg);
+    // Climate has no ocean normal (GLO12 covers about two years): it shows the newest 30-day mean.
+    const climate = this.mode === 'climate';
+    const date = climate
+      ? (Object.keys(o.dates).filter((d) => o.dates[d]!.mean).sort().pop() ?? this.date)
+      : this.date;
+    const avg = resolveAvg(o, date, climate ? 'mean' : this.oceanChoice.avg);
     if (!avg) return off(`No ocean currents for ${date} yet`, 'missing');
     const limbs = LIMB_CHOICES[this.oceanChoice.limbs].limbs;
     let loaded: { limb: OceanLimb; uv: DecodedPng; mag: DecodedPng }[];
@@ -515,7 +516,8 @@ class App {
     this.oceanCodes = loaded.map(({ limb, uv, mag }) => ({ limb, mag: scalarCodes(mag), ...vectorCodes(uv) }));
     const fallback = avg !== this.oceanChoice.avg ? ` (${AVG_LABELS[this.oceanChoice.avg].toLowerCase()} not available for this date)` : '';
     this.legend.showOcean(
-      oceanCaption(o, date, this.oceanChoice, avg) + fallback,
+      oceanCaption(o, date, this.oceanChoice, avg) +
+        (climate ? ' (no 1991–2020 normal for the ocean; the newest 30-day mean)' : fallback),
       limbs.map((l) => ({ colour: o.limbs[l].colour, label: `${o.limbs[l].title} (${limbDepth(o.limbs[l])})` })),
     );
     document.body.dataset.ocean = this.oceanChoice.limbs;
