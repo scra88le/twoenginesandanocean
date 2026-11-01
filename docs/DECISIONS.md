@@ -462,9 +462,3 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - **No new download.** It comes from the ψ already in the saved state. Entries get `belt: true`; an entry without it is rebuilt from the saved days on the next ocean run (no fetch), so the 60 dates with a section gain the belt at the next run. Dates without ψ still wait for their re-download.
 - **Not done (option 2).** Subtracting the gyre part from the map and averaging it over 90 days is not built; the particle layer is unchanged.
 
-## 2026-11-01: the AMOC belt drawn on the map
-
-- **Choice.** "Draw the belt on the map" was read as arrows over the Atlantic (not the gyre-free particle map, the other candidate), because it needs no pipeline change or backfill and is the cleanest answer to the noise problem.
-- **What.** `ocean.beltFeatures` turns the per-latitude limb transports (5° bins) into polygons, drawn by MapLibre fill layers (`ocean-belt-fill`, `ocean-belt-line`). Width is the transport (full at 25 Sv), the head points north or south.
-- **Schematic by construction.** The pipeline gives each limb's transport per latitude, summed across the basin, not where in longitude it flows. The arrows are therefore placed on a fixed line through the middle of the Atlantic (`AXIS`, upper lane 3° west, deep lane 3° east); the tooltip says so. Showing real geography needs the gyre-free particle map, which is still not built.
-

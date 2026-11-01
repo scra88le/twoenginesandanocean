@@ -157,20 +157,3 @@ test('the AMOC panel draws the latitude-depth section and the trend, and closes 
   await expect(page.locator('#amoc')).toBeHidden();
   await expect(button).toHaveAttribute('aria-pressed', 'false');
 });
-
-test('belt arrows are drawn down the Atlantic, orange and blue, and switch off again', async ({ page }) => {
-  await open(page, '&belt=1&debug');
-  const drawn = () =>
-    page.evaluate(() => {
-      const map = (window as unknown as { ehe: { map: { queryRenderedFeatures(o: object): { properties: { limb: string } }[] } } }).ehe.map;
-      const f = map.queryRenderedFeatures({ layers: ['ocean-belt-fill'] });
-      return { upper: f.filter((x) => x.properties.limb === 'upper').length, deep: f.filter((x) => x.properties.limb === 'deep').length };
-    });
-  await expect.poll(async () => (await drawn()).upper, { timeout: 15_000 }).toBeGreaterThan(3);
-  expect((await drawn()).deep).toBeGreaterThan(3);
-  await expect(page.locator('.ocean-belt')).toBeChecked();
-  await expect(page).toHaveURL(/belt=1/);
-  await page.locator('.ocean-belt').uncheck();
-  await expect.poll(async () => (await drawn()).upper).toBe(0);
-  await expect(page).not.toHaveURL(/belt=1/);
-});

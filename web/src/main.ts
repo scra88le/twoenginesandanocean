@@ -21,14 +21,13 @@ import { LayerMenu, menuGroups } from './menu';
 import { FRAMES, frameName, meanFlowText, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
 import { ArrowsSwitch, ModeSwitch, OceanControls, OverlayControls, type ParticleChoice } from './overlays';
 import {
-  AVG_LABELS, LIMB_CHOICES, OCEAN_LIMBS, beltFeatures, describeLimb, loadSection, pickSection, hexToRgb, limbDepth, oceanCaption, oceanInfoMeta, oceanUrl, resolveAvg,
+  AVG_LABELS, LIMB_CHOICES, OCEAN_LIMBS, describeLimb, hexToRgb, limbDepth, oceanCaption, oceanInfoMeta, oceanUrl, resolveAvg,
   type OceanChoice, type OceanLimb,
 } from './ocean';
 import { decodePng, type DecodedPng } from './png';
 import { EngineStrip } from './enginestrip';
 import { ZonalPanel } from './zonalpanel';
 import { AmocPanel } from './amocpanel';
-import { BeltOverlay } from './layers/belt';
 import { loadZonal, zonalUrl } from './zonal';
 import { flowValues } from './energyflow';
 import { ReadoutPanel, climAtCell, readoutItems } from './readout';
@@ -120,8 +119,6 @@ class App {
     private readonly strip: EngineStrip,
     private readonly oceanLayers: Record<OceanLimb, ParticleLayer>,
     private oceanChoice: OceanChoice,
-    private readonly belt: BeltOverlay,
-    private beltOn = false,
   ) {}
 
   private loadChunk(url: string): Promise<ArrayBuffer> {
@@ -151,7 +148,6 @@ class App {
       particles: this.particleChoice,
       arrows: this.arrowsOn,
       ocean: this.oceanChoice,
-      belt: this.beltOn,
       panel: this.zonal.isOpen,
       center: [wrapLng(c.lng), c.lat],
       zoom: this.map.getZoom(),
@@ -474,34 +470,11 @@ class App {
     return this.updateOcean();
   }
 
-  setBelt(on: boolean): Promise<void> {
-    this.beltOn = on;
-    this.onStateChange?.();
-    return this.updateBelt();
-  }
-
-  private beltRequest = 0;
-
-  /** Draw the AMOC belt arrows for the current date (Climate: the newest 30-day mean), or none. */
-  async updateBelt(): Promise<void> {
-    const request = ++this.beltRequest;
-    const o = this.manifest.ocean;
-    const pick = this.beltOn ? pickSection(o, this.date, this.mode === 'climate') : null;
-    if (!o || !pick) return this.belt.set(null);
-    try {
-      const sec = await loadSection(DATA, o, pick.date, pick.avg);
-      if (request === this.beltRequest) this.belt.set(beltFeatures(sec));
-    } catch {
-      if (request === this.beltRequest) this.belt.set(null);
-    }
-  }
-
   /** Load the ocean currents for the current date into the two limb layers, or switch them off. */
   async updateOcean(): Promise<void> {
     const request = ++this.oceanRequest;
     const o = this.manifest.ocean;
     this.onViewChange?.(this.date, this.mode === 'climate');
-    void this.updateBelt();
     const off = (note: string | null, state: string) => {
       for (const l of OCEAN_LIMBS) this.oceanLayers[l].setWind(null);
       this.oceanCodes = [];
@@ -775,10 +748,8 @@ async function start(): Promise<void> {
     toggleAmoc(false);
     (document.querySelector('.ocean-trend') as HTMLElement | null)?.focus();
   });
-  const beltOverlay = new BeltOverlay(map);
   const app = new App(
     manifest, date, raster, particles, legend, menu, choice, readout, map, arrows, zonalPanel, strip, oceanLayers, initial.ocean,
-    beltOverlay, initial.belt,
   );
   app.onViewChange = (d, climate) => amocPanel.setView(d, climate);
   closers.close = () => app.unpin();
@@ -797,8 +768,6 @@ async function start(): Promise<void> {
     manifest, initial.ocean, (c) => void app.setOcean(c),
     (opener) => manifest.ocean && info.open(oceanInfoMeta(manifest.ocean), manifest.ocean.credit, opener),
     () => toggleAmoc(!amocPanel.isOpen),
-    initial.belt,
-    (on) => void app.setBelt(on),
   );
   overlays.element.append(oceanControls.element);
   document.querySelector('#menu .menu-head')!.after(modeSwitch.element);
@@ -909,7 +878,6 @@ async function start(): Promise<void> {
   map.addLayer(arrows); // under the particles, over the coastlines
   for (const l of [...OCEAN_LIMBS].reverse()) map.addLayer(oceanLayers[l]); // deep under upper, both under the wind
   map.addLayer(particles);
-  beltOverlay.add();
   try {
     await app.select(first);
   } finally {

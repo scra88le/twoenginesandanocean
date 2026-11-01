@@ -100,22 +100,13 @@ export class OceanControls {
   private readonly limbs: HTMLSelectElement;
   private readonly avg: HTMLSelectElement;
 
-  constructor(
-    m: Manifest,
-    initial: OceanChoice,
-    onChange: (choice: OceanChoice) => void,
-    onInfo: (opener: HTMLElement) => void,
-    onTrend: () => void,
-    initialBelt = false,
-    onBelt: (on: boolean) => void = () => undefined,
-  ) {
+  constructor(m: Manifest, initial: OceanChoice, onChange: (choice: OceanChoice) => void, onInfo: (opener: HTMLElement) => void, onTrend: () => void) {
     this.element = document.createElement('div');
     this.element.className = 'overlay-row ocean-row';
     this.element.innerHTML = `
       <label class="overlay-toggle"><input type="checkbox" class="ocean-on" /> Ocean overturning</label>
       <select class="ocean-select ocean-limbs" aria-label="Which limbs of the overturning"></select>
       <select class="ocean-select ocean-avg" aria-label="Daily or 30-day mean currents"></select>
-      <label class="overlay-toggle ocean-belt-toggle" title="Schematic arrows down the middle of the Atlantic: each limb's net transport across the whole basin, per 5° of latitude"><input type="checkbox" class="ocean-belt" /> Belt arrows</label>
       <button type="button" class="ocean-trend" aria-pressed="false" aria-controls="amoc">AMOC section</button>
       <button type="button" class="info-button ocean-info" aria-label="About the ocean overturning">i</button>`;
     this.checkbox = this.element.querySelector('.ocean-on')!;
@@ -131,10 +122,6 @@ export class OceanControls {
       el.disabled = !built;
       el.addEventListener('change', () => onChange(this.choice));
     }
-    const belt = this.element.querySelector<HTMLInputElement>('.ocean-belt')!;
-    belt.checked = initialBelt && built;
-    belt.disabled = !built;
-    belt.addEventListener('change', () => onBelt(belt.checked));
     const trend = this.element.querySelector<HTMLButtonElement>('.ocean-trend')!;
     trend.disabled = !built;
     trend.addEventListener('click', onTrend);

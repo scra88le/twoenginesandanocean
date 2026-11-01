@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import {
-  amocTrend, amocTrendText, beltBins, beltFeatures, beltText, pickSection, compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, parseSection, psiColour,
+  amocTrend, amocTrendText, beltBins, beltText, compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, parseSection, psiColour,
   resolveAvg, sectionAvg, sectionStrength, sectionText, sectionUrl, type LimbMeta, type OceanMeta, type SectionGrid,
 } from '../src/ocean';
 
@@ -160,38 +160,4 @@ test('the belt text gives each limb\'s size and direction at set latitudes', () 
   const sec = parseSection({ psi: [Array(241).fill(0)], upper_sv: up, deep_sv: dn }, grid);
   expect(beltText(sec, O)).toContain('26.5° N: upper limb 17.0 Sv north, deep limb 16.0 Sv south.');
   expect(beltText(sec, O)).toContain('The equator: upper limb 5.0 Sv north, deep limb 4.0 Sv south.');
-});
-
-test('belt arrows: one per limb per bin, as wide as the transport and pointing the way the water goes', () => {
-  const grid: SectionGrid = { lat0: 0, dlat: 1, n_lat: 10, depth_edges_m: [0, 10], unit_sv: 1 };
-  const raw = {
-    psi: [Array(10).fill(0)],
-    upper_sv: [20, 20, 20, 20, 20, -10, -10, -10, -10, -10],
-    deep_sv: [-20, -20, -20, -20, -20, 0.2, 0.2, 0.2, 0.2, 0.2],
-  };
-  const fc = beltFeatures(parseSection(raw, grid));
-  const by = (limb: string, k: number) => fc.features.filter((f) => f.properties.limb === limb)[k]!;
-  expect(fc.features).toHaveLength(3); // the deep limb's 0.2 Sv is too small to draw
-  const up = by('upper', 0).geometry.coordinates[0]!;
-  const tip = up[4]!;
-  expect(tip[1]).toBeCloseTo(2.5 + 2.1); // northward: the head is at the north end of the bin
-  expect(Math.max(...up.map((p) => p[1]))).toBeCloseTo(tip[1]);
-  const south = by('upper', 1).geometry.coordinates[0]![4]!;
-  expect(south[1]).toBeCloseTo(7.5 - 2.1); // southward: the head is at the south end
-  const deep = by('deep', 0);
-  expect(deep.properties).toMatchObject({ limb: 'deep', sv: -20, colour: '#6fb6f2' });
-  expect(deep.geometry.coordinates[0]![4]![1]).toBeCloseTo(2.5 - 2.1);
-  // The upper lane is west of the deep lane, and a stronger flow is wider.
-  expect(tip[0]).toBeLessThan(deep.geometry.coordinates[0]![4]![0]);
-  const width = (f: typeof deep) => f.geometry.coordinates[0]![1]![0] - f.geometry.coordinates[0]![0]![0];
-  expect(width(by('upper', 0))).toBeGreaterThan(width(by('upper', 1)));
-  expect(beltFeatures(parseSection({ psi: raw.psi }, grid)).features).toEqual([]);
-});
-
-test('the section to show: the map\'s date, else the daily, and in Climate the newest mean', () => {
-  expect(pickSection(O, '2026-10-18', false)).toMatchObject({ date: '2026-10-18', avg: 'mean', note: '' });
-  expect(pickSection(O, '2026-10-17', false)).toMatchObject({ date: '2026-10-17', avg: 'daily' });
-  expect(pickSection(O, '2026-10-01', false)).toBeNull();
-  expect(pickSection(O, '2026-10-17', true)).toMatchObject({ date: '2026-10-18', avg: 'mean' });
-  expect(pickSection(null, '2026-10-18', false)).toBeNull();
 });

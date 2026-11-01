@@ -9,12 +9,14 @@ import {
   beltBins,
   beltText,
   amocTrendText,
-  loadSection,
-  pickSection,
+  parseSection,
   psiColour,
+  sectionAvg,
   sectionStrength,
   sectionText,
+  sectionUrl,
   type BeltBin,
+  type OceanAvg,
   type OceanMeta,
   type SectionField,
 } from './ocean';
@@ -40,6 +42,7 @@ export class AmocPanel {
   private readonly heatNote: HTMLElement;
   private readonly heatText: HTMLElement;
   private readonly strengthBox: HTMLElement;
+  private readonly cache = new Map<string, Promise<SectionField>>();
   private view: { date: string; climate: boolean } | null = null;
   private requested = 0;
 
@@ -118,10 +121,23 @@ export class AmocPanel {
     if (this.isOpen) void this.drawSection();
   }
 
+  private pick(): { date: string; avg: OceanAvg; note: string } | null {
+    const o = this.ocean;
+    if (!o?.section_grid) return null;
+    if (this.view?.climate) {
+      const date = Object.keys(o.dates).filter((d) => o.dates[d]!.section?.mean).sort().pop();
+      return date ? { date, avg: 'mean', note: ' There is no 1991–2020 normal for the ocean, so this is the newest 30-day mean.' } : null;
+    }
+    const date = this.view?.date ?? Object.keys(o.dates).sort().pop();
+    if (!date) return null;
+    const avg = sectionAvg(o, date, 'mean');
+    return avg ? { date, avg, note: avg === 'mean' ? '' : ' The 30-day mean is not available for this date, so this is the daily mean.' } : null;
+  }
+
   private async drawSection(): Promise<void> {
     const request = ++this.requested;
     const o = this.ocean;
-    const pick = pickSection(o, this.view?.date ?? null, !!this.view?.climate);
+    const pick = this.pick();
     const clear = (msg: string) => {
       this.strengthChart?.destroy();
       this.strengthChart = null;
@@ -132,9 +148,19 @@ export class AmocPanel {
       this.heatNote.textContent = msg;
     };
     if (!o || !pick) return clear(o?.section_grid ? 'No latitude–depth section for this date yet.' : 'The latitude–depth section has not been published yet.');
+    const url = sectionUrl(this.base, o, pick.date, pick.avg);
+    let p = this.cache.get(url);
+    if (!p) {
+      p = fetch(url).then(async (r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return parseSection(await r.json(), o.section_grid!);
+      });
+      this.cache.set(url, p);
+      p.catch(() => this.cache.delete(url));
+    }
     let sec: SectionField;
     try {
-      sec = await loadSection(this.base, o, pick.date, pick.avg);
+      sec = await p;
     } catch {
       if (request === this.requested) clear(`The section for ${pick.date} could not be loaded.`);
       return;
