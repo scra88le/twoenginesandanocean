@@ -11,21 +11,21 @@ const read = (q: string) => readState(new URLSearchParams(q), manifest);
 
 const FULL: ViewState = {
   layer: 'carnot', date: '2026-09-30', mode: 'anom', frame: '07', particles: { on: true, level: 'wind100' },
-  arrows: true, ocean: { on: true, limbs: 'deep', avg: 'daily' }, panel: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
+  arrows: true, ocean: { on: true, limbs: 'deep', avg: 'daily' }, belt: true, panel: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
 };
 const OCEAN_OFF = { on: false, limbs: 'both', avg: 'mean' } as const;
 
 test('a state survives the round trip through the query string', () => {
   const q = stateQuery('', FULL);
   expect(q).toBe(
-    'layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&ocean=deep&ocean_avg=daily&panel=zonal&pin=10.25,20.75',
+    'layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&ocean=deep&ocean_avg=daily&belt=1&panel=zonal&pin=10.25,20.75',
   );
   expect(read(q)).toEqual(FULL);
 });
 
 test('off switches are left out, and particles off is written explicitly', () => {
   const q = stateQuery('', {
-    ...FULL, mode: 'today', arrows: false, ocean: { ...OCEAN_OFF, avg: 'daily' }, panel: false, pin: null, particles: { on: false, level: 'wind10' },
+    ...FULL, mode: 'today', arrows: false, ocean: { ...OCEAN_OFF, avg: 'daily' }, belt: false, panel: false, pin: null, particles: { on: false, level: 'wind10' },
   });
   expect(q).toBe('layer=carnot&mode=today&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=off');
   const s = read(q);
@@ -35,19 +35,20 @@ test('off switches are left out, and particles off is written explicitly', () =>
   expect(s.pin).toBeNull();
   expect(s.particles.on).toBe(false);
   expect(s.ocean).toEqual(OCEAN_OFF);
+  expect(s.belt).toBe(false);
 });
 
 test('the ocean overlay reads its limbs and averaging, and ignores what it does not know', () => {
   expect(read('ocean=both').ocean).toEqual({ on: true, limbs: 'both', avg: 'mean' });
   expect(read('ocean=upper&ocean_avg=daily').ocean).toEqual({ on: true, limbs: 'upper', avg: 'daily' });
   expect(read('ocean=sideways&ocean_avg=weekly').ocean).toEqual(OCEAN_OFF);
-  expect(stateQuery('', { ...FULL, ocean: { on: true, limbs: 'both', avg: 'mean' } })).toContain('&arrows=1&ocean=both&panel');
+  expect(stateQuery('', { ...FULL, ocean: { on: true, limbs: 'both', avg: 'mean' } })).toContain('&arrows=1&ocean=both&belt=1&panel');
 });
 
 test('an empty URL gives the defaults: newest date, net radiation, 10 m particles, whole world', () => {
   expect(read('')).toEqual({
     layer: 'net_toa', date: '2026-10-01', mode: 'climate', frame: 'year', particles: { on: true, level: 'wind10' },
-    arrows: false, ocean: OCEAN_OFF, panel: false, center: DEFAULT_CENTER, zoom: 1.4, pin: null,
+    arrows: false, ocean: OCEAN_OFF, belt: false, panel: false, center: DEFAULT_CENTER, zoom: 1.4, pin: null,
   });
 });
 
@@ -84,7 +85,7 @@ test('longitudes wrap into -180..180, so a map panned past the date line gives a
 });
 
 test('parameters the app does not own are kept, and ?tour is dropped once used', () => {
-  const q = stateQuery('debug&tour=3&layer=olr&foo=bar', { ...FULL, mode: 'today', arrows: false, ocean: OCEAN_OFF, panel: false, pin: null });
+  const q = stateQuery('debug&tour=3&layer=olr&foo=bar', { ...FULL, mode: 'today', arrows: false, ocean: OCEAN_OFF, belt: false, panel: false, pin: null });
   expect(q).toBe('layer=carnot&mode=today&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&debug=&foo=bar');
 });
 
