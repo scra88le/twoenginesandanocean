@@ -30,7 +30,7 @@ export const DEFAULT_PARTICLES: ParticleChoice = { on: true, level: 'wind10' };
 const MAX_LAT = 85.05;
 const MAX_ZOOM = 22;
 // Keys written in this order; `tour` and `overview` are dropped (they only open the tour or overview, once).
-const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'ocean', 'ocean_avg', 'panel', 'pin', 'tour', 'overview'];
+const OWNED = ['layer', 'date', 'center', 'zoom', 'particles', 'mode', 'frame', 'anom', 'arrows', 'ocean', 'ocean_avg', 'ocean_part', 'panel', 'pin', 'tour', 'overview'];
 
 /** "lng,lat" -> numbers, or null if it isn't two finite numbers. */
 export function parseCenter(text: string | null): [number, number] | null {
@@ -48,13 +48,14 @@ export function parseParticles(text: string | null): ParticleChoice {
   return { on: true, level: isWindLevel(text) ? text : DEFAULT_PARTICLES.level };
 }
 
-/** ?ocean=both|upper|deep switches the ocean overlay on; ?ocean_avg=daily picks daily currents. */
+/** ?ocean=both|upper|deep switches the ocean overlay on; ?ocean_avg=daily picks daily currents; ?ocean_part=ov the overturning part. */
 export function parseOcean(params: URLSearchParams): OceanChoice {
   const limbs = params.get('ocean');
   return {
     on: isOceanLimbs(limbs),
     limbs: isOceanLimbs(limbs) ? limbs : DEFAULT_OCEAN.limbs,
     avg: params.get('ocean_avg') === 'daily' ? 'daily' : DEFAULT_OCEAN.avg,
+    part: params.get('ocean_part') === 'ov' ? 'ov' : DEFAULT_OCEAN.part,
   };
 }
 
@@ -105,6 +106,7 @@ export function stateQuery(current: string | URLSearchParams, s: ViewState): str
   if (s.arrows) out.set('arrows', '1');
   if (s.ocean.on) out.set('ocean', s.ocean.limbs);
   if (s.ocean.on && s.ocean.avg === 'daily') out.set('ocean_avg', 'daily');
+  if (s.ocean.on && s.ocean.part === 'ov') out.set('ocean_part', 'ov');
   if (s.panel) out.set('panel', 'zonal');
   if (s.pin) out.set('pin', `${s.pin[0].toFixed(2)},${s.pin[1].toFixed(2)}`);
   for (const [k, v] of new URLSearchParams(current)) if (!OWNED.includes(k)) out.append(k, v);

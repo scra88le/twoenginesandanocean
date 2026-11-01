@@ -393,6 +393,25 @@ def limb_transports(u, v, depth, limbs) -> list[tuple[np.ndarray, np.ndarray, np
     return [tuple(a) if a is not None else tuple(np.zeros(shape) for _ in range(3)) for a in out]
 
 
+def overturning_part(limbs):
+    """Remove the depth-uniform flow from limbs that together span the water column.
+
+    `limbs` is a list of (U, V, H) as `limb_transports` returns. The wind-driven gyres and the
+    Gulf Stream's recirculation are close to depth-uniform, so they put the same velocity
+    (U_total / H_total) into every limb; the overturning is the part where the limbs differ
+    (the upper limb north, the deep limb south). Subtracting H_limb x the whole column's mean
+    velocity leaves a transport per limb that sums to zero over the column. H is unchanged;
+    where there is no water the transport is zero.
+    """
+    h_all = sum(np.asarray(h, dtype="float64") for _, _, h in limbs)
+    u_all = sum(np.asarray(uu, dtype="float64") for uu, _, _ in limbs)
+    v_all = sum(np.asarray(vv, dtype="float64") for _, vv, _ in limbs)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ub = np.where(h_all > 0, u_all / h_all, 0.0)
+        vb = np.where(h_all > 0, v_all / h_all, 0.0)
+    return [(uu - h * ub, vv - h * vb, h) for uu, vv, h in limbs]
+
+
 def depth_mean_velocity(uu, vv, h, min_thickness: float):
     """Depth-mean velocity of a limb, U / H and V / H, m s-1: how fast its water moves.
     Returns (u, v, masked); masked where the limb holds less than `min_thickness` of water."""

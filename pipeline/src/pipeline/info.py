@@ -483,7 +483,10 @@ OCEAN_INFO = LayerInfo(
     caveats=(
         "The transport includes the wind-driven gyres and eddies, not only the overturning: the "
         "Gulf Stream carries far more than 17 Sv, most of it recirculating within the subtropics. "
-        "A single day is dominated by eddies; the 30-day mean shows the pathways. The split at a "
+        "A single day is dominated by eddies; the 30-day mean shows the pathways. \"Overturning only\" "
+        "removes the part of the flow that is the same at every depth (each limb loses its thickness "
+        "times the whole column's mean velocity): most of the gyres go, but not the Gulf Stream's own "
+        "vertical shear. The split at a "
         f"fixed {_SPLIT} suits 26.5° N and is approximate elsewhere. Model values, not "
         "observations: compare the 26.5° N figure with RAPID's. GLO12 runs about a day behind real "
         "time; the overlay follows the map's dates. The section's ψ is taken from the surface down, "

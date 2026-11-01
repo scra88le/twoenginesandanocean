@@ -21,7 +21,7 @@ import { LayerMenu, menuGroups } from './menu';
 import { FRAMES, frameName, meanFlowText, resolveMode, availableModes, switchNote, timescaleText, type Frame, type Mode } from './modes';
 import { ArrowsSwitch, ModeSwitch, OceanControls, OverlayControls, type ParticleChoice } from './overlays';
 import {
-  AVG_LABELS, LIMB_CHOICES, OCEAN_LIMBS, describeLimb, hexToRgb, limbDepth, oceanCaption, oceanInfoMeta, oceanUrl, resolveAvg,
+  AVG_LABELS, LIMB_CHOICES, OCEAN_LIMBS, describeLimb, hexToRgb, limbDepth, oceanCaption, oceanInfoMeta, oceanUrl, resolveAvg, resolvePart,
   type OceanChoice, type OceanLimb,
 } from './ocean';
 import { decodePng, type DecodedPng } from './png';
@@ -489,13 +489,14 @@ class App {
       : this.date;
     const avg = resolveAvg(o, date, climate ? 'mean' : this.oceanChoice.avg);
     if (!avg) return off(`No ocean currents for ${date} yet`, 'missing');
+    const part = resolvePart(o, date, avg, this.oceanChoice.part);
     const limbs = LIMB_CHOICES[this.oceanChoice.limbs].limbs;
     let loaded: { limb: OceanLimb; uv: DecodedPng; mag: DecodedPng }[];
     try {
       loaded = await Promise.all(
         limbs.map(async (limb) => {
           const [uv, mag] = await Promise.all([
-            this.load(oceanUrl(DATA, o, date, limb, avg, true)), this.load(oceanUrl(DATA, o, date, limb, avg, false)),
+            this.load(oceanUrl(DATA, o, date, limb, avg, true, part)), this.load(oceanUrl(DATA, o, date, limb, avg, false, part)),
           ]);
           return { limb, uv, mag };
         }),
@@ -518,15 +519,20 @@ class App {
       );
     }
     this.oceanCodes = loaded.map(({ limb, uv, mag }) => ({ limb, mag: scalarCodes(mag), ...vectorCodes(uv) }));
-    const fallback = avg !== this.oceanChoice.avg ? ` (${AVG_LABELS[this.oceanChoice.avg].toLowerCase()} not available for this date)` : '';
+    const fallback =
+      avg !== this.oceanChoice.avg
+        ? ` (${AVG_LABELS[this.oceanChoice.avg].toLowerCase()} not available for this date)`
+        : part !== this.oceanChoice.part
+          ? ' (the overturning-only view is not available for this date)'
+          : '';
     this.legend.showOcean(
-      oceanCaption(o, date, this.oceanChoice, avg) +
+      oceanCaption(o, date, this.oceanChoice, avg, part) +
         (climate ? ' (no 1991–2020 normal for the ocean; the newest 30-day mean)' : fallback),
       limbs.map((l) => ({ colour: o.limbs[l].colour, label: `${o.limbs[l].title} (${limbDepth(o.limbs[l])})` })),
     );
     document.body.dataset.ocean = this.oceanChoice.limbs;
     for (const l of limbs) {
-      for (const uv of [true, false]) this.prefetch((d) => (resolveAvg(o, d, avg) === avg ? oceanUrl(DATA, o, d, l, avg, uv) : null));
+      for (const uv of [true, false]) this.prefetch((d) => (resolveAvg(o, d, avg) === avg ? oceanUrl(DATA, o, d, l, avg, uv, resolvePart(o, d, avg, part)) : null));
     }
   }
 

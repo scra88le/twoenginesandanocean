@@ -11,14 +11,14 @@ const read = (q: string) => readState(new URLSearchParams(q), manifest);
 
 const FULL: ViewState = {
   layer: 'carnot', date: '2026-09-30', mode: 'anom', frame: '07', particles: { on: true, level: 'wind100' },
-  arrows: true, ocean: { on: true, limbs: 'deep', avg: 'daily' }, panel: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
+  arrows: true, ocean: { on: true, limbs: 'deep', avg: 'daily', part: 'ov' }, panel: true, center: [-30.25, 41.5], zoom: 3.25, pin: [10.25, 20.75],
 };
-const OCEAN_OFF = { on: false, limbs: 'both', avg: 'mean' } as const;
+const OCEAN_OFF = { on: false, limbs: 'both', avg: 'mean', part: 'full' } as const;
 
 test('a state survives the round trip through the query string', () => {
   const q = stateQuery('', FULL);
   expect(q).toBe(
-    'layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&ocean=deep&ocean_avg=daily&panel=zonal&pin=10.25,20.75',
+    'layer=carnot&mode=anom&frame=07&date=2026-09-30&center=-30.25,41.50&zoom=3.25&particles=wind100&arrows=1&ocean=deep&ocean_avg=daily&ocean_part=ov&panel=zonal&pin=10.25,20.75',
   );
   expect(read(q)).toEqual(FULL);
 });
@@ -38,10 +38,12 @@ test('off switches are left out, and particles off is written explicitly', () =>
 });
 
 test('the ocean overlay reads its limbs and averaging, and ignores what it does not know', () => {
-  expect(read('ocean=both').ocean).toEqual({ on: true, limbs: 'both', avg: 'mean' });
-  expect(read('ocean=upper&ocean_avg=daily').ocean).toEqual({ on: true, limbs: 'upper', avg: 'daily' });
+  expect(read('ocean=both').ocean).toEqual({ on: true, limbs: 'both', avg: 'mean', part: 'full' });
+  expect(read('ocean=both&ocean_part=ov').ocean.part).toBe('ov');
+  expect(read('ocean=both&ocean_part=x').ocean.part).toBe('full');
+  expect(read('ocean=upper&ocean_avg=daily').ocean).toEqual({ on: true, limbs: 'upper', avg: 'daily', part: 'full' });
   expect(read('ocean=sideways&ocean_avg=weekly').ocean).toEqual(OCEAN_OFF);
-  expect(stateQuery('', { ...FULL, ocean: { on: true, limbs: 'both', avg: 'mean' } })).toContain('&arrows=1&ocean=both&panel');
+  expect(stateQuery('', { ...FULL, ocean: { on: true, limbs: 'both', avg: 'mean', part: 'full' } })).toContain('&arrows=1&ocean=both&panel');
 });
 
 test('an empty URL gives the defaults: newest date, net radiation, 10 m particles, whole world', () => {

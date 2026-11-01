@@ -1481,12 +1481,16 @@
    ]
   },
   "files": {
-   "field": "ocean/{date}/{limb}{avg}.png",
-   "uv": "ocean/{date}/{limb}{avg}_uv.png",
+   "field": "ocean/{date}/{limb}{avg}{part}.png",
+   "uv": "ocean/{date}/{limb}{avg}{part}_uv.png",
    "section": "ocean/{date}/section{avg}.json",
    "avg": {
     "daily": "",
     "mean": "_30d"
+   },
+   "part": {
+    "full": "",
+    "ov": "_ov"
    }
   },
   "section_grid": {
@@ -1567,6 +1571,7 @@
     "window_days": 12,
     "psi_days": 12,
     "belt": true,
+    "ov": false,
     "section": {
      "daily": true,
      "mean": false
@@ -1583,6 +1588,7 @@
     "window_days": 30,
     "psi_days": 30,
     "belt": true,
+    "ov": true,
     "section": {
      "daily": true,
      "mean": true

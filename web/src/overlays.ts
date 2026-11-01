@@ -2,7 +2,7 @@
 // transport arrows, and the timescale switch.
 import type { Manifest } from './manifest';
 import { MODES, MODE_LABELS, type Mode } from './modes';
-import { AVG_LABELS, LIMB_CHOICES, type OceanAvg, type OceanChoice, type OceanLimbs } from './ocean';
+import { LIMB_CHOICES, VIEW_LABELS, fromView, viewOf, type OceanChoice, type OceanLimbs } from './ocean';
 import { LEVEL_LABELS, WIND_LEVELS, type WindLevel } from './wind';
 
 export interface ParticleChoice {
@@ -106,17 +106,17 @@ export class OceanControls {
     this.element.innerHTML = `
       <label class="overlay-toggle"><input type="checkbox" class="ocean-on" /> Ocean overturning</label>
       <select class="ocean-select ocean-limbs" aria-label="Which limbs of the overturning"></select>
-      <select class="ocean-select ocean-avg" aria-label="Daily or 30-day mean currents"></select>
+      <select class="ocean-select ocean-avg" aria-label="Daily or 30-day mean currents, or the overturning part only"></select>
       <button type="button" class="ocean-trend" aria-pressed="false" aria-controls="amoc">AMOC section</button>
       <button type="button" class="info-button ocean-info" aria-label="About the ocean overturning">i</button>`;
     this.checkbox = this.element.querySelector('.ocean-on')!;
     this.limbs = this.element.querySelector('.ocean-limbs')!;
     this.avg = this.element.querySelector('.ocean-avg')!;
     for (const [value, { label }] of Object.entries(LIMB_CHOICES)) this.limbs.append(new Option(label, value));
-    for (const [value, label] of Object.entries(AVG_LABELS)) this.avg.append(new Option(label, value));
+    for (const [value, label] of Object.entries(VIEW_LABELS)) this.avg.append(new Option(label, value));
     const built = !!m.ocean && Object.keys(m.ocean.dates).length > 0;
     this.limbs.value = initial.limbs;
-    this.avg.value = initial.avg;
+    this.avg.value = viewOf(initial);
     this.checkbox.checked = initial.on && built;
     for (const el of [this.checkbox, this.limbs, this.avg]) {
       el.disabled = !built;
@@ -132,14 +132,14 @@ export class OceanControls {
   }
 
   get choice(): OceanChoice {
-    return { on: this.checkbox.checked, limbs: this.limbs.value as OceanLimbs, avg: this.avg.value as OceanAvg };
+    return { on: this.checkbox.checked, limbs: this.limbs.value as OceanLimbs, ...fromView(this.avg.value) };
   }
 
   /** Set the controls (without firing onChange), for the tour. */
   set(choice: OceanChoice): void {
     this.checkbox.checked = choice.on && !this.checkbox.disabled;
     this.limbs.value = choice.limbs;
-    this.avg.value = choice.avg;
+    this.avg.value = viewOf(choice);
   }
 }
 

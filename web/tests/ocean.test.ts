@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import {
   amocTrend, amocTrendText, beltBins, beltText, compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, parseSection, psiColour,
-  resolveAvg, sectionAvg, sectionStrength, sectionText, sectionUrl, type LimbMeta, type OceanMeta, type SectionGrid,
+  fromView, resolveAvg, resolvePart, viewOf, sectionAvg, sectionStrength, sectionText, sectionUrl, type LimbMeta, type OceanMeta, type SectionGrid,
 } from '../src/ocean';
 
 const enc = { lo: 0, hi: 1, log: false, scale: 1, offset: 0 };
@@ -16,12 +16,15 @@ const O: OceanMeta = {
   split_m: 1100,
   window_days: 30,
   section: { lat: 26.5, lon: [-81, -13] },
-  files: { field: 'ocean/{date}/{limb}{avg}.png', uv: 'ocean/{date}/{limb}{avg}_uv.png', section: 'ocean/{date}/section{avg}.json', avg: { daily: '', mean: '_30d' } },
+  files: {
+    field: 'ocean/{date}/{limb}{avg}{part}.png', uv: 'ocean/{date}/{limb}{avg}{part}_uv.png', section: 'ocean/{date}/section{avg}.json',
+    avg: { daily: '', mean: '_30d' }, part: { full: '', ov: '_ov' },
+  },
   section_grid: { lat0: -1, dlat: 0.5, n_lat: 5, depth_edges_m: [0, 10, 300, 1100], unit_sv: 0.1 },
   limbs: { amoc_upper: limb(1100), amoc_deep: limb(null) },
   dates: {
     '2026-10-17': { window_days: 12, daily: section, mean: null, section: { daily: true, mean: false } },
-    '2026-10-18': { window_days: 30, daily: section, mean: { ...section, psi_max_sv: 17.04 }, section: { daily: true, mean: true } },
+    '2026-10-18': { window_days: 30, daily: section, mean: { ...section, psi_max_sv: 17.04 }, section: { daily: true, mean: true }, ov: true },
   },
   info: { summary: '', source: '', formula: '', sign: '', meaning: '', caveats: '', mask: null, anomaly: '' },
   credit: '',
@@ -30,6 +33,19 @@ const O: OceanMeta = {
 test('file names follow the manifest templates', () => {
   expect(oceanUrl('/data', O, '2026-10-18', 'amoc_deep', 'mean', true)).toBe('/data/ocean/2026-10-18/amoc_deep_30d_uv.png');
   expect(oceanUrl('/data', O, '2026-10-18', 'amoc_upper', 'daily', false)).toBe('/data/ocean/2026-10-18/amoc_upper.png');
+});
+
+test('the overturning part has its own files, only for a mean that has them', () => {
+  expect(oceanUrl('/data', O, '2026-10-18', 'amoc_deep', 'mean', true, 'ov')).toBe('/data/ocean/2026-10-18/amoc_deep_30d_ov_uv.png');
+  expect(resolvePart(O, '2026-10-18', 'mean', 'ov')).toBe('ov');
+  expect(resolvePart(O, '2026-10-18', 'daily', 'ov')).toBe('full'); // only the mean has it
+  expect(resolvePart(O, '2026-10-17', 'daily', 'ov')).toBe('full');
+  expect(resolvePart(O, '2026-10-18', 'mean', 'full')).toBe('full');
+  expect(fromView('ov')).toEqual({ avg: 'mean', part: 'ov' });
+  expect(fromView('daily')).toEqual({ avg: 'daily', part: 'full' });
+  expect(viewOf({ avg: 'mean', part: 'ov' })).toBe('ov');
+  const c = oceanCaption(O, '2026-10-18', { on: true, limbs: 'both', avg: 'mean', part: 'ov' }, 'mean', 'ov');
+  expect(c).toContain('overturning part only');
 });
 
 test('a date offers the mean only once its window has filled, and falls back to what it has', () => {
@@ -42,12 +58,12 @@ test('a date offers the mean only once its window has filled, and falls back to 
 });
 
 test('the caption names the period and the 26.5 N figures of the limbs drawn', () => {
-  const c = oceanCaption(O, '2026-10-18', { on: true, limbs: 'both', avg: 'mean' }, 'mean');
+  const c = oceanCaption(O, '2026-10-18', { on: true, limbs: 'both', avg: 'mean', part: 'full' }, 'mean');
   expect(c).toBe(
     'Ocean overturning (GLO12, 30-day mean to 2026-10-18): across 26.5° N, upper limb 16.2 Sv north, ' +
       'deep limb 15.5 Sv south; AMOC 17.0 Sv at 1,154 m',
   );
-  const d = oceanCaption(O, '2026-10-17', { on: true, limbs: 'deep', avg: 'daily' }, 'daily');
+  const d = oceanCaption(O, '2026-10-17', { on: true, limbs: 'deep', avg: 'daily', part: 'full' }, 'daily');
   expect(d).toContain('daily mean, 2026-10-17');
   expect(d).not.toContain('upper limb');
 });

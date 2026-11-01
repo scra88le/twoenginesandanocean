@@ -379,3 +379,23 @@ def test_limb_transports_by_latitude_split_the_column_at_the_given_depth():
     assert upper == pytest.approx([7.0, 0.0]) and deep == pytest.approx([-4.0, 0.0])
     # The two limbs always add up to the net transport of the column.
     assert (upper + deep) == pytest.approx(psi[-1])
+
+
+def test_overturning_part_removes_the_depth_uniform_flow():
+    h = [np.array([500.0, 500.0, 300.0]), np.array([1500.0, 1500.0, 0.0])]
+    # a barotropic 0.4 m/s northward flow, plus 0.1 m/s north above and 0.033.. south below
+    v_up = h[0] * (0.4 + 0.15)
+    v_deep = h[1] * (0.4 - 0.05)
+    z = np.zeros(3)
+    (u1, v1, h1), (u2, v2, h2) = d.overturning_part([(z, v_up, h[0]), (z, v_deep, h[1])])
+    # what is left of the upper limb is the shear, and the limbs cancel
+    assert (v1 + v2)[:2] == pytest.approx([0.0, 0.0], abs=1e-9)
+    assert v1[0] > 0 > v2[0]
+    # a pure depth-uniform flow leaves nothing; a limb alone (no deep water) leaves nothing
+    assert np.allclose(d.overturning_part([(z, h[0] * 0.4, h[0]), (z, h[1] * 0.4, h[1])])[0][1], 0)
+    assert v1[2] == pytest.approx(0.0, abs=1e-9)  # only the upper limb has water there
+    assert np.array_equal(h1, h[0]) and np.array_equal(h2, h[1])
+    # no water anywhere: zero, not NaN
+    zero = np.zeros(2)
+    out = d.overturning_part([(zero, zero, zero), (zero, zero, zero)])
+    assert all(np.all(x == 0) for limb in out for x in limb)

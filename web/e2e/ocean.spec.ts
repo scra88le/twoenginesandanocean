@@ -119,6 +119,26 @@ test('a date without the mean falls back to daily, a date without currents says 
   await expect(page.locator('.legend-ocean')).toContainText('no 1991–2020 normal');
 });
 
+test('the overturning-only view loads its own files and keeps its place in the URL', async ({ page }) => {
+  const asked: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('_30d_ov')) asked.push(r.url());
+  });
+  await open(page, '&ocean=both&ocean_part=ov');
+  await expect(page.locator('.ocean-avg')).toHaveValue('ov');
+  await expect(page.locator('.legend-ocean')).toContainText('overturning part only');
+  expect(asked.some((u) => u.endsWith('amoc_upper_30d_ov_uv.png'))).toBe(true);
+  await page.locator('.ocean-avg').selectOption('mean');
+  await expect(page.locator('.legend-ocean')).not.toContainText('overturning part only');
+  await expect(page).not.toHaveURL(/ocean_part/);
+  await page.locator('.ocean-avg').selectOption('ov');
+  await expect(page).toHaveURL(/ocean_part=ov/);
+  // A date without the 30-day mean says the view is not there, and draws the daily field.
+  await page.goto(VIEW + '&ocean=both&ocean_part=ov&date=2026-09-30');
+  await expect(page.locator('.legend-ocean')).toContainText('daily mean, 2026-09-30');
+  await expect(page.locator('.legend-ocean')).not.toContainText('depth-uniform');
+});
+
 test('the info button explains the overlay', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: 'About the ocean overturning' }).click();

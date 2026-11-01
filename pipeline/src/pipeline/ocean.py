@@ -82,6 +82,7 @@ GRID_LON = -179.75 + 0.5 * np.arange(NLON)
 SECTION_GRID_LAT = np.arange(-40.0, 80.0 + 1e-6, 0.5)  # latitude bins of the latitude-depth section
 SECTION_KEYS = ("psi_max_sv", "z_max_m", "amoc_upper_sv", "amoc_deep_sv")
 SUFFIX = {"daily": "", "mean": "_30d"}
+PART_SUFFIX = {"full": "", "ov": "_ov"}  # ov: the overturning part, gyres removed
 
 
 # ---- fetching and reading GLO12 --------------------------------------------------------
@@ -360,6 +361,12 @@ def encode_ocean(daily: OceanDay, mean: OceanDay | None) -> dict[str, bytes]:
             png, uv = encode_limb(OCEAN_LIMBS[lid], uu, vv, h, basin)
             files[f"{lid}{SUFFIX[avg]}.png"] = png
             files[f"{lid}{SUFFIX[avg]}_uv.png"] = uv
+        if avg == "mean":
+            part = d.overturning_part([x.limbs[lid] for lid in OCEAN_LIMBS])
+            for lid, (uu, vv, h) in zip(OCEAN_LIMBS, part, strict=True):
+                png, uv = encode_limb(OCEAN_LIMBS[lid], uu, vv, h, basin)
+                files[f"{lid}_30d{PART_SUFFIX['ov']}.png"] = png
+                files[f"{lid}_30d{PART_SUFFIX['ov']}_uv.png"] = uv
         if x.psi is not None:
             files[f"section{SUFFIX[avg]}.json"] = encode_section(x.psi, x.psi_wet, x.depth)
     return files
@@ -378,6 +385,7 @@ def date_entry(
         # were drawn (the mean needs MIN_WINDOW_DAYS of them).
         "psi_days": psi_days,
         "belt": True,  # the section files carry the limbs' transport by latitude
+        "ov": mean is not None,  # the mean also has the overturning-part files (gyres removed)
         "section": {"daily": daily.psi is not None, "mean": bool(mean and mean.psi is not None)},
         "daily": _rounded(daily.section),
         "mean": _rounded(mean.section) if mean is not None else None,
@@ -422,10 +430,11 @@ def ocean_block(dates: dict[str, dict], depth=None, grid: dict | None = None) ->
         "window_days": WINDOW_DAYS,
         "section": {"lat": SECTION_LAT, "lon": list(SECTION_LON)},
         "files": {
-            "field": "ocean/{date}/{limb}{avg}.png",
-            "uv": "ocean/{date}/{limb}{avg}_uv.png",
+            "field": "ocean/{date}/{limb}{avg}{part}.png",
+            "uv": "ocean/{date}/{limb}{avg}{part}_uv.png",
             "section": "ocean/{date}/section{avg}.json",
             "avg": dict(SUFFIX),
+            "part": dict(PART_SUFFIX),
         },
         "section_grid": grid,
         "limbs": {lid: _limb_meta(s) for lid, s in OCEAN_LIMBS.items()},
@@ -507,6 +516,7 @@ def run_ocean(
             or entry.get("window_days", 0) < WINDOW_DAYS
             or entry.get("psi_days", 0) < entry["window_days"]
             or not entry.get("belt")
+            or (entry.get("mean") is not None and not entry.get("ov"))
         )
 
     todo = [x for x in sorted(dates, reverse=True) if stale(x)]
@@ -541,6 +551,7 @@ def run_ocean(
             and entries[key].get("window_days") == len(window)
             and entries[key].get("psi_days") == psi_days
             and entries[key].get("belt")
+            and (entries[key].get("mean") is None or entries[key].get("ov"))
         ):
             continue  # nothing new in its window
         daily = load_saved(saved(day))

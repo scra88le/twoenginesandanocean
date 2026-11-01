@@ -8,14 +8,17 @@ export const OCEAN_LIMBS = ['amoc_upper', 'amoc_deep'] as const;
 export type OceanLimb = (typeof OCEAN_LIMBS)[number];
 export type OceanLimbs = 'both' | 'upper' | 'deep';
 export type OceanAvg = 'mean' | 'daily';
+/** `ov`: the overturning part of the 30-day mean, with the depth-uniform (gyre) flow removed. */
+export type OceanPart = 'full' | 'ov';
 
 export interface OceanChoice {
   on: boolean;
   limbs: OceanLimbs;
   avg: OceanAvg;
+  part: OceanPart;
 }
 
-export const DEFAULT_OCEAN: OceanChoice = { on: false, limbs: 'both', avg: 'mean' };
+export const DEFAULT_OCEAN: OceanChoice = { on: false, limbs: 'both', avg: 'mean', part: 'full' };
 
 export interface LimbMeta {
   title: string;
@@ -50,6 +53,7 @@ export interface SectionGrid {
 export interface OceanDate {
   window_days: number;
   section?: { daily: boolean; mean: boolean };
+  ov?: boolean; // the mean also has the overturning-part files
   daily: Section;
   mean: Section | null; // null until enough days of the 30-day window are in
 }
@@ -60,7 +64,7 @@ export interface OceanMeta {
   split_m: number;
   window_days: number;
   section: { lat: number; lon: [number, number] };
-  files: { field: string; uv: string; section?: string; avg: Record<OceanAvg, string> };
+  files: { field: string; uv: string; section?: string; avg: Record<OceanAvg, string>; part?: Record<OceanPart, string> };
   section_grid?: SectionGrid | null;
   limbs: Record<OceanLimb, LimbMeta>;
   dates: Record<string, OceanDate>;
@@ -76,14 +80,23 @@ export const LIMB_CHOICES: Record<OceanLimbs, { label: string; limbs: OceanLimb[
 
 export const AVG_LABELS: Record<OceanAvg, string> = { mean: '30-day mean', daily: 'Daily' };
 
+/** The averaging menu: the two averagings, plus the 30-day mean with the gyres taken out. */
+export const VIEW_LABELS: Record<OceanAvg | 'ov', string> = { ...AVG_LABELS, ov: '30-day mean, overturning only' };
+
+export const viewOf = (c: Pick<OceanChoice, 'avg' | 'part'>): OceanAvg | 'ov' => (c.part === 'ov' ? 'ov' : c.avg);
+export const fromView = (v: string): Pick<OceanChoice, 'avg' | 'part'> =>
+  v === 'ov' ? { avg: 'mean', part: 'ov' } : { avg: v === 'daily' ? 'daily' : 'mean', part: 'full' };
+
 export function isOceanLimbs(s: string | null | undefined): s is OceanLimbs {
   return s === 'both' || s === 'upper' || s === 'deep';
 }
 
 /** The file of one limb: its transport (`uv` false) or its velocity (`uv` true). */
-export function oceanUrl(base: string, o: OceanMeta, date: string, limb: OceanLimb, avg: OceanAvg, uv: boolean): string {
+export function oceanUrl(
+  base: string, o: OceanMeta, date: string, limb: OceanLimb, avg: OceanAvg, uv: boolean, part: OceanPart = 'full',
+): string {
   const template = uv ? o.files.uv : o.files.field;
-  const vars: Record<string, string> = { date, limb, avg: o.files.avg[avg] };
+  const vars: Record<string, string> = { date, limb, avg: o.files.avg[avg], part: o.files.part?.[part] ?? '' };
   return `${base}/${template.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '')}`;
 }
 
@@ -101,6 +114,11 @@ export function resolveAvg(o: OceanMeta | null | undefined, date: string, wanted
   return a[other] ? other : null;
 }
 
+/** The part to draw: the overturning part if asked for and the date's 30-day mean has it. */
+export function resolvePart(o: OceanMeta | null | undefined, date: string, avg: OceanAvg, wanted: OceanPart): OceanPart {
+  return wanted === 'ov' && avg === 'mean' && !!o?.files.part && !!o.dates[date]?.ov ? 'ov' : 'full';
+}
+
 /** "#f08a5d" -> [0.94, 0.54, 0.36] for a shader uniform. */
 export function hexToRgb(hex: string): [number, number, number] {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
@@ -112,10 +130,12 @@ const sv = (x: number) => `${Math.abs(x).toFixed(1)} Sv`;
 const metres = (x: number) => `${Math.round(x).toLocaleString('en-GB')} m`;
 
 /** The legend line: what is drawn, over which period, and the 26.5° N figures. */
-export function oceanCaption(o: OceanMeta, date: string, choice: OceanChoice, avg: OceanAvg): string {
+export function oceanCaption(o: OceanMeta, date: string, choice: OceanChoice, avg: OceanAvg, part: OceanPart = 'full'): string {
   const entry = o.dates[date]!;
   const s = (avg === 'mean' ? entry.mean : entry.daily) ?? entry.daily;
-  const when = avg === 'mean' ? `${o.window_days}-day mean to ${date}` : `daily mean, ${date}`;
+  const when =
+    (avg === 'mean' ? `${o.window_days}-day mean to ${date}` : `daily mean, ${date}`) +
+    (part === 'ov' ? ', overturning part only: the depth-uniform gyre flow removed' : '');
   const lat = `${o.section.lat}° N`;
   const parts = LIMB_CHOICES[choice.limbs].limbs.map((l) =>
     l === 'amoc_upper'

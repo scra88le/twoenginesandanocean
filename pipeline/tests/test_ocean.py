@@ -190,6 +190,16 @@ def test_encode_ocean_adds_the_mean_files(day):
     files = ocean.encode_ocean(day, day)
     assert "amoc_deep_30d_uv.png" in files and "amoc_upper_30d.png" in files
     assert "section_30d.json" in files
+    assert "amoc_deep_30d_ov_uv.png" in files and "amoc_upper_30d_ov.png" in files
+    assert "amoc_upper_ov.png" not in files  # only the mean has the overturning part
+
+
+def test_the_overturning_part_has_no_depth_uniform_flow(day):
+    files = ocean.encode_ocean(day, day)
+    j, i = _cell(-50.25, 27.25)
+    (_, vu), _ = _decode(files, "amoc_upper_30d_ov_uv.png", "amoc_upper")
+    (_, vd), _ = _decode(files, "amoc_deep_30d_ov_uv.png", "amoc_deep")
+    assert vu[j, i] > 0 > vd[j, i]  # still north above, south below
 
 
 def test_the_section_peaks_at_the_split_and_agrees_with_the_26n_figure(day):
@@ -436,3 +446,17 @@ def test_a_date_built_before_the_belt_is_rebuilt_without_a_download(tmp_path):
     assert fake.days == [] and r.built == [LATEST.isoformat()]
     body = json.loads((out / "ocean" / LATEST.isoformat() / "section.json").read_text())
     assert "upper_sv" in body
+
+
+def test_a_mean_without_the_overturning_part_is_rebuilt_without_a_download(tmp_path):
+    out = _out(tmp_path, [LATEST])
+    fake, work = Fake(), tmp_path / "work"
+    ocean.run_ocean(out, work, max_fetch=40, fetch=fake.fetch, load=fake.load)
+    m = json.loads((out / "manifest.json").read_text())
+    assert m["ocean"]["dates"][LATEST.isoformat()]["ov"] is True
+    m["ocean"]["dates"][LATEST.isoformat()].pop("ov")
+    (out / "manifest.json").write_text(json.dumps(m))
+    fake.days.clear()
+    r = ocean.run_ocean(out, work, max_fetch=1, fetch=fake.fetch, load=fake.load)
+    assert fake.days == [] and r.built == [LATEST.isoformat()]
+    assert (out / "ocean" / LATEST.isoformat() / "amoc_upper_30d_ov.png").is_file()
