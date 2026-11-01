@@ -82,6 +82,8 @@ GRID_LON = -179.75 + 0.5 * np.arange(NLON)
 SECTION_GRID_LAT = np.arange(-40.0, 80.0 + 1e-6, 0.5)  # latitude bins of the latitude-depth section
 SECTION_KEYS = ("psi_max_sv", "z_max_m", "amoc_upper_sv", "amoc_deep_sv")
 SUFFIX = {"daily": "", "mean": "_30d"}
+OV_SIGMA_DEG = 2.5  # Gaussian smoothing of the overturning part, degrees (the grid is 0.5)
+OV_VERSION = 2  # 1: gyres removed; 2: and smoothed (an entry with an older version is rebuilt)
 PART_SUFFIX = {"full": "", "ov": "_ov"}  # ov: the overturning part, gyres removed
 
 
@@ -334,6 +336,19 @@ def encode_limb(spec: LimbSpec, uu, vv, h, basin) -> tuple[bytes, bytes]:
     return scalar_png(mag), vector_png(cu, cv)
 
 
+def smooth_part(uu, vv, h):
+    """Smooth one limb's overturning part over its own water (`derived.masked_smooth`): what
+    eddies and the Gulf Stream's meanders leave after the gyres are gone is mostly noise at
+    scales under a few degrees. Dry cells keep zero flow and their own thickness."""
+    valid = np.isfinite(h) & (h > 0)
+    su, sv, sh = d.masked_smooth([uu, vv, h], valid, OV_SIGMA_DEG / 0.5)
+    return (
+        np.where(valid, su, np.where(np.isfinite(uu), 0.0, np.nan)),
+        np.where(valid, sv, np.where(np.isfinite(vv), 0.0, np.nan)),
+        np.where(valid, sh, h),
+    )
+
+
 def encode_section(psi: np.ndarray, wet: np.ndarray, depth) -> bytes:
     """`section{avg}.json`: the streamfunction in tenths of a Sv, level-major (rows are the
     model's levels, columns the latitude bins); null where the basin has no water. Also the
@@ -363,8 +378,8 @@ def encode_ocean(daily: OceanDay, mean: OceanDay | None) -> dict[str, bytes]:
             files[f"{lid}{SUFFIX[avg]}_uv.png"] = uv
         if avg == "mean":
             part = d.overturning_part([x.limbs[lid] for lid in OCEAN_LIMBS])
-            for lid, (uu, vv, h) in zip(OCEAN_LIMBS, part, strict=True):
-                png, uv = encode_limb(OCEAN_LIMBS[lid], uu, vv, h, basin)
+            for lid, limb in zip(OCEAN_LIMBS, part, strict=True):
+                png, uv = encode_limb(OCEAN_LIMBS[lid], *smooth_part(*limb), basin)
                 files[f"{lid}_30d{PART_SUFFIX['ov']}.png"] = png
                 files[f"{lid}_30d{PART_SUFFIX['ov']}_uv.png"] = uv
         if x.psi is not None:
@@ -385,7 +400,8 @@ def date_entry(
         # were drawn (the mean needs MIN_WINDOW_DAYS of them).
         "psi_days": psi_days,
         "belt": True,  # the section files carry the limbs' transport by latitude
-        "ov": mean is not None,  # the mean also has the overturning-part files (gyres removed)
+        # the version of the mean's overturning-part files (0: none)
+        "ov": OV_VERSION if mean is not None else 0,
         "section": {"daily": daily.psi is not None, "mean": bool(mean and mean.psi is not None)},
         "daily": _rounded(daily.section),
         "mean": _rounded(mean.section) if mean is not None else None,
@@ -516,7 +532,7 @@ def run_ocean(
             or entry.get("window_days", 0) < WINDOW_DAYS
             or entry.get("psi_days", 0) < entry["window_days"]
             or not entry.get("belt")
-            or (entry.get("mean") is not None and not entry.get("ov"))
+            or (entry.get("mean") is not None and entry.get("ov") != OV_VERSION)
         )
 
     todo = [x for x in sorted(dates, reverse=True) if stale(x)]
@@ -551,7 +567,7 @@ def run_ocean(
             and entries[key].get("window_days") == len(window)
             and entries[key].get("psi_days") == psi_days
             and entries[key].get("belt")
-            and (entries[key].get("mean") is None or entries[key].get("ov"))
+            and (entries[key].get("mean") is None or entries[key].get("ov") == OV_VERSION)
         ):
             continue  # nothing new in its window
         daily = load_saved(saved(day))

@@ -468,3 +468,11 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - **No new download.** The operation is linear, so it is applied to the saved 30-day mean. A date whose mean lacks `ov` is rebuilt from the saved days on the next ocean run (the same route as `belt`). Four more small PNGs per date with a mean.
 - **Not the 90-day mean.** The proposal said about 90 days; the saved state and the window are 30 days, and a longer window would triple the stored state. The 30-day mean is used.
 - **Not fully gyre-free.** The Gulf Stream and the subpolar boundary currents have real vertical shear, so the upper limb still runs fast there and the deep limb's western boundary current stands out; only the depth-uniform part is removed. There is no extra spatial smoothing. The info text and the legend say what is drawn. Not yet looked at on real data; if it is still noisy, smoothing the overturning part (a masked Gaussian of 1–2°) is the next step.
+
+## 2026-11-01: smoothing the overturning-only view
+
+- **Why.** On the live site the overturning-only map looked no different from the plain 30-day mean: removing the depth-uniform flow left the Gulf Stream's shear and eddies, which dominate at 1/12°.
+- **What.** After `overturning_part`, each limb's U, V and H are smoothed with a normalised Gaussian over that limb's own water (`derived.masked_smooth`, σ = 2.5° = 5 cells, cut at 3σ; `ocean.smooth_part`). Land and the box edge neither dilute nor leak. Dry cells keep zero flow. The plain mean is unchanged.
+- **Rebuild.** The manifest's `ov` is now a version (`ocean.OV_VERSION` = 2); entries with another value are rebuilt from the saved days on the next ocean run, with no download.
+- **Open.** σ was chosen without seeing real data. If it is still too busy or too washed out, change `OV_SIGMA_DEG`. Smoothing lowers transport magnitudes (eddy cancellation), so particle density in this view may need a lower `density_ref`.
+

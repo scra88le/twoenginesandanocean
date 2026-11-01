@@ -412,6 +412,39 @@ def overturning_part(limbs):
     return [(uu - h * ub, vv - h * vb, h) for uu, vv, h in limbs]
 
 
+def masked_smooth(fields, valid, sigma_cells: float):
+    """Gaussian-smooth each 2-D field over the cells where `valid` is true.
+
+    Normalised convolution: smooth(field x valid) / smooth(valid), so land and cells outside the
+    box neither pull values toward zero nor leak into the water. The kernel is separable and cut
+    at 3 sigma. Cells that are not valid come back NaN. Returns a list, one array per field.
+    """
+    valid = np.asarray(valid, dtype=bool)
+    r = max(1, int(np.ceil(3 * sigma_cells)))
+    x = np.arange(-r, r + 1)
+    k = np.exp(-0.5 * (x / sigma_cells) ** 2)
+    k /= k.sum()
+
+    def blur(a):
+        for axis in (0, 1):
+            pad = [(0, 0), (0, 0)]
+            pad[axis] = (r, r)
+            padded = np.pad(a, pad)
+            a = sum(
+                k[i] * np.take(padded, np.arange(i, i + a.shape[axis]), axis=axis)
+                for i in range(len(k))
+            )
+        return a
+
+    weight = blur(valid.astype("float64"))
+    out = []
+    for f in fields:
+        f = np.where(valid, np.asarray(f, dtype="float64"), 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out.append(np.where(valid & (weight > 0), blur(f) / weight, np.nan))
+    return out
+
+
 def depth_mean_velocity(uu, vv, h, min_thickness: float):
     """Depth-mean velocity of a limb, U / H and V / H, m s-1: how fast its water moves.
     Returns (u, v, masked); masked where the limb holds less than `min_thickness` of water."""

@@ -24,7 +24,7 @@ const O: OceanMeta = {
   limbs: { amoc_upper: limb(1100), amoc_deep: limb(null) },
   dates: {
     '2026-10-17': { window_days: 12, daily: section, mean: null, section: { daily: true, mean: false } },
-    '2026-10-18': { window_days: 30, daily: section, mean: { ...section, psi_max_sv: 17.04 }, section: { daily: true, mean: true }, ov: true },
+    '2026-10-18': { window_days: 30, daily: section, mean: { ...section, psi_max_sv: 17.04 }, section: { daily: true, mean: true }, ov: 2 },
   },
   info: { summary: '', source: '', formula: '', sign: '', meaning: '', caveats: '', mask: null, anomaly: '' },
   credit: '',

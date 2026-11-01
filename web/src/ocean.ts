@@ -53,7 +53,7 @@ export interface SectionGrid {
 export interface OceanDate {
   window_days: number;
   section?: { daily: boolean; mean: boolean };
-  ov?: boolean; // the mean also has the overturning-part files
+  ov?: number; // the version of the mean's overturning-part files; 0 or absent: none
   daily: Section;
   mean: Section | null; // null until enough days of the 30-day window are in
 }

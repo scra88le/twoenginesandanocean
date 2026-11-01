@@ -486,7 +486,7 @@ OCEAN_INFO = LayerInfo(
         "A single day is dominated by eddies; the 30-day mean shows the pathways. \"Overturning only\" "
         "removes the part of the flow that is the same at every depth (each limb loses its thickness "
         "times the whole column's mean velocity): most of the gyres go, but not the Gulf Stream's own "
-        "vertical shear. The split at a "
+        "vertical shear. What is left is smoothed over about 2.5° to take out eddies. The split at a "
         f"fixed {_SPLIT} suits 26.5° N and is approximate elsewhere. Model values, not "
         "observations: compare the 26.5° N figure with RAPID's. GLO12 runs about a day behind real "
         "time; the overlay follows the map's dates. The section's ψ is taken from the surface down, "

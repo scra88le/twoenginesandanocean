@@ -453,10 +453,28 @@ def test_a_mean_without_the_overturning_part_is_rebuilt_without_a_download(tmp_p
     fake, work = Fake(), tmp_path / "work"
     ocean.run_ocean(out, work, max_fetch=40, fetch=fake.fetch, load=fake.load)
     m = json.loads((out / "manifest.json").read_text())
-    assert m["ocean"]["dates"][LATEST.isoformat()]["ov"] is True
+    assert m["ocean"]["dates"][LATEST.isoformat()]["ov"] == ocean.OV_VERSION
     m["ocean"]["dates"][LATEST.isoformat()].pop("ov")
     (out / "manifest.json").write_text(json.dumps(m))
     fake.days.clear()
     r = ocean.run_ocean(out, work, max_fetch=1, fetch=fake.fetch, load=fake.load)
     assert fake.days == [] and r.built == [LATEST.isoformat()]
     assert (out / "ocean" / LATEST.isoformat() / "amoc_upper_30d_ov.png").is_file()
+
+
+def test_an_older_overturning_version_is_rebuilt_and_the_part_is_smoother(tmp_path, day):
+    out = _out(tmp_path, [LATEST])
+    fake, work = Fake(), tmp_path / "work"
+    ocean.run_ocean(out, work, max_fetch=40, fetch=fake.fetch, load=fake.load)
+    m = json.loads((out / "manifest.json").read_text())
+    m["ocean"]["dates"][LATEST.isoformat()]["ov"] = 1
+    (out / "manifest.json").write_text(json.dumps(m))
+    fake.days.clear()
+    r = ocean.run_ocean(out, work, max_fetch=1, fetch=fake.fetch, load=fake.load)
+    assert fake.days == [] and r.built == [LATEST.isoformat()]
+    # a lone noisy cell is spread out
+    h = np.full((40, 40), 500.0)
+    v = np.zeros((40, 40))
+    v[20, 20] = 100.0
+    _, sv, sh = ocean.smooth_part(v, v, h)
+    assert sv.max() < 10 and sh[20, 20] == pytest.approx(500)

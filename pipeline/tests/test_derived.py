@@ -399,3 +399,18 @@ def test_overturning_part_removes_the_depth_uniform_flow():
     zero = np.zeros(2)
     out = d.overturning_part([(zero, zero, zero), (zero, zero, zero)])
     assert all(np.all(x == 0) for limb in out for x in limb)
+
+
+def test_masked_smooth_keeps_a_constant_and_does_not_leak_across_the_mask():
+    valid = np.ones((9, 9), bool)
+    valid[:, 4] = False  # a wall of land
+    a = np.where(valid, 3.0, 99.0)  # land holds a wild value that must not leak
+    (s,) = d.masked_smooth([a], valid, 1.5)
+    assert np.allclose(s[valid], 3.0)
+    assert np.isnan(s[:, 4]).all()
+    # a spike is spread but the sum over water is preserved to first order, and it is lower
+    b = np.zeros((21, 21))
+    b[10, 10] = 1.0
+    (t,) = d.masked_smooth([b], np.ones((21, 21), bool), 2.0)
+    assert t.max() < 0.1 and t[10, 10] == t.max()
+    assert t.sum() == pytest.approx(1.0, rel=1e-3)
