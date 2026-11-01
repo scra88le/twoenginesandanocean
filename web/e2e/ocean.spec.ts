@@ -132,6 +132,14 @@ test('the AMOC panel draws the latitude-depth section and the trend, and closes 
   await button.click();
   await expect(page.locator('#amoc')).toBeVisible();
   await expect(page.locator('#amoc canvas.amoc-heat')).toHaveAttribute('aria-label', /30-day mean to 2026-10-01\. Strongest overturning: 18\.0 Sv at \d+\.\d° N, 1,100 m deep/);
+  // The conveyor belt: the limbs by latitude, from the same file (the fixture's 18 Sv at 26.5 N).
+  await expect(page.locator('#amoc canvas.amoc-belt')).toHaveAttribute('aria-label', /upper limb 1\d\.\d Sv north, deep limb 1\d\.\d Sv south/);
+  const belt = await page.locator('#amoc canvas.amoc-belt').evaluate((c: HTMLCanvasElement) => {
+    const at = (fx: number, fy: number) => Array.from(c.getContext('2d')!.getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data);
+    return { upper: at(0.6, 0.27), deep: at(0.6, 0.65) };
+  });
+  expect(belt.upper[0]!).toBeGreaterThan(belt.upper[2]!); // orange ribbon in the upper lane
+  expect(belt.deep[2]!).toBeGreaterThan(belt.deep[0]!); // blue ribbon in the deep lane
   // The heat map is painted: a warm pixel at 30° N, 1100 m (the fixture's peak), a dark one at 70° S (no water).
   const warm = await page.locator('#amoc canvas.amoc-heat').evaluate((c: HTMLCanvasElement) => {
     const px = c.getContext('2d')!.getImageData(Math.round(c.width * 0.62), Math.round(c.height * 0.45), 1, 1).data;

@@ -464,6 +464,23 @@ def latitude_overturning(
     return cum[1:] / SVERDRUP, wet
 
 
+def limb_transports_by_latitude(
+    psi, depth, split: float = AMOC_SPLIT_M
+) -> tuple[np.ndarray, np.ndarray]:
+    """The two limbs' net northward transport at every latitude, Sv, from the section's psi.
+
+    `psi` is (nz, n_lat) at the levels' bottom edges (`latitude_overturning`). The upper limb
+    is psi at depth `split` (interpolated between the level edges), the deep limb is what
+    remains of the column below it: psi at the sea floor minus psi at `split`. Summed across
+    the whole basin, the eddies and gyres of a single latitude cancel, which is why this is
+    far less noisy than a map of the limbs' flow."""
+    psi = np.asarray(psi, dtype="float64")
+    edges = level_edges(depth)
+    column = np.vstack([np.zeros(psi.shape[1]), psi])  # psi at every edge, 0 at the surface
+    upper = np.array([np.interp(split, edges, column[:, j]) for j in range(psi.shape[1])])
+    return upper, column[-1] - upper
+
+
 def section_transport(vv, lon_deg, lat_deg: float) -> float:
     """Northward transport of a limb across a latitude section, Sv, from its depth-integrated
     northward transport per metre V (m2 s-1) along the section; NaN counts as no flow."""

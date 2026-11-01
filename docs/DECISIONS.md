@@ -455,3 +455,10 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - **Not corrected.** ψ is not adjusted for the net northward transport across a latitude (it should be near zero for the Atlantic, but GLO12 does not close it exactly), the Gulf of Mexico and the part of the Mediterranean inside the box are in the basin mask, and the 26.5° N column of the section need not equal the trend's figure exactly (the trend uses the 81° W to 13° W line; the section uses every Atlantic cell at that latitude). Check both against RAPID's ~17 Sv after the first real run.
 - **Front end.** The AMOC panel shows the section as a canvas heat map plus the strength at each latitude, above the trend; the button is now "AMOC section".
 
+## 2026-11-01: the AMOC "conveyor belt" (limbs summed by latitude)
+
+- **Why.** The particle map shows each limb's depth-mean velocity at 1/12°, which is mostly gyres, the Gulf Stream and eddies, so the north/south pattern of the limbs is buried. Summing across the whole basin cancels them.
+- **What.** `derived.limb_transports_by_latitude` takes the upper limb as ψ at 1,100 m (interpolated between level edges) and the deep limb as the rest of the column (ψ at the floor minus the upper limb), at every latitude. `section[_30d].json` now carries `upper_sv` and `deep_sv`; the panel draws them first, as two ribbons with arrowheads, binned to 5° for display.
+- **No new download.** It comes from the ψ already in the saved state. Entries get `belt: true`; an entry without it is rebuilt from the saved days on the next ocean run (no fetch), so the 60 dates with a section gain the belt at the next run. Dates without ψ still wait for their re-download.
+- **Not done (option 2).** Subtracting the gyre part from the map and averaging it over 90 days is not built; the particle layer is unchanged.
+

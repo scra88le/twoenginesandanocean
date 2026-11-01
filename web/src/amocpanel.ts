@@ -6,6 +6,8 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import {
   amocTrend,
+  beltBins,
+  beltText,
   amocTrendText,
   parseSection,
   psiColour,
@@ -13,6 +15,7 @@ import {
   sectionStrength,
   sectionText,
   sectionUrl,
+  type BeltBin,
   type OceanAvg,
   type OceanMeta,
   type SectionField,
@@ -25,6 +28,7 @@ const MARGIN = { l: 44, r: 8, t: 6, b: 22 };
 const HEAT_H = 230;
 const DEPTH_TICKS = [0, 250, 1000, 2000, 3000, 4000, 5000];
 const LAT_TICKS = [-40, -20, 0, 20, 40, 60, 80];
+const BELT_H = 150;
 const sqrtDepth = (z: number) => Math.sqrt(Math.max(0, z));
 
 export class AmocPanel {
@@ -33,6 +37,7 @@ export class AmocPanel {
   private readonly note: HTMLElement;
   private chart: uPlot | null = null;
   private strengthChart: uPlot | null = null;
+  private readonly belt: HTMLCanvasElement;
   private readonly heat: HTMLCanvasElement;
   private readonly heatNote: HTMLElement;
   private readonly heatText: HTMLElement;
@@ -52,6 +57,13 @@ export class AmocPanel {
         <div><h2 class="zb-heading">Atlantic overturning</h2><div class="zb-place"></div></div>
         <button type="button" class="zb-close" aria-label="Close the AMOC panel">×</button>
       </div>
+      <div class="zb-title">The two limbs, summed across the whole Atlantic (Sv)</div>
+      <canvas class="amoc-belt" role="img"></canvas>
+      <ul class="zb-legend amoc-belt-key">
+        <li><span class="zb-swatch" style="background:#f08a5d"></span>Upper limb, 0–1,100 m</li>
+        <li><span class="zb-swatch" style="background:#6fb6f2"></span>Deep limb, below 1,100 m</li>
+        <li>Arrows: the direction of flow; thickness: how much</li>
+      </ul>
       <div class="zb-title amoc-section-title">Overturning streamfunction, latitude and depth (Sv)</div>
       <canvas class="amoc-heat" role="img"></canvas>
       <ul class="zb-legend amoc-key">
@@ -70,6 +82,7 @@ export class AmocPanel {
       </ul>
       <details class="zb-details"><summary>The numbers as text</summary><ul class="zb-summary amoc-trend-text"></ul></details>
       <p class="zb-note"></p>`;
+    this.belt = root.querySelector('.amoc-belt')!;
     this.heat = root.querySelector('.amoc-heat')!;
     this.heatNote = root.querySelector('.amoc-heat-note')!;
     this.heatText = root.querySelector('.amoc-heat-text')!;
@@ -129,6 +142,7 @@ export class AmocPanel {
       this.strengthChart?.destroy();
       this.strengthChart = null;
       this.heat.getContext('2d')?.clearRect(0, 0, this.heat.width, this.heat.height);
+      this.belt.getContext('2d')?.clearRect(0, 0, this.belt.width, this.belt.height);
       this.heat.setAttribute('aria-label', msg);
       this.heatText.replaceChildren();
       this.heatNote.textContent = msg;
@@ -153,14 +167,100 @@ export class AmocPanel {
     }
     if (request !== this.requested || !this.isOpen) return;
     const what = pick.avg === 'mean' ? `${o.window_days}-day mean to ${pick.date}` : `daily mean, ${pick.date}`;
+    this.paintBelt(sec);
     this.paintHeat(sec);
     this.drawStrength(sec);
-    const lines = sectionText(sec, o);
-    this.heat.setAttribute('aria-label', `Atlantic overturning streamfunction by latitude and depth, ${what}. ${lines[0]}`);
+    const belt = beltText(sec, o);
+    this.belt.setAttribute('aria-label', `Net transport of the upper and deep limbs by latitude, ${what}. ${belt.join(' ') || 'Not available for this date.'}`);
+    const heat = sectionText(sec, o);
+    const lines = [...belt, ...heat];
+    this.heat.setAttribute('aria-label', `Atlantic overturning streamfunction by latitude and depth, ${what}. ${heat[0]}`);
     this.heatText.replaceChildren(...lines.map((t) => Object.assign(document.createElement('li'), { textContent: t })));
     this.heatNote.textContent =
-      `${what}. ψ is the northward volume transport of the whole Atlantic above each depth; colour is to ±${VMAX} Sv, and the line marks ${o.section.lat}° N.` +
+      `${what}. Each limb is its water's net transport across the latitude circle, so eddies and gyres cancel. ψ is the northward volume transport of the whole Atlantic above each depth; colour is to ±${VMAX} Sv, and the line marks ${o.section.lat}° N.` +
       pick.note;
+  }
+
+  /** The conveyor belt: one lane per limb along the latitude axis, a ribbon as thick as the
+   * transport with arrowheads for the direction (north is right). */
+  private paintBelt(sec: SectionField): void {
+    const w = Math.max(240, this.strengthBox.clientWidth || 440);
+    const dpr = window.devicePixelRatio || 1;
+    this.belt.style.width = `${w}px`;
+    this.belt.style.height = `${BELT_H}px`;
+    this.belt.width = Math.round(w * dpr);
+    this.belt.height = Math.round(BELT_H * dpr);
+    const ctx = this.belt.getContext('2d')!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, BELT_H);
+    const bins = beltBins(sec);
+    if (!bins.length) return;
+    const pw = w - MARGIN.l - MARGIN.r;
+    const lat0 = bins[0]!.lat - 2.5;
+    const span = 5 * bins.length;
+    const x = (lat: number) => MARGIN.l + ((lat - lat0) / span) * pw;
+    const laneH = (BELT_H - MARGIN.t - MARGIN.b) / 2;
+    ctx.font = '11px system-ui, sans-serif';
+    const lanes = [
+      { key: 'upper' as const, colour: '#f08a5d', y: MARGIN.t + laneH / 2, name: 'Upper' },
+      { key: 'deep' as const, colour: '#6fb6f2', y: MARGIN.t + laneH * 1.5, name: 'Deep' },
+    ];
+    for (const lane of lanes) {
+      const half = (v: number) => Math.min(1, Math.abs(v) / VMAX) * (laneH / 2 - 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(MARGIN.l, lane.y - laneH / 2 + 1, pw, laneH - 2);
+      ctx.fillStyle = '#a3a9b4';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(lane.name, MARGIN.l - 6, lane.y);
+      // The ribbon, between the bin centres; a bin without water breaks it.
+      ctx.fillStyle = `${lane.colour}99`;
+      let run: BeltBin[] = [];
+      const flush = () => {
+        if (run.length) {
+          ctx.beginPath();
+          run.forEach((b, i) => ctx[i ? 'lineTo' : 'moveTo'](x(b.lat), lane.y - half(b[lane.key])));
+          [...run].reverse().forEach((b) => ctx.lineTo(x(b.lat), lane.y + half(b[lane.key])));
+          ctx.closePath();
+          ctx.fill();
+        }
+        run = [];
+      };
+      for (const b of bins) {
+        if (Number.isFinite(b[lane.key])) run.push(b);
+        else flush();
+      }
+      flush();
+      // Arrowheads every other bin, pointing the way the water goes.
+      ctx.fillStyle = lane.colour;
+      ctx.strokeStyle = '#10131a';
+      bins.forEach((b, i) => {
+        const v = b[lane.key];
+        if (i % 2 || !Number.isFinite(v) || Math.abs(v) < 0.5) return;
+        const s = v >= 0 ? 1 : -1;
+        const cx = x(b.lat);
+        const size = 3 + 5 * Math.min(1, Math.abs(v) / VMAX);
+        ctx.beginPath();
+        ctx.moveTo(cx + s * size, lane.y);
+        ctx.lineTo(cx - s * size * 0.6, lane.y - size);
+        ctx.lineTo(cx - s * size * 0.6, lane.y + size);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+    const mark = x(this.ocean!.section.lat);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(mark, MARGIN.t);
+    ctx.lineTo(mark, BELT_H - MARGIN.b);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#a3a9b4';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (const lat of LAT_TICKS) ctx.fillText(`${Math.abs(lat)}°${lat < 0 ? 'S' : lat > 0 ? 'N' : ''}`, x(lat), BELT_H - MARGIN.b + 5);
   }
 
   private paintHeat(sec: SectionField): void {

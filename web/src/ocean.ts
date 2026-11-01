@@ -198,6 +198,8 @@ export function amocTrendText(tr: AmocTrend): string[] {
 /** The streamfunction on the latitude-depth section: psi[k][j] in Sv at the bottom edge of
  * level k and latitude bin j, NaN where the basin has no water. */
 export interface SectionField {
+  upper: number[]; // the upper limb's net northward transport at each latitude, Sv (NaN: dry); empty if absent
+  deep: number[]; // the deep limb's, Sv
   psi: number[][];
   lat: number[];
   edges: number[];
@@ -219,14 +221,20 @@ export function sectionUrl(base: string, o: OceanMeta, date: string, avg: OceanA
 
 /** Check and unpack a section file against the manifest's grid. */
 export function parseSection(raw: unknown, grid: SectionGrid): SectionField {
-  const rows = (raw as { psi?: unknown } | null)?.psi;
+  const body = raw as { psi?: unknown; upper_sv?: unknown; deep_sv?: unknown } | null;
+  const rows = body?.psi;
+  const belt = (x: unknown): number[] => {
+    if (x === undefined) return [];
+    if (!Array.isArray(x) || x.length !== grid.n_lat) throw new Error('ocean section: wrong number of latitudes');
+    return x.map((v) => (typeof v === 'number' ? v : NaN));
+  };
   const nz = grid.depth_edges_m.length - 1;
   if (!Array.isArray(rows) || rows.length !== nz) throw new Error('ocean section: wrong number of levels');
   const psi = rows.map((r: unknown) => {
     if (!Array.isArray(r) || r.length !== grid.n_lat) throw new Error('ocean section: wrong number of latitudes');
     return r.map((x) => (typeof x === 'number' ? x * grid.unit_sv : NaN));
   });
-  return { psi, lat: Array.from({ length: grid.n_lat }, (_, j) => grid.lat0 + j * grid.dlat), edges: grid.depth_edges_m };
+  return { upper: belt(body?.upper_sv), deep: belt(body?.deep_sv), psi, lat: Array.from({ length: grid.n_lat }, (_, j) => grid.lat0 + j * grid.dlat), edges: grid.depth_edges_m };
 }
 
 /** The overturning strength at each latitude: the largest psi down the column, and its depth. */
@@ -278,6 +286,47 @@ export function sectionText(sec: SectionField, o: OceanMeta): string[] {
   for (const lat of [-34, 0, o.section.lat, 45]) {
     const a = at(lat);
     if (a) lines.push(`${lat === 0 ? 'The equator' : `${Math.abs(lat)}° ${lat < 0 ? 'S' : 'N'}`}: ${a}.`);
+  }
+  return lines;
+}
+
+export interface BeltBin {
+  lat: number; // bin centre
+  upper: number; // Sv, northward positive; NaN if the bin has no water
+  deep: number;
+}
+
+/** The limbs' transport by latitude, averaged into bins `step` degrees wide: a display average
+ * of the pipeline's per-latitude sums, which smooths what is left of the day-to-day wiggle. */
+export function beltBins(sec: SectionField, step = 5): BeltBin[] {
+  if (!sec.upper.length) return [];
+  const lo = Math.round(sec.lat[0]!);
+  const hi = Math.round(sec.lat[sec.lat.length - 1]!);
+  const bins: BeltBin[] = [];
+  for (let a = lo; a < hi; a += step) {
+    const idx = sec.lat.map((l, j) => (l >= a - 1e-6 && l < a + step - 1e-6 ? j : -1)).filter((j) => j >= 0);
+    const mean = (xs: number[]) => {
+      const ok = idx.map((j) => xs[j]!).filter((x) => Number.isFinite(x));
+      return ok.length >= idx.length / 2 ? ok.reduce((t, x) => t + x, 0) / ok.length : NaN;
+    };
+    bins.push({ lat: a + step / 2, upper: mean(sec.upper), deep: mean(sec.deep) });
+  }
+  return bins;
+}
+
+const dir = (x: number) => (x >= 0 ? 'north' : 'south');
+const latName = (lat: number) => (lat === 0 ? 'The equator' : `${Math.abs(lat)}° ${lat < 0 ? 'S' : 'N'}`);
+
+/** The belt as sentences: what each limb carries, and which way, at a few latitudes. */
+export function beltText(sec: SectionField, o: OceanMeta): string[] {
+  if (!sec.upper.length) return [];
+  const lines: string[] = [];
+  for (const lat of [-30, 0, o.section.lat, 45]) {
+    const j = Math.round((lat - sec.lat[0]!) / (sec.lat[1]! - sec.lat[0]!));
+    const u = sec.upper[j];
+    const d = sec.deep[j];
+    if (u == null || d == null || !Number.isFinite(u) || !Number.isFinite(d)) continue;
+    lines.push(`${latName(lat)}: upper limb ${Math.abs(u).toFixed(1)} Sv ${dir(u)}, deep limb ${Math.abs(d).toFixed(1)} Sv ${dir(d)}.`);
   }
   return lines;
 }

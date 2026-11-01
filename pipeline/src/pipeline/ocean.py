@@ -333,15 +333,20 @@ def encode_limb(spec: LimbSpec, uu, vv, h, basin) -> tuple[bytes, bytes]:
     return scalar_png(mag), vector_png(cu, cv)
 
 
-def encode_section(psi: np.ndarray, wet: np.ndarray) -> bytes:
+def encode_section(psi: np.ndarray, wet: np.ndarray, depth) -> bytes:
     """`section{avg}.json`: the streamfunction in tenths of a Sv, level-major (rows are the
-    model's levels, columns the latitude bins); null where the basin has no water."""
+    model's levels, columns the latitude bins); null where the basin has no water. Also the
+    two limbs' net transport at each latitude (`upper_sv`, `deep_sv`, Sv, null where dry)."""
+    upper, deep = d.limb_transports_by_latitude(psi, depth)
+    dry = ~np.asarray(wet).any(axis=0)
+    belt = lambda x: [None if n else round(float(v), 2) for v, n in zip(x, dry, strict=True)]  # noqa: E731
     tenths = np.rint(np.asarray(psi, dtype="float64") * 10).astype(int)
     rows = [
         [int(x) if w else None for x, w in zip(r, wr, strict=True)]
         for r, wr in zip(tenths, wet, strict=True)
     ]
-    return json.dumps({"psi": rows}, separators=(",", ":")).encode()
+    body = {"psi": rows, "upper_sv": belt(upper), "deep_sv": belt(deep)}
+    return json.dumps(body, separators=(",", ":")).encode()
 
 
 def encode_ocean(daily: OceanDay, mean: OceanDay | None) -> dict[str, bytes]:
@@ -356,7 +361,7 @@ def encode_ocean(daily: OceanDay, mean: OceanDay | None) -> dict[str, bytes]:
             files[f"{lid}{SUFFIX[avg]}.png"] = png
             files[f"{lid}{SUFFIX[avg]}_uv.png"] = uv
         if x.psi is not None:
-            files[f"section{SUFFIX[avg]}.json"] = encode_section(x.psi, x.psi_wet)
+            files[f"section{SUFFIX[avg]}.json"] = encode_section(x.psi, x.psi_wet, x.depth)
     return files
 
 
@@ -372,6 +377,7 @@ def date_entry(
         # The latitude-depth section: the days of the window that have it, and which averages
         # were drawn (the mean needs MIN_WINDOW_DAYS of them).
         "psi_days": psi_days,
+        "belt": True,  # the section files carry the limbs' transport by latitude
         "section": {"daily": daily.psi is not None, "mean": bool(mean and mean.psi is not None)},
         "daily": _rounded(daily.section),
         "mean": _rounded(mean.section) if mean is not None else None,
@@ -500,6 +506,7 @@ def run_ocean(
             entry is None
             or entry.get("window_days", 0) < WINDOW_DAYS
             or entry.get("psi_days", 0) < entry["window_days"]
+            or not entry.get("belt")
         )
 
     todo = [x for x in sorted(dates, reverse=True) if stale(x)]
@@ -533,6 +540,7 @@ def run_ocean(
             key in entries
             and entries[key].get("window_days") == len(window)
             and entries[key].get("psi_days") == psi_days
+            and entries[key].get("belt")
         ):
             continue  # nothing new in its window
         daily = load_saved(saved(day))

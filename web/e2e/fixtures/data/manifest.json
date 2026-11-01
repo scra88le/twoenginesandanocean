@@ -1566,6 +1566,7 @@
    "2026-09-30": {
     "window_days": 12,
     "psi_days": 12,
+    "belt": true,
     "section": {
      "daily": true,
      "mean": false
@@ -1581,6 +1582,7 @@
    "2026-10-01": {
     "window_days": 30,
     "psi_days": 30,
+    "belt": true,
     "section": {
      "daily": true,
      "mean": true
@@ -1602,10 +1604,10 @@
   "info": {
    "summary": "The Atlantic overturning: warm water flowing north near the surface, cold water returning south at depth.",
    "source": "Copernicus Marine Service, Global Ocean Physics Analysis and Forecast (GLO12, GLOBAL_ANALYSISFORECAST_PHY_001_024), daily-mean eastward and northward currents (uo, vo) on 50 depth levels at 1/12\u00b0. A model that assimilates satellite sea level and sea-surface temperature, sea ice and Argo profiles: satellites see the surface, the model carries it to depth.",
-   "formula": "Upper limb 0\u20131,100 m, deep limb 1,100 m to the sea floor. For each limb, U = \u222bu dz and V = \u222bv dz (m\u00b2 s\u207b\u00b9, water carried per metre of width) and H, the thickness of water in it. Averaged onto 0.5\u00b0 with land as no flow. Particles move at the depth-mean velocity (U, V) / H; how densely they are drawn follows the transport |(U, V)|. The 26.5\u00b0 N figures integrate v across the Atlantic from Florida to Africa at full resolution: the overturning streamfunction \u03c8(z) = \u222b\u222b v dx dz from the surface down to z, and its maximum is the AMOC strength (1 Sv = 10\u2076 m\u00b3 s\u207b\u00b9).",
+   "formula": "Upper limb 0\u20131,100 m, deep limb 1,100 m to the sea floor. For each limb, U = \u222bu dz and V = \u222bv dz (m\u00b2 s\u207b\u00b9, water carried per metre of width) and H, the thickness of water in it. Averaged onto 0.5\u00b0 with land as no flow. Particles move at the depth-mean velocity (U, V) / H; how densely they are drawn follows the transport |(U, V)|. The 26.5\u00b0 N figures integrate v across the Atlantic from Florida to Africa at full resolution: the overturning streamfunction \u03c8(z) = \u222b\u222b v dx dz from the surface down to z, and its maximum is the AMOC strength (1 Sv = 10\u2076 m\u00b3 s\u207b\u00b9). The AMOC panel's latitude\u2013depth section repeats that sum at every latitude from 40\u00b0 S to 80\u00b0 N over the whole Atlantic basin, in 0.5\u00b0 latitude bins: \u03c8(lat, z) is the northward volume transport of the basin above depth z.",
    "sign": "Directions as on the map: north is up, east is right. Northward transport across 26.5\u00b0 N is positive.",
    "meaning": "The ocean is the engine's second carrier of heat. In the Atlantic, warm upper water flows north, gives its heat to the air at high latitudes, sinks, and returns south at depth. That overturning carries about 1 PW of heat north across 26.5\u00b0 N, part of why northwest Europe is mild. The overturning reverses near 1,100 m at 26.5\u00b0 N, which is where the two limbs are split; RAPID's moorings there measure about 17 Sv.",
-   "caveats": "The transport includes the wind-driven gyres and eddies, not only the overturning: the Gulf Stream carries far more than 17 Sv, most of it recirculating within the subtropics. A single day is dominated by eddies; the 30-day mean shows the pathways. The split at a fixed 1,100 m suits 26.5\u00b0 N and is approximate elsewhere. Model values, not observations: compare the 26.5\u00b0 N figure with RAPID's. GLO12 runs about a day behind real time; the overlay follows the map's dates.",
+   "caveats": "The transport includes the wind-driven gyres and eddies, not only the overturning: the Gulf Stream carries far more than 17 Sv, most of it recirculating within the subtropics. A single day is dominated by eddies; the 30-day mean shows the pathways. The split at a fixed 1,100 m suits 26.5\u00b0 N and is approximate elsewhere. Model values, not observations: compare the 26.5\u00b0 N figure with RAPID's. GLO12 runs about a day behind real time; the overlay follows the map's dates. The section's \u03c8 is taken from the surface down, so it ends at the net transport across the latitude (which should be near zero) and is not corrected for it; the Gulf of Mexico and Mediterranean are inside the basin mask.",
    "mask": "Grey: land, water outside the Atlantic, or less water in the limb than it needs (50 m for the upper limb, 200 m for the deep).",
    "anomaly": "No anomaly: GLO12 covers about the last two years, so there is no 1991\u20132020 normal."
   },

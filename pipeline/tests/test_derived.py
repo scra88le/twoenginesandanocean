@@ -367,3 +367,15 @@ def test_latitude_overturning_of_a_uniform_flow_and_a_closed_basin():
     v2[:, 4:, :] = np.nan
     psi2, wet2 = d.latitude_overturning(v2, depth, lat, lon, basin, np.array([10.0, 10.5]))
     assert (psi2[:, 1] == 0).all() and not wet2[:, 1].any() and wet2[:, 0].all()
+
+
+def test_limb_transports_by_latitude_split_the_column_at_the_given_depth():
+    depth = np.array([5.0, 15.0, 30.0])  # edges 0, 10, 22.5, 40
+    # psi at the bottom edges of the levels: 4 Sv at 10 m, 10 Sv at 22.5 m, 3 Sv at 40 m.
+    psi = np.array([[4.0, 0.0], [10.0, 0.0], [3.0, 0.0]])
+    upper, deep = d.limb_transports_by_latitude(psi, depth, split=22.5)
+    assert upper == pytest.approx([10.0, 0.0]) and deep == pytest.approx([-7.0, 0.0])
+    upper, deep = d.limb_transports_by_latitude(psi, depth, split=16.25)  # half-way: interpolated
+    assert upper == pytest.approx([7.0, 0.0]) and deep == pytest.approx([-4.0, 0.0])
+    # The two limbs always add up to the net transport of the column.
+    assert (upper + deep) == pytest.approx(psi[-1])

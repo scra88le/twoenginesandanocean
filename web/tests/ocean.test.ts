@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import {
-  amocTrend, amocTrendText, compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, parseSection, psiColour,
+  amocTrend, amocTrendText, beltBins, beltText, compassTo, describeLimb, hexToRgb, limbDepth, oceanAvailable, oceanCaption, oceanUrl, parseSection, psiColour,
   resolveAvg, sectionAvg, sectionStrength, sectionText, sectionUrl, type LimbMeta, type OceanMeta, type SectionGrid,
 } from '../src/ocean';
 
@@ -128,4 +128,36 @@ test('the section text names the strongest latitude and depth, and the figures a
   const lines = sectionText(parseSection(RAW, GRID), O);
   expect(lines[0]).toBe('Strongest overturning: 17.0 Sv at 0.0° N, 1,100 m deep.');
   expect(lines).toContain('The equator: 17.0 Sv at 1,100 m.');
+});
+
+test('the belt reads the limbs by latitude from the section file, and is empty for an older file', () => {
+  const sec = parseSection({ ...RAW, upper_sv: [12, 14, 16, 15, null], deep_sv: [-11, -13, -15, -14, null] }, GRID);
+  expect(sec.upper).toEqual([12, 14, 16, 15, NaN]);
+  expect(sec.deep[1]).toBe(-13);
+  expect(parseSection(RAW, GRID).upper).toEqual([]);
+  expect(beltBins(parseSection(RAW, GRID))).toEqual([]);
+  expect(() => parseSection({ ...RAW, upper_sv: [1, 2] }, GRID)).toThrow(/latitudes/);
+});
+
+test('belt bins average the latitudes inside them and are empty where the water is missing', () => {
+  const grid: SectionGrid = { lat0: 0, dlat: 1, n_lat: 10, depth_edges_m: [0, 10], unit_sv: 1 };
+  const raw = {
+    psi: [Array(10).fill(0)],
+    upper_sv: [10, 12, 14, 16, 18, 1, 2, null, null, null],
+    deep_sv: [-10, -12, -14, -16, -18, -1, -2, null, null, null],
+  };
+  const bins = beltBins(parseSection(raw, grid));
+  expect(bins.map((b) => b.lat)).toEqual([2.5, 7.5]);
+  expect(bins[0]!.upper).toBe(14);
+  expect(bins[0]!.deep).toBe(-14);
+  expect(bins[1]!.upper).toBeNaN(); // only two of its five latitudes have water: under half
+});
+
+test('the belt text gives each limb\'s size and direction at set latitudes', () => {
+  const grid: SectionGrid = { lat0: -40, dlat: 0.5, n_lat: 241, depth_edges_m: [0, 10], unit_sv: 1 };
+  const up = Array.from({ length: 241 }, (_, j) => (j === Math.round((26.5 + 40) / 0.5) ? 17.04 : 5));
+  const dn = up.map((x) => -x + 1);
+  const sec = parseSection({ psi: [Array(241).fill(0)], upper_sv: up, deep_sv: dn }, grid);
+  expect(beltText(sec, O)).toContain('26.5° N: upper limb 17.0 Sv north, deep limb 16.0 Sv south.');
+  expect(beltText(sec, O)).toContain('The equator: upper limb 5.0 Sv north, deep limb 4.0 Sv south.');
 });

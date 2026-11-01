@@ -193,7 +193,7 @@ def test_encode_ocean_adds_the_mean_files(day):
 
 
 def test_the_section_peaks_at_the_split_and_agrees_with_the_26n_figure(day):
-    rows = json.loads(ocean.encode_section(day.psi, day.psi_wet))["psi"]
+    rows = json.loads(ocean.encode_section(day.psi, day.psi_wet, day.depth))["psi"]
     assert len(rows) == day.psi.shape[0] and len(rows[0]) == len(ocean.SECTION_GRID_LAT)
     k = int(np.argmin(abs(ocean.SECTION_GRID_LAT - ocean.SECTION_LAT)))
     column = day.psi[:, k]
@@ -411,3 +411,28 @@ def test_days_saved_without_the_section_are_fetched_again_and_the_entry_says_so(
     assert fake.days == [LATEST] and r.built == [LATEST.isoformat()]
     entry = json.loads((out / "manifest.json").read_text())["ocean"]["dates"][LATEST.isoformat()]
     assert entry["psi_days"] == 1
+
+
+def test_the_section_file_carries_the_limbs_by_latitude(day):
+    body = json.loads(ocean.encode_section(day.psi, day.psi_wet, day.depth))
+    k = int(np.argmin(abs(ocean.SECTION_GRID_LAT - ocean.SECTION_LAT)))
+    # The synthetic flow reverses at 1100 m (a level edge): at 26.5 N the limbs agree with the
+    # section's own figures, and together they are the column's net transport.
+    assert body["upper_sv"][k] == pytest.approx(day.section["amoc_upper_sv"], rel=0.15)
+    assert body["deep_sv"][k] == pytest.approx(day.section["amoc_deep_sv"], rel=0.2)
+    assert body["upper_sv"][k] + body["deep_sv"][k] == pytest.approx(day.psi[-1, k], abs=0.02)
+    assert body["upper_sv"][0] is None and body["deep_sv"][0] is None  # 40 S: no water
+
+
+def test_a_date_built_before_the_belt_is_rebuilt_without_a_download(tmp_path):
+    out = _out(tmp_path, [LATEST])
+    fake, work = Fake(), tmp_path / "work"
+    ocean.run_ocean(out, work, max_fetch=40, fetch=fake.fetch, load=fake.load)
+    m = json.loads((out / "manifest.json").read_text())
+    m["ocean"]["dates"][LATEST.isoformat()].pop("belt")
+    (out / "manifest.json").write_text(json.dumps(m))
+    fake.days.clear()
+    r = ocean.run_ocean(out, work, max_fetch=1, fetch=fake.fetch, load=fake.load)
+    assert fake.days == [] and r.built == [LATEST.isoformat()]
+    body = json.loads((out / "ocean" / LATEST.isoformat() / "section.json").read_text())
+    assert "upper_sv" in body
