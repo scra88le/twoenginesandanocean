@@ -539,3 +539,165 @@ def section_transport(vv, lon_deg, lat_deg: float) -> float:
     return float(
         np.nansum(np.asarray(vv, dtype="float64")) * _section_dx(lon_deg, lat_deg) / SVERDRUP
     )
+
+
+# ---- the technosphere: Kleidon's free-energy cascade -----------------------------------
+#
+# Humanity's primary power P is free energy taken from the Earth's engines (and from the
+# fossil store, which is the biosphere's past output). It is counted direct-equivalent: the
+# fuel's energy for fossil fuel and biofuel, the reactor or furnace heat for nuclear and
+# thermal renewables, and the electricity itself for wind, sunlight and falling water, which
+# arrive as free energy rather than heat. P splits into useful work W_u (exergy delivered at
+# end uses) and waste heat; W_u becomes heat too, so all of P ends as heat radiated to space.
+#
+# The efficiencies are indicative world values (after De Stercke 2014, Paoli & Cullen 2020,
+# and the IEA's physical-content conventions), kept here so the info panels quote them.
+
+HOURS_PER_YEAR = 8766.0  # 365.25 days
+
+NUCLEAR_EFFICIENCY = 0.33  # electricity / reactor heat (Energy Institute, IEA)
+THERMAL_RENEWABLE_EFFICIENCY = 0.33  # bioenergy and geothermal power, electricity / heat in
+FOSSIL_GENERATION_EFFICIENCY = 0.38  # fossil power stations, electricity / fuel, world mean
+ELEC_INDUSTRY_SHARE = 0.45  # of delivered electricity; the rest goes to buildings (and other)
+
+SOURCES = (
+    "coal", "oil", "gas", "biofuel", "nuclear", "hydro", "wind", "solar", "other_renewable",
+)  # fmt: skip
+# Sources reported as primary energy (fuel), and as electricity generated.
+FUEL_SOURCES = ("coal", "oil", "gas", "biofuel")
+FOSSIL_SOURCES = ("coal", "oil", "gas")
+
+# The engine each source draws on. Fossil fuel is the biosphere's stored past output.
+SOURCE_ENGINE = {
+    "coal": "fossil", "oil": "fossil", "gas": "fossil",
+    "biofuel": "biosphere", "other_renewable": "biosphere",
+    "hydro": "water", "wind": "atmosphere", "solar": "radiation", "nuclear": "none",
+}  # fmt: skip
+ENGINES = ("fossil", "biosphere", "water", "atmosphere", "radiation", "none")
+
+# Fossil fuel use by sector (shares from EDGAR's sector emissions, per country).
+SECTORS = ("power", "industry", "transport", "buildings")
+
+# The pieces P is made of, each placed on the map where its heat is released.
+COMPONENTS = (
+    "losses_fossil",  # conversion losses at fossil power stations
+    "losses_nuclear",  # at nuclear power stations
+    "losses_renewable",  # at bioenergy and geothermal power stations
+    "elec_industry",  # delivered electricity, dissipated where it is used
+    "elec_buildings",
+    "fuel_industry",  # fuel burnt at the point of use
+    "fuel_transport",
+    "fuel_buildings",
+    "fuel_bunkers",  # international aviation and shipping
+)
+
+# Useful work (exergy) per unit of each component, final to useful, indicative world values.
+USEFUL_FRACTION = {
+    "losses_fossil": 0.0,
+    "losses_nuclear": 0.0,
+    "losses_renewable": 0.0,
+    "elec_industry": 0.55,  # motors dominate
+    "elec_buildings": 0.30,  # lighting, appliances, low-temperature heat
+    "fuel_industry": 0.30,  # process heat
+    "fuel_transport": 0.20,  # vehicle engines, tank to wheel
+    "fuel_buildings": 0.10,  # low-temperature space and water heat
+    "fuel_bunkers": 0.25,  # marine diesels and jet engines
+}
+
+
+def twh_per_year_to_watts(twh):
+    """TWh per year -> mean power in W (a year of 365.25 days: 8766 TWh/yr is 1 TW)."""
+    x = np.asarray(twh, dtype="float64") * 1e12 / HOURS_PER_YEAR
+    return float(x) if x.ndim == 0 else x
+
+
+def direct_equivalent(sources: dict[str, float]) -> dict[str, float]:
+    """Primary power by source, direct-equivalent, from the Energy Institute's columns: primary
+    energy for the fuels (coal, oil, gas, biofuel) and electricity generated for the rest.
+    Nuclear and thermal renewables count their heat (electricity / efficiency); wind, solar
+    and hydro their electricity. Units pass through; missing sources are zero."""
+    unknown = set(sources) - set(SOURCES)
+    if unknown:
+        raise KeyError(f"unknown sources: {sorted(unknown)}")
+    p = {s: float(sources.get(s, 0.0)) for s in SOURCES}
+    p["nuclear"] /= NUCLEAR_EFFICIENCY
+    p["other_renewable"] /= THERMAL_RENEWABLE_EFFICIENCY
+    return p
+
+
+def by_engine(primary: dict[str, float]) -> dict[str, float]:
+    """Primary power summed by the engine each source draws on."""
+    out = dict.fromkeys(ENGINES, 0.0)
+    for s, v in primary.items():
+        out[SOURCE_ENGINE[s]] += v
+    return out
+
+
+def plant_split(fuel, efficiency: float):
+    """Fuel (or heat) into a power station -> (electricity out, conversion losses)."""
+    if not 0.0 <= efficiency <= 1.0:
+        raise ValueError(f"efficiency must be in 0-1, got {efficiency}")
+    elec = fuel * efficiency
+    return elec, fuel - elec
+
+
+def remove_pro_rata(values: dict[str, float], total: float) -> tuple[dict, dict]:
+    """Take `total` from `values` in proportion to each: (kept, taken). Used to move the
+    international bunker fuel out of the countries' oil."""
+    have = sum(values.values())
+    if total > have * (1 + 1e-12):
+        raise ValueError(f"cannot take {total} from {have}")
+    f = total / have if have > 0 else 0.0
+    taken = {k: v * f for k, v in values.items()}
+    return {k: v - taken[k] for k, v in values.items()}, taken
+
+
+def national_components(
+    primary: dict[str, float], fossil_shares: dict[str, float] | None
+) -> dict[str, float]:
+    """A country's direct-equivalent primary power by source -> its components (all but the
+    bunkers, which are global). `fossil_shares` splits fossil fuel between power, industry,
+    transport and buildings and must sum to 1 (it may be None when there is no fossil fuel).
+    Sums to the country's primary power exactly."""
+    fossil = sum(primary.get(s, 0.0) for s in FOSSIL_SOURCES)
+    if fossil > 0 or fossil_shares is not None:
+        if fossil_shares is None or set(fossil_shares) != set(SECTORS):
+            raise ValueError(f"fossil_shares needs exactly {SECTORS}")
+        if abs(sum(fossil_shares.values()) - 1.0) > 1e-9:
+            raise ValueError("fossil_shares must sum to 1")
+    shares = fossil_shares or dict.fromkeys(SECTORS, 0.0)
+
+    fossil_elec, losses_fossil = plant_split(fossil * shares["power"], FOSSIL_GENERATION_EFFICIENCY)
+    nuclear_elec, losses_nuclear = plant_split(primary.get("nuclear", 0.0), NUCLEAR_EFFICIENCY)
+    renew_elec, losses_renew = plant_split(
+        primary.get("other_renewable", 0.0), THERMAL_RENEWABLE_EFFICIENCY
+    )
+    elec = (
+        fossil_elec + nuclear_elec + renew_elec
+        + primary.get("hydro", 0.0) + primary.get("wind", 0.0) + primary.get("solar", 0.0)
+    )  # fmt: skip
+    return {
+        "losses_fossil": losses_fossil,
+        "losses_nuclear": losses_nuclear,
+        "losses_renewable": losses_renew,
+        "elec_industry": elec * ELEC_INDUSTRY_SHARE,
+        "elec_buildings": elec * (1 - ELEC_INDUSTRY_SHARE),
+        "fuel_industry": fossil * shares["industry"],
+        "fuel_transport": fossil * shares["transport"] + primary.get("biofuel", 0.0),
+        "fuel_buildings": fossil * shares["buildings"],
+    }
+
+
+def cascade(components: dict[str, np.ndarray]):
+    """Components (W m-2, any shape) -> (primary power P, useful work, waste heat).
+    Useful work is each component times its useful fraction; waste heat is the rest, so
+    work + heat = P in every cell."""
+    unknown = set(components) - set(COMPONENTS)
+    if unknown:
+        raise KeyError(f"unknown components: {sorted(unknown)}")
+    arrays = [np.asarray(v, dtype="float64") for v in components.values()]
+    p = np.sum(arrays, axis=0)
+    work = np.sum(
+        [USEFUL_FRACTION[k] * a for k, a in zip(components, arrays, strict=True)], axis=0
+    )
+    return p, work, p - work

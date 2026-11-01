@@ -13,6 +13,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 ## Working rules for Claude
 
 - Current work: docs/PROPOSALS-v2.md, milestones 14–22. Where it conflicts with this file, the proposal wins
+- Technosphere work (milestones 24–27, requested 2026-11-01): Kleidon's free-energy cascade for human energy use, filling the Humans group. It overrides the proposal's "human layers stay skipped".
 - Work milestone by milestone (see **Milestones**). Finish one, run its tests, then stop and summarise before starting the next.
 - **Test-first** for `pipeline.derived`, unit/sign conversions and encoding round-trips.
 - All physics formulas live in **one module**, `pipeline.derived` (`pipeline/src/pipeline/derived.py`). Do not reimplement formulas in the front end. The front end only decodes and displays.
@@ -28,7 +29,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 
 ```
 /pipeline/pyproject.toml
-/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, climatology.py, publish.py, validate.py, run.py, store.py, deploy.py, daily.py, ocean.py, cli.py
+/pipeline/src/pipeline Python package: fetch.py, load.py, convert.py, tidy.py, derived.py, layers.py, info.py, encode.py, points.py, climatology.py, publish.py, validate.py, run.py, store.py, deploy.py, daily.py, ocean.py, human.py, cli.py
 /pipeline/tests        pytest
 /out                   local build output (git-ignored); the data root for `npm run dev`
 /web                   Vite + TypeScript front end
@@ -69,6 +70,7 @@ python -m pipeline.cli upload --store s3://BUCKET --out ./out        # publish a
 python -m pipeline.cli daily --store s3://BUCKET [--days 10]         # the daily job: collect/submit, build, validate, publish
 pip install -e "./pipeline[ocean]"                                   # the ocean overlay needs the copernicusmarine toolbox
 python -m pipeline.cli ocean [--store s3://BUCKET] [--max-fetch 15]  # AMOC overlay for the published dates (Copernicus Marine GLO12)
+python -m pipeline.cli human-static [--fetch] [--inputs raw/human] [--year YYYY]  # technosphere: annual 0.5° component grids -> work/human/human_YEAR.nc + summary_YEAR.json
 
 # Front end
 cd web && npm install
@@ -108,8 +110,10 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | ERA5 hourly single levels | CDS `reanalysis-era5-single-levels` | Fallback for variables missing from the daily product | ~5 days |
 | ERA5 pressure-level daily statistics | CDS `derived-era5-pressure-levels-daily-statistics` (ID confirmed 2026-10-17; `daily_mean` only) | 250 hPa winds | ~6 days |
 | ERA5 monthly means | CDS `reanalysis-era5-single-levels-monthly-means`, `reanalysis-era5-pressure-levels-monthly-means` (250 hPa winds) | 1991–2020 monthly climatology | one-off |
-| Anthropogenic heat flux | Gridded global dataset, **to be chosen** (see Open questions) | `human_q` | static |
-| Our World in Data energy | CSV, CC BY | Fallback human layer: country totals spread over land area | annual |
+| Our World in Data energy (`owid/energy-data` on GitHub) | CSV, CC BY; Energy Institute fuels, Ember electricity | Technosphere: national primary energy by source (`pipeline.human`) | annual (fuels for ~80 countries) |
+| EDGAR 2024 GHG CO2 sector gridmaps (`jeodpp.jrc.ec.europa.eu`, `bkl_*` sectors) | NetCDF in zips, CC BY 4.0 | Technosphere: fossil sector shares per country and spatial placement; bunkers = transport over the open ocean | annual (monthly files summed), to 2023 |
+| WRI Global Power Plant Database (`wri/global-power-plant-database` on GitHub) | CSV, CC BY 4.0 | Technosphere: where nuclear and bioenergy/geothermal conversion losses are released | static (2021) |
+| Natural Earth admin-0 countries 1:50m (`nvkelso/natural-earth-vector` on GitHub) | GeoJSON, public domain | Technosphere: country land area per 0.5° cell | static |
 | ENTSO-E Transparency | REST API, token | Later only: European daily wind/solar output | ~1 day |
 | Copernicus Marine GLO12 | `copernicusmarine` toolbox, free account (`COPERNICUSMARINE_SERVICE_USERNAME`/`_PASSWORD`); `GLOBAL_ANALYSISFORECAST_PHY_001_024`, dataset `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m` | The ocean overlay: daily-mean `uo`, `vo`, 50 levels, 1/12°, Atlantic box | ~1 day |
 
@@ -216,6 +220,15 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 
 **Later (not MVP):** maximum-power evaporation, LE_opt = s / (s + γ) · J_opt, mapped against actual LE.
 
+**The technosphere: Kleidon's free-energy cascade** (milestone 24; `derived` section "the technosphere", data handling in `pipeline.human`).
+
+- Primary power P is counted **direct-equivalent**: fuel energy for coal, oil, gas and biofuel; heat for nuclear and thermal renewables (electricity ÷ 0.33); electricity for wind, solar and hydro, which arrive as free energy rather than heat. 8 766 TWh per year = 1 TW.
+- Each source is tagged with the engine it draws on: fossil (the biosphere's stored past output), biosphere, water, atmosphere, radiation, or none (nuclear).
+- P is split into components, each placed where its heat is released: conversion losses at power stations (fossil plants at 38 %), delivered electricity (45 % industry, 55 % buildings) and fuel burnt in industry, transport, buildings and international bunkers.
+- Useful work = Σ component × useful fraction (indicative final-to-useful exergy: electricity 0.55 in industry and 0.30 in buildings; fuel 0.30 industry, 0.20 transport, 0.10 buildings, 0.25 bunkers; conversion losses 0). Waste heat = P − useful work, so work + heat = P in every cell (tested).
+- Fixtures: 8 766 TWh/yr → 1 TW; 330 TWh of nuclear electricity → 1 000 TWh of heat; the 2024 world mix gives P ≈ 18.7 TW and a useful fraction of 15–30 %.
+- National totals are conserved through placement (tested); countries without a polygon are reported as unplaced.
+
 ## Pipeline: daily run order
 
 `pipeline.cli daily` (`pipeline.daily.run_daily`), on a runner that is gone afterwards, so everything it needs comes from the object store:
@@ -292,7 +305,7 @@ Point and series chunks are little-endian uint16 and use the same per-layer pack
 ### One-off jobs
 
 - Monthly climatology from ERA5 monthly means (`reanalysis-era5-single-levels-monthly-means`), 1991–2020, for every raw input of the anomaly layers (`pipeline.climatology`). Since 2026-10-24 a second set of requests, merged by key (`climatology.Part`: `SURFACE` = `str` and the 10/100 m winds, `PRESSURE` = 250 hPa `u`, `v` from `reanalysis-era5-pressure-levels-monthly-means`), adds `lw_up` and the winds without re-fetching the first 12 keys; `climatology --partial` publishes from the parts that have arrived. Six requests of five years × 12 inputs (cost 2 880 each, limit 20 000; ~1 GB each), at most two queued. Each is reduced on arrival to per-calendar-month sums on the 0.5° grid through the same conversion as the daily data (`work/clim/sums_*.nc`, ~220 MB) and the download deleted. Accumulated fields are stamped 06:00 on the 1st, others 00:00, so fields are matched by month. Derived climatologies apply the layer formulas to the monthly means. Accumulated fields in the monthly-means product are **mean daily accumulations** (J m⁻² per day, `GRIB_stepType=avgad`; checked 2026-10-17: October 2025 `tsr` ÷ 86 400 = 245.4 W m⁻²), so the daily conversions apply unchanged.
-- `human_q` from the chosen dataset, regridded to 0.5° by area-weighted averaging.
+- Technosphere annual grids (`human-static`, milestone 24): national energy from OWID, sector shares and placement from EDGAR and the WRI plant database, country areas from Natural Earth, all at 0.5°. Writes `work/human/human_{year}.nc` (nine components, W m⁻²) and `summary_{year}.json` (TW by source, engine and component, fallbacks, unplaced countries). Without EDGAR it still runs, with world-average sector shares and land-area placement, and warns: a smoke run only, not for publishing.
 
 ## Front end behaviour
 
@@ -509,6 +522,11 @@ Phone layout under 700 px:
 
 23. Ocean overlay (docs/PROPOSALS-v2.md F14): (**Code and tests done** 2026-10-31, see `docs/DECISIONS.md`: `pipeline.ocean`, the AMOC formulas in `pipeline.derived`, `ocean` CLI command and daily job, the coloured and density-weighted particle layer, controls, legend, URL state, fixtures. **Open:** never run against Copernicus Marine (unreachable from the sandbox it was written in); needs the two secrets and a first run, then the checks listed in the decision entry.)
 
+24. Technosphere foundations: (**Code and tests done** 2026-11-01, see `docs/DECISIONS.md`. Cascade formulas in `pipeline.derived` (test-first), `pipeline.human` (OWID parser with world-total conservation, country raster, EDGAR and plant loaders, allocation with fallbacks and bunkers) and the `human-static` command. Real 2024 run without EDGAR: P 18.65 TW, useful work 3.86 TW (21 %), waste heat 14.79 TW. **Open:** EDGAR is unreachable from the sandbox it was written in, so the loader is tested on synthetic files only; needs a first run with `--fetch`.)
+25. Technosphere daily layers (planned): `human_q`, `human_work`, `human_heat`, `human_ratio` for every date from 2026-07-28, shaped by ERA5 skin temperature; daily job; manifest `kind` flow/stock.
+26. Wealth stock (planned): `human_wealth` (Garrett, accumulated real output), P ÷ λ in the readout.
+27. Technosphere front end (planned): the cascade presentation, flows and stock kept apart; the readout's Humans row.
+
 ## Acceptance criteria
 
 - [ ] The daily job runs unattended for 7 consecutive days, with a new date each day. (**Open:** one manual run on GitHub's runners succeeded on 2026-10-23 (credentials checked, state downloaded in 80 s, four new dates requested, state saved to the bucket), but the schedule has not yet run unattended for 7 days. Its logic is also tested end to end against a local folder and fake CDS and S3 clients.)
@@ -528,7 +546,7 @@ Phone layout under 700 px:
 
 | Item | Risk or question | Proposed handling |
 | --- | --- | --- |
-| Human energy data | **Skipped 2026-10-19.** Which gridded anthropogenic heat flux dataset, and is its licence compatible? | Shortlist published datasets (e.g. Varquez et al., 2021, *Scientific Data*). Fall back to OWID country totals. |
+| Human energy data | **Decided 2026-11-01:** build it ourselves (milestone 24) from free data, as Kleidon's cascade rather than a heat-flux dataset | OWID national energy + EDGAR sector grids + WRI power plants + Natural Earth; see Data sources |
 | `div_e` noise | Daily 0.5° `p86.162` is dominated by grid-scale noise | **Decided 2026-10-18:** smooth with implicit diffusion (see Derived quantities) |
 | `flux_e` content | Raw `p75.162`/`p76.162` are dominated by circulation that carries no energy poleward | **Decided 2026-10-18:** draw only the divergent part, from smoothed `div_e` |
 | KE generation | No direct ERA5 field; `bld` covers boundary-layer friction only | Later: check the definition of `p64.162`, or compute pressure-gradient work |
