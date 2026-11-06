@@ -8,8 +8,9 @@ comes from the object store and everything it produces goes back there. One run:
    yesterday's site stays as it is. (The credentials need their own check: CDS serves the
    collection metadata without a key, so a bad key would otherwise only fail at the first
    request, and not at all on a day with nothing to request.)
-2. Download the state: manifest, validation log, in-flight request IDs, the climatology and the
-   scalar maps of the published dates.
+2. Download the state: manifest, validation log, in-flight request IDs, the climatology, the
+   scalar maps of the published dates, and the technosphere's grids (`state/human/`), from
+   which each new date gets its human layers.
 3. Run one backfill pass over the last `days` dates (never waiting on the queue): collect
    finished requests, submit missing ones, and build, validate and publish every date whose
    archives are all there, then rebuild the series.
@@ -58,7 +59,7 @@ def run_daily(
     c.check_authentication()
     latest = latest_available(c)
     log(f"latest ERA5 daily date: {latest}")
-    download_state(store, raw, out, log)
+    download_state(store, raw, out, log, work=work)
     try:
         passes = backfill(
             c, latest, days, raw, work, out, wait=False,

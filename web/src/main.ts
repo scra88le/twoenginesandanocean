@@ -639,7 +639,8 @@ class App {
       lut: lutBytes(view.colour), hatchZero: view.hatch_zero,
     });
     const notes = resolved.switched ? [switchNote(mode)] : [];
-    this.legend.show(view, scale, notes, mode === 'anom', timescaleText(mode, frame, date, clim?.period ?? '1991-2020'));
+    const label = this.manifest.layers[layer]?.climate_label;
+    this.legend.show(view, scale, notes, mode === 'anom', timescaleText(mode, frame, date, clim?.period ?? '1991-2020', label));
     this.codes = codes;
     this.view = view;
     this.layerId = layer;

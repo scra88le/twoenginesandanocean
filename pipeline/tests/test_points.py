@@ -31,8 +31,21 @@ def test_there_are_648_tiles_of_20_by_20_cells():
     assert len(point_tiles({})) == 648
 
 
-def test_point_fields_are_the_layers_then_the_readout_extras():
-    assert POINT_FIELDS == (*LAYERS, "t_skin", "j_opt")
+# The point chunks published before milestone 25, field by field: never reorder these.
+LEGACY = (
+    "asr_toa", "asr_sfc", "net_toa", "olr", "t_emit", "carnot", "g_max", "j_conv", "j_ratio",
+    "lh", "sh", "evap_frac", "wind10", "wind100", "jet250", "ke_col", "diss_bl", "tcwv",
+    "precip", "p_lift", "div_e", "flux_e", "human_q", "human_ratio", "net_sfc",
+    "t_skin", "j_opt",
+)  # fmt: skip
+
+
+def test_point_fields_extend_the_legacy_layout_with_the_late_layers():
+    from pipeline.points import LEGACY_POINT_FIELDS
+
+    assert LEGACY_POINT_FIELDS == LEGACY
+    assert POINT_FIELDS == (*LEGACY, "human_work", "human_heat")
+    assert set(POINT_FIELDS) == {*LAYERS, "t_skin", "j_opt"}
 
 
 def test_a_point_tile_holds_every_field_for_its_cells_little_endian():

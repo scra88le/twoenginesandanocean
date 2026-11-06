@@ -1,0 +1,70 @@
+name: Technosphere grids
+
+# Builds the technosphere's grids (pipeline.human, milestones 24-25): national energy from Our
+# World in Data, countries from Natural Earth, power stations from the WRI database, and the
+# sector shares, placement and monthly shape from EDGAR's monthly CO2 sector gridmaps. EDGAR's
+# zips are several GB each; they are streamed to disk one at a time, the factor years
+# extracted and reduced to 0.5 degree, and the zip deleted, so the runner's disk is enough.
+# The result goes to the store (state/human/), where the daily job finds it and gives each
+# new date its human layers.
+#
+# Run it by hand once a year, after the Energy Institute's Statistical Review (June) reaches
+# Our World in Data, or when EDGAR publishes a new release. Then, on the machine with the data
+# root: `python -m pipeline.cli human --out ./out --store s3://BUCKET` (adds the layers to the
+# published dates and the climate frames) and `python -m pipeline.cli upload --store ...`.
+# See docs/DEPLOY.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: Energy year (empty for the latest complete one)
+        default: ""
+
+concurrency:
+  group: technosphere-grids
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  grids:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      STORE_URL: ${{ vars.STORE_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
+      AWS_DEFAULT_REGION: auto
+      YEAR: ${{ inputs.year }}
+    steps:
+      - name: Check the configuration
+        run: |
+          missing=""
+          for name in STORE_URL AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Not set:$missing. See docs/DEPLOY.md."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+      - run: pip install -e "./pipeline[deploy]"
+      - name: Build the grids and put them in the store
+        run: |
+          df -h .
+          python -m pipeline.cli human-static --fetch --store "$STORE_URL" ${YEAR:+--year "$YEAR"}
+          df -h .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: technosphere-summary
+          path: work/human/summary_*.json
+          if-no-files-found: ignore

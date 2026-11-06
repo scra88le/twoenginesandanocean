@@ -1,4 +1,5 @@
-"""Command-line entry point: fetch, build, backfill, climatology, daily, ocean, upload."""
+"""Command-line entry point: fetch, build, backfill, climatology, daily, ocean, human-static,
+human, upload."""
 
 import argparse
 import os
@@ -98,6 +99,30 @@ def build_parser() -> argparse.ArgumentParser:
     backfill.add_argument("--raw", type=Path, default=Path("raw"))
     backfill.add_argument("--work", type=Path, default=Path("work"))
     backfill.add_argument("--wait", action="store_true", help="keep going until nothing is pending")
+
+    human = sub.add_parser(
+        "human-static",
+        help="build the technosphere's annual component grids (work/human/human_YEAR.nc)",
+    )
+    human.add_argument("--inputs", type=Path, default=Path("raw/human"), help="input folder")
+    human.add_argument("--year", type=int, help="energy year (default: the latest complete one)")
+    human.add_argument("--edgar", type=Path, help="EDGAR gridmaps (default: INPUTS/edgar)")
+    human.add_argument("--work", type=Path, default=Path("work"))
+    human.add_argument("--fetch", action="store_true", help="download missing inputs first")
+    human.add_argument(
+        "--no-edgar", action="store_true", help="with --fetch: skip EDGAR (smoke runs only)"
+    )
+    human.add_argument("--store", help="then put the grids in s3://BUCKET/state/human/")
+
+    apply = sub.add_parser(
+        "human",
+        help="add the human layers to published dates and the climate frames of --out",
+    )
+    apply.add_argument("--out", type=Path, default=Path("out"))
+    apply.add_argument("--work", type=Path, default=Path("work"))
+    apply.add_argument("--start", default=None, help="first date (default 2026-07-28)")
+    apply.add_argument("--force", action="store_true", help="redo dates that have them")
+    apply.add_argument("--store", help="then put the grids and normals in state/human/")
     return parser
 
 
@@ -272,6 +297,49 @@ def _fetch_str(args: argparse.Namespace) -> int:
     return 0 if left == 0 else 1
 
 
+def _human_static(args: argparse.Namespace) -> int:
+    from . import human
+
+    if args.fetch:
+        human.fetch_inputs(args.inputs, edgar=not args.no_edgar)
+    ds, summary = human.build_static(args.inputs, args.year, args.edgar)
+    path = human.write_static(ds, summary, args.work)
+    print(
+        f"human-static {summary['year']}: P {summary['primary_tw']:.2f} TW, useful work "
+        f"{summary['useful_work_tw']:.2f} TW ({summary['useful_fraction']:.0%}), waste heat "
+        f"{summary['waste_heat_tw']:.2f} TW, unplaced {summary['unplaced_tw']:.3f} TW -> {path}"
+    )
+    if summary["edgar_year"] is None:
+        print("::warning::no EDGAR gridmaps: sector shares and placement used fallbacks")
+    if not summary["factor_years"]:
+        print("::warning::no complete EDGAR months: the monthly frames are flat")
+    if args.store:
+        from .store import open_store
+
+        human.upload_static(open_store(args.store), args.work)
+    return 0
+
+
+def _human(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from . import human
+
+    start = date.fromisoformat(args.start) if args.start else human.HUMAN_START
+    if args.store:  # grids built elsewhere (the Technosphere grids workflow): fetch them first
+        from .store import open_store
+
+        human.download_static(open_store(args.store), args.work)
+    counts = human.apply_to_out(
+        args.out, args.work, start, force=args.force, log=lambda m: print(m, flush=True)
+    )
+    if args.store:
+        from .store import open_store
+
+        human.upload_static(open_store(args.store), args.work)
+    return 1 if counts["skipped"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "fetch":
@@ -296,6 +364,10 @@ def main(argv: list[str] | None = None) -> int:
         return _ocean(args)
     if args.command == "climatology":
         return _climatology(args)
+    if args.command == "human-static":
+        return _human_static(args)
+    if args.command == "human":
+        return _human(args)
     print(f"{args.command}: not implemented yet", file=sys.stderr)
     return 1
 

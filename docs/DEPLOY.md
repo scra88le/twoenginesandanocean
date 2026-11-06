@@ -146,6 +146,25 @@ or run **Actions → Daily build** with `ocean_days` set to 60 twice.
 - **The ocean overlay** is a second job in the same workflow, after the ERA5 build and never at the
   same time (both write the manifest). It runs even when the build failed, and a day it cannot
   download is logged as an error, retried the next run, and does not stop the other dates.
+- **The human layers** (the technosphere, milestones 24–25) come from grids kept in the store
+  (`state/human/`): `human_YEAR.nc` (the energy year's components and monthly frames, ~5 MB)
+  and `t_normal.nc` (the 1991–2020 monthly skin temperature). The daily job downloads them and
+  gives each new date `human_q`, `human_work`, `human_heat` and `human_ratio`; a date whose human
+  layers fail their check (world primary power outside 12–25 TW) still publishes without them.
+  Without the grids the daily job simply builds no human layers. Once a year, after the Energy
+  Institute's Statistical Review reaches Our World in Data (about July):
+  1. Actions → Technosphere grids → Run workflow (leave the year empty for the latest complete
+     one). It downloads EDGAR's monthly sector zips (several GB, one at a time, reduced to 0.5°
+     as they arrive), builds the grids and puts them in the store. Its summary JSON is attached
+     to the run: check `edgar_year`, `factor_years`, `default_shares` (should be empty for the
+     ~80 countries with a fuel breakdown) and `primary_tw` (about 18–19 TW).
+  2. On the laptop with the data root: `python -m pipeline.cli human --out ./out --store
+     s3://BUCKET` takes the grids from the store, adds the human layers to every published date
+     from 2026-07-28 that lacks them (`--force` redoes them all) and to the 13 climate frames,
+     and writes `t_normal.nc` from the climate point chunks and puts it in the store.
+  3. `python -m pipeline.cli upload --store s3://BUCKET` publishes the result, manifest last.
+  `human-static --fetch` on the laptop does step 1 locally instead (it needs about 5 GB free
+  while a zip is being read).
 - **Change what a date contains** (a new layer, a different encoding): `rebuild` re-runs every
   published date from the cached tidy files in `./work` and `upload` publishes the result.
   Dates whose tidy file has expired need `backfill` again.

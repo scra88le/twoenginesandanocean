@@ -24,6 +24,7 @@ from .store import Store, file_md5
 
 MANIFEST = "manifest.json"
 STATE_KEY = "state/pending.json"
+HUMAN_PREFIX = "state/human/"  # the technosphere grids and normals (pipeline.human)
 LOG_KEY = "logs/global_means.csv"
 WORKERS = 16
 _CLIM_MAP = re.compile(r"clim/\d\d/\w+(?<!_uv)\.png")  # the monthly maps, not the vectors
@@ -120,8 +121,13 @@ def download_state(
     out: Path,
     log: Callable[[str], None] = lambda _m: None,
     workers: int = WORKERS,
+    work: Path | None = None,
 ) -> dict | None:
-    """Fetch what a daily run needs. Returns the stored manifest, or None for an empty store."""
+    """Fetch what a daily run needs. Returns the stored manifest, or None for an empty store.
+    With `work`, also the technosphere's grids and normals (`state/human/` -> work/human/)."""
+    if work is not None:
+        for key in store.list(HUMAN_PREFIX):
+            store.get(key, work / "human" / key.removeprefix(HUMAN_PREFIX))
     if not store.get(MANIFEST, out / MANIFEST):
         log("the store has no manifest yet: starting from nothing")
         return None
