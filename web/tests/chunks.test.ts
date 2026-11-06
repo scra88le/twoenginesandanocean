@@ -90,3 +90,14 @@ test('missing dates become gaps, so the chart never joins across them', () => {
   expect(ys.map((y) => (y === null ? null : Math.round(y)))).toEqual([250, null, null, null, 260]);
   expect(seriesData([], new Uint16Array(0), enc)).toEqual([[], []]);
 });
+
+test('a chunk from before later fields were added reads them as no data', () => {
+  const full = read('points/2026-10-01/18_5.bin');
+  const fields = [...points.fields, 'human_work', 'human_heat'];
+  const now = pointCodes(full, points.fields, 20, 7);
+  const later = pointCodes(full, fields, 20, 7);
+  for (const f of points.fields) expect(later.get(f)).toBe(now.get(f));
+  expect(later.get('human_work')).toBe(0);
+  expect(later.get('human_heat')).toBe(0);
+  expect(() => pointCodes(new ArrayBuffer(full.byteLength + 800), points.fields, 20, 0)).toThrow(/bytes/);
+});

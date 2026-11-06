@@ -76,6 +76,10 @@ test('the legend names the timescale', () => {
   expect(timescaleText('climate', 'year', '2026-10-17', '1991-2020')).toBe('Annual mean, 1991–2020');
   expect(timescaleText('today', '07', '2026-10-17', '1991-2020')).toBe('2026-10-17');
   expect(timescaleText('anom', '07', '2026-10-17', '1991-2020')).toBe('2026-10-17 minus the October 1991–2020 mean');
+  // the human layers: present-day typical months, not a 1991-2020 mean
+  expect(timescaleText('climate', '07', '2026-10-17', '1991-2020', '2024 energy use')).toBe('2024 energy use, typical July');
+  expect(timescaleText('climate', 'year', '2026-10-17', '1991-2020', '2024 energy use')).toBe('2024 energy use, annual mean');
+  expect(timescaleText('today', '07', '2026-10-17', '1991-2020', '2024 energy use')).toBe('2026-10-17');
 });
 
 test('there are 13 frames, stepping stops at the ends, and play loops January to December', () => {

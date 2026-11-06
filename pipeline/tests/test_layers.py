@@ -8,6 +8,7 @@ SPEC_IDS = [
     "asr_toa", "asr_sfc", "net_toa", "olr", "t_emit", "carnot", "g_max", "j_conv", "j_ratio",
     "lh", "sh", "evap_frac", "wind10", "wind100", "jet250", "ke_col", "diss_bl", "tcwv",
     "precip", "p_lift", "div_e", "flux_e", "human_q", "human_ratio", "net_sfc",
+    "human_work", "human_heat",  # milestone 25, appended
 ]  # fmt: skip
 
 
@@ -55,7 +56,7 @@ def test_menu_lists_every_layer_once_in_the_proposed_order():
     ]  # fmt: skip
     assert by_group[3] == ["net_sfc"]
     assert by_group[4] == ["precip", "tcwv", "p_lift"]
-    assert by_group[5] == ["human_q", "human_ratio"]
+    assert by_group[5] == ["human_q", "human_work", "human_heat", "human_ratio"]
     assert [LAYERS[i].menu_order for i in MENU] == list(range(len(MENU)))
 
 
@@ -82,7 +83,7 @@ def test_net_sfc_is_a_diverging_layer_centred_on_zero():
 
 def test_log_layers_match_the_catalogue():
     assert {i for i, s in LAYERS.items() if s.log} == {
-        "diss_bl", "precip", "p_lift", "human_q", "human_ratio"
+        "diss_bl", "precip", "p_lift", "human_q", "human_ratio", "human_work", "human_heat"
     }  # fmt: skip
     for s in LAYERS.values():
         if s.log:
@@ -163,8 +164,9 @@ def test_modes_follow_the_v2_table():
         assert LAYERS[lid].default_mode == "today"
     for lid in WIND:
         assert LAYERS[lid].modes == ("today",) and LAYERS[lid].default_mode == "today"
-    for lid in ("human_q", "human_ratio"):
-        assert LAYERS[lid].modes == () and LAYERS[lid].default_mode is None
+    for lid in ("human_q", "human_work", "human_heat", "human_ratio"):
+        # present-day typical months and the days; no anomaly (milestone 25)
+        assert LAYERS[lid].modes == ("climate", "today") and LAYERS[lid].default_mode == "today"
 
 
 def test_flux_e_has_no_climate_raster_yet():
@@ -176,3 +178,13 @@ def test_modes_agree_with_the_anomaly_and_default_is_supported():
     for lid, s in LAYERS.items():
         assert ("anom" in s.modes) == (s.anomaly_encode is not None and lid != "j_ratio")
         assert s.default_mode is None or s.default_mode in s.modes
+
+
+def test_human_layers_have_a_kind():
+    from pipeline.layers import HUMAN
+
+    assert HUMAN == ("human_q", "human_ratio", "human_work", "human_heat")
+    assert {lid: LAYERS[lid].kind for lid in HUMAN} == {
+        "human_q": "flow", "human_work": "flow", "human_heat": "flow", "human_ratio": "ratio",
+    }  # fmt: skip
+    assert all(s.kind is None for lid, s in LAYERS.items() if lid not in HUMAN)

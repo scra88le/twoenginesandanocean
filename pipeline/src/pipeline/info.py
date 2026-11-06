@@ -11,11 +11,16 @@ from dataclasses import dataclass
 
 from .derived import (
     AMOC_SPLIT_M,
+    COOLING_BASE_K,
     H_LIFT_M,
+    HEATING_BASE_K,
     MIN_SURFACE_SOLAR,
     MIN_TURBULENT_FLUX,
+    NUCLEAR_EFFICIENCY,
     SIGMA,
     SMOOTH_LENGTH_M,
+    THERMAL_RENEWABLE_EFFICIENCY,
+    USEFUL_FRACTION,
 )
 
 
@@ -32,6 +37,25 @@ class LayerInfo:
 
 
 _DAILY = "ERA5 daily statistics (Copernicus Climate Change Service / ECMWF), UTC day"
+_HUMAN_SOURCE = (
+    "National primary energy by source: Our World in Data's energy dataset (Energy Institute "
+    "Statistical Review, Ember; CC BY). Sector shares, placement and seasonal shape: EDGAR CO2 "
+    "sector gridmaps (European Commission JRC; CC BY 4.0). Power stations: WRI Global Power "
+    "Plant Database (CC BY 4.0). Countries: Natural Earth. Daily weather: ERA5 skin temperature."
+)
+_HUMAN_TIME = (
+    "Climate mode: the latest energy year's typical month, from EDGAR's monthly sector shape "
+    "(2016–2023 without 2020–2021). Today: the date's month, with the buildings' part scaled by "
+    f"the day's skin temperature against the month's 1991–2020 normal (heating below "
+    f"{HEATING_BASE_K - 273.15:.0f} °C, cooling above {COOLING_BASE_K - 273.15:.0f} °C)."
+)
+_HUMAN_CAVEATS = (
+    "An estimate from annual national statistics spread over the map, not a measurement: "
+    "national totals are right, the placement within a country follows EDGAR's emission "
+    "maps. Traditional biomass (about 1.3 TW, mostly cooking fuel) is not in the statistics "
+    "and not counted. Daily changes come from a simple temperature model of buildings only."
+)
+
 _SUM = f"{_DAILY}: daily sum of hourly accumulations, divided by 86 400 s"
 _MEAN = f"{_DAILY}: daily mean of hourly values"
 _UP = "Positive upward: heat leaving the surface. ECMWF stores fluxes as positive downward; the sign is flipped."
@@ -384,23 +408,73 @@ _TEXT: dict[str, dict[str, str | None]] = {
         ),
     ),
     "human_q": dict(
-        summary="Human energy use per area.",
-        source="Gridded anthropogenic heat flux dataset (to be chosen, see the project's decisions log).",
-        formula="q_human, the dataset's annual-mean heat release, regridded to 0.5° by area-weighted averaging",
-        sign="Positive: heat released by human energy use.",
-        meaning=(
-            "Humanity uses about 19 TW of primary energy, about 0.04 W m⁻² over the globe, "
-            "against 240 W m⁻² of absorbed sunlight. Locally, in cities, it is far higher."
+        summary="Free energy humanity takes from the Earth's engines, per area.",
+        source=_HUMAN_SOURCE,
+        formula=(
+            "P = Σ components, direct-equivalent: fuel energy for coal, oil, gas and biofuel; "
+            f"heat for nuclear (electricity ÷ {NUCLEAR_EFFICIENCY:.2f}) and bioenergy/geothermal "
+            f"power (÷ {THERMAL_RENEWABLE_EFFICIENCY:.2f}); electricity for wind, solar and hydro. "
+            "Each component is placed where its heat is released: conversion losses at power "
+            "stations, electricity and fuel where they are used, shipping and aviation fuel over "
+            f"the ocean. {_HUMAN_TIME}"
         ),
-        caveats="Static map, not daily. Dataset and licence still to be confirmed.",
+        sign="Positive: power drawn by the technosphere (all of it ends as heat).",
+        meaning=(
+            "In Kleidon's view humanity runs a fourth engine on free energy taken from the others: "
+            "about 19 TW, 87 % of it from the fossil store, the biosphere's past output. Over the "
+            "globe that is about 0.04 W m⁻², a ten-thousandth of absorbed sunlight, but in "
+            "industrial regions it reaches several W m⁻², more than the wind dissipates there."
+        ),
+        caveats=_HUMAN_CAVEATS,
+    ),
+    "human_work": dict(
+        summary="The part of human primary power that does useful work: motion, heat at use, light.",
+        source=_HUMAN_SOURCE,
+        formula=(
+            "W_u = Σ component × useful fraction (final-to-useful exergy): electricity "
+            f"{USEFUL_FRACTION['elec_industry']:.2f} in industry and "
+            f"{USEFUL_FRACTION['elec_buildings']:.2f} in buildings; fuel "
+            f"{USEFUL_FRACTION['fuel_industry']:.2f} in industry, "
+            f"{USEFUL_FRACTION['fuel_transport']:.2f} in transport, "
+            f"{USEFUL_FRACTION['fuel_buildings']:.2f} in buildings and "
+            f"{USEFUL_FRACTION['fuel_bunkers']:.2f} for ships and aircraft; conversion losses 0. "
+            f"{_HUMAN_TIME}"
+        ),
+        sign="Positive: useful work delivered.",
+        meaning=(
+            "About a fifth of the primary power, roughly 4 TW, ends as useful work. The rest is "
+            "lost on the way, most of it in power stations and engines. The work itself also "
+            "becomes heat in the end, so all of the primary power leaves the planet as infrared."
+        ),
+        caveats=_HUMAN_CAVEATS
+        + " The useful fractions are indicative world values, the same in every country.",
+    ),
+    "human_heat": dict(
+        summary="The part of human primary power lost as heat before it does any work.",
+        source=_HUMAN_SOURCE,
+        formula=f"Waste heat = P − W_u, so useful work and waste heat add up to P in every cell. {_HUMAN_TIME}",
+        sign="Positive: heat released.",
+        meaning=(
+            "About four fifths of human primary power is lost as heat at power stations, engines "
+            "and boilers. Power stations show as bright points: a coal plant turns about 60 % of "
+            "its fuel into heat at the site."
+        ),
+        caveats=_HUMAN_CAVEATS,
     ),
     "human_ratio": dict(
-        summary="Human energy use compared with the wind's frictional dissipation.",
-        source="Derived: human energy use (see that layer) and ERA5 boundary layer dissipation (bld, 145).",
-        formula="r_H = q_human / D_BL",
-        sign="A ratio. 1 means human energy use equals the natural dissipation.",
-        meaning="Shows where human energy flows rival the power the atmosphere's engine dissipates near the ground.",
-        caveats="Human use is static and annual; dissipation is daily.",
+        summary="Human primary power compared with the wind's friction near the ground.",
+        source=f"Derived: human primary power (see that layer) and {_DAILY.split(',')[0]}: boundary layer dissipation (bld, 145).",
+        formula="r_H = P / D_BL",
+        sign="A ratio. 1 means humanity's primary power equals the power the wind dissipates near the ground.",
+        meaning=(
+            "Shows where the technosphere rivals the atmosphere's engine. Over most of the globe "
+            "it is far below 1; over large cities and industrial regions it passes 1."
+        ),
+        caveats=(
+            "Two periods meet in Climate mode: present-day human use against the 1991–2020 mean "
+            "dissipation of the same calendar month. Today it is the day's human estimate against "
+            "the day's dissipation."
+        ),
         mask="Where boundary-layer dissipation is below 0.01 W m⁻².",
     ),
 }
@@ -432,10 +506,14 @@ _CLIM_FLUX = (
     "energy flux, which is exact because the flux is linear in it. All frames share one arrow "
     "length reference, so lengths compare across months."
 )
-_ANOM_HUMAN = "No anomaly: this layer is not from ERA5 and has no 1991–2020 climatology."
+_ANOM_HUMAN = (
+    "No anomaly. Human use has no 1991–2020 normal to compare with (it grew from about 11 TW "
+    "to 19 TW over that time), and a day minus its typical month would only show the "
+    "temperature model."
+)
 _NONLINEAR = ("t_emit", "carnot", "g_max", "j_ratio", "evap_frac")
 _VECTOR_IDS = ("wind10", "wind100", "jet250", "flux_e")
-_HUMAN_IDS = ("human_q", "human_ratio")
+_HUMAN_IDS = ("human_q", "human_work", "human_heat", "human_ratio")
 
 
 def _anomaly_text(lid: str) -> str:

@@ -37,6 +37,7 @@ class LayerSpec:
     default_mode: str | None = None
     advanced: bool = False  # technical layers sit under "More layers" in the menu (set below)
     menu_order: int = 0  # position in the menu, from MENU (set below)
+    kind: str | None = None  # the human layers: "flow" (W m-2), "stock" or "ratio"
 
 
 GROUPS = {
@@ -53,7 +54,7 @@ GROUP_BLURBS = {
     2: "Heat flows from the tropics to the poles, and the flow drives winds and jet streams.",
     3: "The ocean stores heat and carries part of the transport. ERA5's surface budget.",
     4: "Water carries heat up as vapour and gives it back as rain.",
-    5: "Human energy use against nature's. Not available yet.",
+    5: "Humanity's engine: free energy taken from the others, its useful work and waste heat.",
 }
 
 # The menu order, plain layers before the technical ones of each group (F10). Layer IDs and
@@ -64,7 +65,7 @@ MENU = (
     "wind10", "wind100",
     "net_sfc",
     "precip", "tcwv", "p_lift",
-    "human_q", "human_ratio",
+    "human_q", "human_work", "human_heat", "human_ratio",
 )  # fmt: skip
 ADVANCED = (
     "j_conv", "lh", "sh", "asr_toa", "olr", "t_emit", "diss_bl", "wind10", "wind100", "p_lift",
@@ -171,7 +172,7 @@ _SPECS = [
     ),  # fmt: skip
     LayerSpec(
         "human_q",
-        "Human energy use density",
+        "Human primary power, P",
         5,
         _W,
         "magma",
@@ -179,10 +180,11 @@ _SPECS = [
         (1e-5, 1e4),
         log=True,
         anomaly=False,
+        kind="flow",
     ),  # fmt: skip
     LayerSpec(
         "human_ratio",
-        "Human ÷ natural dissipation",
+        "Human power against friction near the ground, r_H",
         5,
         "ratio",
         "balance",
@@ -191,6 +193,7 @@ _SPECS = [
         log=True,
         centre=1,
         anomaly=False,
+        kind="ratio",
     ),  # fmt: skip
     # Appended, so the point-chunk field order of the layers above doesn't change.
     LayerSpec(
@@ -203,6 +206,32 @@ _SPECS = [
         (-1000, 700),  # daily values reach -842 over the ocean (2026-07)
         centre=0,
     ),  # fmt: skip
+    # The technosphere's cascade (milestone 25): P splits into useful work and waste heat.
+    # After the readout extras in the point chunks (`LATE_POINT_LAYERS`).
+    LayerSpec(
+        "human_work",
+        "Useful work from human energy use, W_u",
+        5,
+        _W,
+        "inferno",
+        (0.001, 100),
+        (1e-5, 1e4),
+        log=True,
+        anomaly=False,
+        kind="flow",
+    ),  # fmt: skip
+    LayerSpec(
+        "human_heat",
+        "Waste heat from human energy use",
+        5,
+        _W,
+        "amp",
+        (0.001, 100),
+        (1e-5, 1e4),
+        log=True,
+        anomaly=False,
+        kind="flow",
+    ),  # fmt: skip
 ]
 
 
@@ -214,6 +243,7 @@ RESOLUTION = {
     "evap_frac": 0.001, "wind10": 0.02, "wind100": 0.02, "jet250": 0.05, "ke_col": 0.005,
     "diss_bl": 0.002, "tcwv": 0.05, "precip": 0.002, "p_lift": 0.002, "div_e": 1.0,
     "flux_e": 1e6, "human_q": 0.002, "human_ratio": 0.002, "net_sfc": 0.25,
+    "human_work": 0.002, "human_heat": 0.002,
 }  # fmt: skip
 UV_RESOLUTION = {"wind10": 0.1, "wind100": 0.1, "jet250": 0.1, "flux_e": 1e6}
 
@@ -241,8 +271,8 @@ TODAY_ONLY = ("flux_e",)
 
 def _modes(s: LayerSpec) -> tuple[tuple[str, ...], str | None]:
     """The timescales the UI offers for a layer, and the one it opens in."""
-    if not s.anomaly:
-        return (), None  # the human layers
+    if not s.anomaly:  # the human layers: typical months of present-day use, and the days
+        return ("climate", "today"), "today"
     if s.id in CLIMATE_ONLY:
         return ("climate",), "climate"
     if s.uv_encode is not None or s.id in TODAY_ONLY:
@@ -273,6 +303,10 @@ def _complete(s: LayerSpec) -> LayerSpec:
 
 LAYERS: dict[str, LayerSpec] = {s.id: _complete(s) for s in _SPECS}
 NATURAL = tuple(i for i, s in LAYERS.items() if s.anomaly)
+HUMAN = tuple(i for i, s in LAYERS.items() if s.group == 5)
+# Layers added after the point chunks' first layout go after the readout extras, so an older
+# chunk is a prefix of a newer one and still reads (its missing fields are no data).
+LATE_POINT_LAYERS = ("human_work", "human_heat")
 VECTOR = tuple(i for i, s in LAYERS.items() if s.uv_encode is not None)
 ANOMALY = tuple(i for i, s in LAYERS.items() if s.anomaly_encode is not None)
 

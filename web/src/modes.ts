@@ -56,9 +56,14 @@ export function resolveMode(m: Manifest, layer: string, wanted: Mode | null): Re
 /** The word for one frame: "July" or "Annual mean". */
 export const frameName = (f: Frame) => (f === 'year' ? 'Annual mean' : monthName(`2001-${f}-01`));
 
-/** What the legend says the map shows, e.g. "1991–2020 mean, July" or "2026-10-17". */
-export function timescaleText(mode: Mode, frame: Frame, date: string, period: string): string {
+/**
+ * What the legend says the map shows, e.g. "1991–2020 mean, July" or "2026-10-17". A layer
+ * with a `climate_label` (the human layers: present-day use, not a 1991–2020 mean) says
+ * "2024 energy use, typical July" in Climate mode.
+ */
+export function timescaleText(mode: Mode, frame: Frame, date: string, period: string, label?: string | null): string {
   const p = period.replace('-', '–');
+  if (mode === 'climate' && label) return frame === 'year' ? `${label}, annual mean` : `${label}, typical ${frameName(frame)}`;
   if (mode === 'climate') return frame === 'year' ? `Annual mean, ${p}` : `${p} mean, ${frameName(frame)}`;
   if (mode === 'anom') return `${date} minus the ${monthName(date)} ${p} mean`;
   return date;

@@ -194,3 +194,103 @@ def test_world_useful_fraction_is_plausible_for_a_typical_mix():
     p, work, heat = d.cascade({k: np.array(v) for k, v in c.items()})
     assert 0.15 < float(work / p) < 0.30
     assert float(p) / 1e12 == pytest.approx(18.7, abs=0.3)  # TW, 2024
+
+
+# ---- milestone 25: monthly factors ------------------------------------------------------
+
+
+def test_days_in_month_make_a_mean_year():
+    assert len(d.DAYS_IN_MONTH) == 12
+    assert sum(d.DAYS_IN_MONTH) == pytest.approx(365.25)
+
+
+def test_monthly_factors_have_a_day_weighted_mean_of_one():
+    rng = np.random.default_rng(3)
+    x = rng.random((12, 4, 5)) * 10
+    f = d.monthly_factors(x)
+    w = np.asarray(d.DAYS_IN_MONTH)[:, None, None]
+    np.testing.assert_allclose((f * w).sum(axis=0) / 365.25, 1.0)
+
+
+def test_monthly_factors_of_a_flat_year_are_one_and_follow_the_shape():
+    np.testing.assert_allclose(d.monthly_factors(np.full(12, 7.0)), 1.0)
+    x = np.ones(12)
+    x[0] = 2.0  # January twice the other months
+    f = d.monthly_factors(x)
+    assert f[0] == pytest.approx(2 * f[1])
+    assert f[0] > 1 > f[1]
+
+
+def test_monthly_factors_are_one_where_there_is_nothing():
+    x = np.zeros((12, 2))
+    x[:, 1] = np.arange(1, 13)
+    f = d.monthly_factors(x)
+    np.testing.assert_allclose(f[:, 0], 1.0)
+    assert f[11, 1] > f[0, 1]
+
+
+def test_monthly_factors_reject_a_wrong_shape():
+    with pytest.raises(ValueError):
+        d.monthly_factors(np.ones(11))
+
+
+# ---- milestone 25: the weather factor ---------------------------------------------------
+
+
+def test_degree_days_heating_below_and_cooling_above_the_bases():
+    t = np.array([d.HEATING_BASE_K - 10, d.HEATING_BASE_K + 1, d.COOLING_BASE_K + 4])
+    np.testing.assert_allclose(d.heating_degrees(t), [10.0, 0.0, 0.0])
+    np.testing.assert_allclose(d.cooling_degrees(t), [0.0, 0.0, 4.0])
+
+
+def test_expected_degrees_match_a_sample_of_normal_days():
+    rng = np.random.default_rng(5)
+    for mean in (270.0, d.HEATING_BASE_K, 300.0):
+        days = rng.normal(mean, d.DAILY_SPREAD_K, 200_000)
+        assert d.expected_heating_degrees(np.array(mean)) == pytest.approx(
+            d.heating_degrees(days).mean(), abs=0.02
+        )
+        assert d.expected_cooling_degrees(np.array(mean)) == pytest.approx(
+            d.cooling_degrees(days).mean(), abs=0.02
+        )
+
+
+def test_weather_factor_averages_to_one_over_a_typical_month():
+    rng = np.random.default_rng(7)
+    for mean in (265.0, 286.0, 290.0, 303.0):
+        days = rng.normal(mean, d.DAILY_SPREAD_K, 200_000)
+        w = d.weather_factor(days, np.full_like(days, mean))
+        assert w.mean() == pytest.approx(1.0, abs=0.005)
+
+
+def test_weather_factor_rises_in_a_cold_snap_and_a_heat_wave():
+    normal = np.array([270.0, 300.0])
+    w = d.weather_factor(normal + np.array([-8.0, 6.0]), normal)
+    assert w[0] > 1.1 and w[1] > 1.05
+    mild = d.weather_factor(np.array([d.HEATING_BASE_K + 2]), np.array([270.0]))
+    assert mild[0] < 1.0
+
+
+def test_weather_factor_is_one_without_temperatures():
+    w = d.weather_factor(np.array([np.nan, 280.0]), np.array([280.0, np.nan]))
+    np.testing.assert_allclose(w, 1.0)
+
+
+# ---- milestone 25: a day's flows -------------------------------------------------------
+
+
+def test_human_flows_scale_only_the_buildings_part():
+    p, work, heat = d.human_flows(
+        p_base=np.array([4.0]), p_bldg=np.array([2.0]),
+        w_base=np.array([1.0]), w_bldg=np.array([0.5]), weather=np.array([1.5]),
+    )  # fmt: skip
+    assert p[0] == pytest.approx(4.0 + 3.0)
+    assert work[0] == pytest.approx(1.0 + 0.75)
+    assert heat[0] == pytest.approx(p[0] - work[0])
+
+
+def test_human_ratio_masks_calm_cells_and_leaves_missing_ones_missing():
+    r, masked = d.human_ratio(np.array([2.0, 1.0, 1.0]), np.array([4.0, 0.0, np.nan]))
+    assert r[0] == pytest.approx(0.5)
+    assert masked.tolist() == [False, True, False]  # below 0.01 W m-2: masked
+    assert np.isnan(r[2])  # no dissipation value: no data

@@ -701,3 +701,98 @@ def cascade(components: dict[str, np.ndarray]):
         [USEFUL_FRACTION[k] * a for k, a in zip(components, arrays, strict=True)], axis=0
     )
     return p, work, p - work
+
+
+# ---- the technosphere through the year (milestone 25) -----------------------------------
+#
+# Monthly factors give each sector and place its typical seasonal shape; their day-weighted
+# mean over a year of 365.25 days is exactly 1, so annual totals don't change and the Year
+# frame equals the annual grid (as the climatology's Year frame weights months by their days).
+# A day then scales the buildings' part of the month by a weather factor from the day's skin
+# temperature against the 1991-2020 normal of its calendar month. Its expected value over a
+# typical month is 1, so a month of ordinary weather averages to its frame.
+
+DAYS_IN_MONTH = (31.0, 28.25, 31.0, 30.0, 31.0, 30.0, 31.0, 31.0, 30.0, 31.0, 30.0, 31.0)
+
+HEATING_BASE_K = 288.15  # 15 C: below this daily-mean skin temperature, buildings are heated
+COOLING_BASE_K = 295.15  # 22 C: above it, they are cooled
+COOLING_WEIGHT = 0.5  # a degree of cooling (electric, heat pumps) per degree of heating
+BASE_LOAD_K = 5.0  # weather-independent use (hot water, appliances, light), in degree-days
+DAILY_SPREAD_K = 3.0  # spread of daily-mean skin temperature within a month, for the normal
+
+
+def monthly_factors(monthly) -> np.ndarray:
+    """(12, ...) non-negative monthly amounts -> (12, ...) factors whose mean, weighted by
+    the days of each month (`DAYS_IN_MONTH`), is exactly 1. Where there is nothing all
+    year, the factors are 1."""
+    x = np.asarray(monthly, dtype="float64")
+    if x.shape[0] != 12:
+        raise ValueError(f"need 12 months on the first axis, got {x.shape}")
+    days = np.asarray(DAYS_IN_MONTH).reshape((12,) + (1,) * (x.ndim - 1))
+    mean = (x * days).sum(axis=0) / days.sum()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(mean > 0, x / np.where(mean > 0, mean, 1.0), 1.0)
+
+
+def heating_degrees(t_k):
+    """Degrees below the heating base (K), zero above it."""
+    return np.maximum(HEATING_BASE_K - np.asarray(t_k, dtype="float64"), 0.0)
+
+
+def cooling_degrees(t_k):
+    """Degrees above the cooling base (K), zero below it."""
+    return np.maximum(np.asarray(t_k, dtype="float64") - COOLING_BASE_K, 0.0)
+
+
+def _erf(x):
+    """Error function, Abramowitz & Stegun 7.1.26 (|error| < 1.5e-7), vectorised."""
+    s = np.sign(x)
+    x = np.abs(x)
+    t = 1.0 / (1.0 + 0.3275911 * x)
+    poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027
+                + t * 1.061405429))))  # fmt: skip
+    return s * (1.0 - poly * np.exp(-x * x))
+
+
+def _expected_excess(gap, spread):
+    """E[max(X, 0)] for X ~ N(gap, spread^2)."""
+    z = gap / spread
+    pdf = np.exp(-0.5 * z * z) / np.sqrt(2 * np.pi)
+    cdf = 0.5 * (1.0 + _erf(z / np.sqrt(2)))
+    return spread * pdf + gap * cdf
+
+
+def expected_heating_degrees(t_mean_k, spread=DAILY_SPREAD_K):
+    """Mean heating degrees over a month whose daily temperatures are N(t_mean, spread^2)."""
+    return _expected_excess(HEATING_BASE_K - np.asarray(t_mean_k, dtype="float64"), spread)
+
+
+def expected_cooling_degrees(t_mean_k, spread=DAILY_SPREAD_K):
+    """Mean cooling degrees over a month whose daily temperatures are N(t_mean, spread^2)."""
+    return _expected_excess(np.asarray(t_mean_k, dtype="float64") - COOLING_BASE_K, spread)
+
+
+def weather_factor(t_day_k, t_normal_k):
+    """How much more (or less) energy buildings use on a day than in a typical day of its
+    month: (B + HDD + c CDD) / (B + E[HDD] + c E[CDD]), with B the weather-independent base
+    load, c the cooling weight and the expectations over the month's 1991-2020 normal.
+    1 where either temperature is missing."""
+    t_day = np.asarray(t_day_k, dtype="float64")
+    t_norm = np.asarray(t_normal_k, dtype="float64")
+    day = BASE_LOAD_K + heating_degrees(t_day) + COOLING_WEIGHT * cooling_degrees(t_day)
+    typical = (
+        BASE_LOAD_K
+        + expected_heating_degrees(t_norm)
+        + COOLING_WEIGHT * expected_cooling_degrees(t_norm)
+    )
+    with np.errstate(invalid="ignore"):
+        w = day / typical
+    return np.where(np.isfinite(w), w, 1.0)
+
+
+def human_flows(p_base, p_bldg, w_base, w_bldg, weather):
+    """A day's (P, useful work, waste heat) from its month's frame, split into the buildings'
+    part (scaled by the weather factor) and the rest. W m-2."""
+    p = np.asarray(p_base) + np.asarray(p_bldg) * weather
+    work = np.asarray(w_base) + np.asarray(w_bldg) * weather
+    return p, work, p - work

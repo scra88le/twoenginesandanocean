@@ -12,7 +12,7 @@ from pathlib import Path
 
 import xarray as xr
 
-from . import zonal
+from . import human, zonal
 from .climatology import Climatology, encode_anomalies
 from .derived import compute_extras, compute_layers, radiative_summary
 from .fetch import PRESSURE_DAILY, SINGLE_DAILY, build_requests, fetch_dates
@@ -41,6 +41,8 @@ def build_date(day: date, raw: Path, work: Path, out: Path) -> list[str]:
         tidy = build_tidy(day, raw)
         write_tidy(tidy, work)
     layers = compute_layers(tidy)
+    # The technosphere (milestone 25): from the static grids in work/human, if there are any.
+    layers.update(human.for_build(day, tidy["skt"].values, layers["diss_bl"].values.values, work))
     files, stats, points = encode_date(layers, compute_extras(tidy))
     climatology = Climatology(out)
     if climatology.available:  # anomalies against the calendar month's 1991-2020 mean

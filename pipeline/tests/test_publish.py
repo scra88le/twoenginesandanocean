@@ -199,7 +199,18 @@ def test_manifest_publishes_modes_and_default_mode():
     assert m["layers"]["net_toa"]["default_mode"] == "climate"
     assert m["layers"]["j_ratio"]["modes"] == ["climate"]
     assert m["layers"]["wind10"]["modes"] == ["today"]
-    assert m["layers"]["human_q"]["modes"] == [] and m["layers"]["human_q"]["default_mode"] is None
+    assert m["layers"]["human_q"]["modes"] == ["climate", "today"]
+    assert m["layers"]["human_q"]["default_mode"] == "today"
+    assert m["layers"]["human_q"]["kind"] == "flow" and m["layers"]["net_toa"]["kind"] is None
+
+
+def test_human_layers_get_a_climate_label_once_their_frames_are_published():
+    m = publish.build_manifest(["2026-01-01"], "2026-01-02T00:00:00Z", clim={"layers": []})
+    assert m["layers"]["human_q"]["climate_label"] is None
+    clim = {"layers": [], "human": {"year": 2024, "label": "2024 energy use"}}
+    m = publish.build_manifest(["2026-01-01"], "2026-01-02T00:00:00Z", clim=clim)
+    assert m["layers"]["human_work"]["climate_label"] == "2024 energy use"
+    assert m["layers"]["net_toa"]["climate_label"] is None
 
 
 def test_the_default_window_is_365_dates(tmp_path):

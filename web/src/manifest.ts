@@ -42,6 +42,8 @@ export interface LayerMeta {
   default_mode?: 'climate' | 'today' | 'anom' | null;
   advanced?: boolean; // technical layers sit under "More layers" in the menu (absent before milestone 19)
   menu_order?: number;
+  kind?: 'flow' | 'stock' | 'ratio' | null; // the human layers (milestone 25); null for the natural ones
+  climate_label?: string | null; // what a human layer's Climate frames show: "2024 energy use"
   info: LayerInfo;
 }
 

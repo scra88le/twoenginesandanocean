@@ -13,9 +13,14 @@ export function tileOf(cell: { i: number; j: number }, tile: number): { tx: numb
 /** Codes of every field at one cell of a point chunk (field-major, tile x tile per field). */
 export function pointCodes(buf: ArrayBuffer, fields: string[], tile: number, k: number): Map<string, number> {
   const n = tile * tile;
-  if (buf.byteLength !== fields.length * n * 2) throw new Error(`point chunk is ${buf.byteLength} bytes, expected ${fields.length * n * 2}`);
+  // A chunk written before later fields were added (the human layers of milestone 25) is a
+  // prefix of the current layout: the fields it doesn't have read as no data (code 0).
+  const stored = buf.byteLength / (n * 2);
+  if (!Number.isInteger(stored) || stored < 1 || stored > fields.length) {
+    throw new Error(`point chunk is ${buf.byteLength} bytes, expected ${fields.length * n * 2}`);
+  }
   const view = new DataView(buf);
-  return new Map(fields.map((f, idx) => [f, view.getUint16((idx * n + k) * 2, true)]));
+  return new Map(fields.map((f, idx) => [f, idx < stored ? view.getUint16((idx * n + k) * 2, true) : 0]));
 }
 
 export interface Series {

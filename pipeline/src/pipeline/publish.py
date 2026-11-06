@@ -65,7 +65,14 @@ def _range(lo: float, hi: float, step: float, log: bool = False) -> dict:
     return {"lo": lo, "hi": hi, "log": log, "scale": scale, "offset": offset}
 
 
-def _layer_meta(s: LayerSpec) -> dict:
+def _climate_label(s: LayerSpec, clim: dict | None) -> str | None:
+    """What a human layer's Climate frames show ("2024 energy use"): present-day typical
+    months, not a 1991-2020 mean. None for the natural layers."""
+    human = (clim or {}).get("human")
+    return human.get("label") if human and s.kind is not None else None
+
+
+def _layer_meta(s: LayerSpec, clim: dict | None = None) -> dict:
     return {
         "title": s.title,
         "group": s.group,
@@ -89,6 +96,8 @@ def _layer_meta(s: LayerSpec) -> dict:
         "default_mode": s.default_mode,
         "advanced": s.advanced,
         "menu_order": s.menu_order,
+        "kind": s.kind,
+        "climate_label": _climate_label(s, clim),
         "info": asdict(INFO[s.id]),
     }
 
@@ -127,7 +136,7 @@ def build_manifest(
         # cold side of `carnot` and `g_max`. The climate frames' are in `clim.radiative`.
         "radiative": radiative or {},
         "groups": {str(g): {"name": GROUPS[g], "blurb": GROUP_BLURBS[g]} for g in GROUPS},
-        "layers": {lid: _layer_meta(s) for lid, s in LAYERS.items()},
+        "layers": {lid: _layer_meta(s, clim) for lid, s in LAYERS.items()},
         "points": {
             "file": "points/{date}/{tx}_{ty}.bin",
             "tile": TILE,
@@ -169,9 +178,12 @@ def _clim_index(out: Path) -> dict | None:
     return json.loads(path.read_text()) if path.is_file() else None
 
 
-def refresh_manifest(out: Path, built_at: str | None = None) -> None:
+def refresh_manifest(
+    out: Path, built_at: str | None = None, add_layers: list[str] | None = None
+) -> None:
     """Rewrite the manifest for the dates already published (after the climatology job, or
-    when layer metadata changes)."""
+    when layer metadata changes). `add_layers` joins the built layers (the human layers,
+    added to dates already published by `pipeline.human`)."""
     old = _read_manifest(out)
     built_at = built_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     _write_manifest(
@@ -179,7 +191,7 @@ def refresh_manifest(out: Path, built_at: str | None = None) -> None:
         build_manifest(
             old.get("dates", []),
             built_at,
-            old.get("built_layers", []),
+            sorted(set(old.get("built_layers", [])) | set(add_layers or [])),
             _clim_index(out),
             old.get("radiative", {}),
             old.get("ocean"),

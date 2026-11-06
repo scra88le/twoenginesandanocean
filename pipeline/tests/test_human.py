@@ -311,11 +311,15 @@ class _Resp(io.BytesIO):
         return False
 
 
-def test_fetch_inputs_downloads_and_extracts_only_netcdf(tmp_path):
+def test_fetch_inputs_streams_and_extracts_only_the_years_needed(tmp_path, monkeypatch):
+    # Streaming and extraction only: the members aren't real NetCDF, so skip the reduction
+    # to 0.5 degree (tested with real files in test_human_layers.py).
+    monkeypatch.setattr(h, "reduce_edgar", lambda folder, files: files)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("dir/EDGAR_2023_bkl_X.nc", b"nc")
-        z.writestr("../../evil.nc", b"bad")
+        z.writestr("dir/EDGAR_2024_GHG_CO2_2023_bkl_X.nc", b"nc")
+        z.writestr("dir/EDGAR_2024_GHG_CO2_2010_bkl_X.nc", b"old")  # not a factor year
+        z.writestr("../../evil_2023.nc", b"bad")
         z.writestr("readme.txt", b"txt")
     calls = []
 
@@ -327,12 +331,25 @@ def test_fetch_inputs_downloads_and_extracts_only_netcdf(tmp_path):
     assert len(calls) == len(h.URLS) + len(h.EDGAR_DOWNLOAD)
     assert (tmp_path / "owid-energy-data.csv").read_bytes() == b"data"
     sector = tmp_path / "edgar" / "TRANSPORT"
-    assert sorted(p.name for p in sector.iterdir()) == ["EDGAR_2023_bkl_X.nc", "evil.nc"]
-    assert not (tmp_path.parent / "evil.nc").exists()
+    assert sorted(p.name for p in sector.iterdir()) == [
+        "EDGAR_2024_GHG_CO2_2023_bkl_X.nc", "evil_2023.nc",
+    ]  # fmt: skip
+    assert not (tmp_path.parent / "evil_2023.nc").exists()  # flattened, never outside
+    assert not list((tmp_path / "edgar").glob("*.zip"))  # the zips are deleted
+    assert not list(tmp_path.rglob("*.part"))
     assert all(p.is_relative_to(tmp_path) for p in written)
     calls.clear()
     h.fetch_inputs(tmp_path, opener=opener)  # everything is there: nothing downloaded
     assert calls == []
+
+
+def test_fetch_inputs_leaves_no_partial_file_when_a_download_fails(tmp_path):
+    def opener(url, timeout):
+        raise OSError("connection reset")
+
+    with pytest.raises(OSError):
+        h.fetch_inputs(tmp_path, edgar=False, opener=opener)
+    assert not list(tmp_path.iterdir())
 
 
 def test_build_static_end_to_end_without_edgar(tmp_path):
@@ -343,7 +360,10 @@ def test_build_static_end_to_end_without_edgar(tmp_path):
     )
     ds, summary = h.build_static(tmp_path)
     assert summary["year"] == 2024 and summary["edgar_year"] is None
-    assert set(ds.data_vars) == set(d.COMPONENTS)
+    assert set(ds.data_vars) == set(d.COMPONENTS) | set(h.FRAMES)
+    assert ds["p_base"].shape == (12, d.NLAT, d.NLON)
+    assert summary["factor_years"] == [] and summary["monthly_basis"] == "flat"
+    assert summary["monthly_primary_tw"] == pytest.approx([summary["primary_tw"]] * 12)
     assert summary["useful_work_tw"] + summary["waste_heat_tw"] == pytest.approx(
         summary["primary_tw"]
     )

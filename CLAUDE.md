@@ -44,6 +44,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /.github/workflows/ci.yml       lint + tests for both stacks
 /.github/workflows/daily.yml    scheduled build, validate and upload; keep-alive; smoke test
 /.github/workflows/site.yml     build the front end and publish it to GitHub Pages; smoke test
+/.github/workflows/human.yml    by hand, yearly: build the technosphere grids (EDGAR etc.) into the store
 /docs/DEPLOY.md                 setting up the bucket, secrets and workflows; running it day to day
 /README.md                      what this is and where things are
 ```
@@ -70,7 +71,8 @@ python -m pipeline.cli upload --store s3://BUCKET --out ./out        # publish a
 python -m pipeline.cli daily --store s3://BUCKET [--days 10]         # the daily job: collect/submit, build, validate, publish
 pip install -e "./pipeline[ocean]"                                   # the ocean overlay needs the copernicusmarine toolbox
 python -m pipeline.cli ocean [--store s3://BUCKET] [--max-fetch 15]  # AMOC overlay for the published dates (Copernicus Marine GLO12)
-python -m pipeline.cli human-static [--fetch] [--inputs raw/human] [--year YYYY]  # technosphere: annual 0.5° component grids -> work/human/human_YEAR.nc + summary_YEAR.json
+python -m pipeline.cli human-static [--fetch] [--inputs raw/human] [--year YYYY] [--store s3://BUCKET]  # technosphere grids (components + monthly frames) -> work/human/human_YEAR.nc + summary_YEAR.json [-> state/human/]
+python -m pipeline.cli human --out ./out [--store s3://BUCKET] [--start 2026-07-28] [--force]  # add the human layers to published dates and the climate frames; then `upload`
 
 # Front end
 cd web && npm install
@@ -145,7 +147,7 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 
 ## Layer catalogue
 
-25 layers in 5 groups (Engine one: surface to sky; Engine two: tropics to poles; The ocean; Water; Humans). Technical layers are `advanced` and sit under "More layers" in the menu (`pipeline.layers.ADVANCED`; menu order `MENU`). Inputs are ERA5 short names, or the converted names `olr`, `le`, `h` and `lw_up` for the four sign-flipped fields. **Range** is the *display* range. The *encode* range is separate and fixed (see **Encoding**). "auto" means the display range is the day's 2nd–98th percentile, symmetric about zero for diverging scales; the encode range is still fixed.
+27 layers in 5 groups (Engine one: surface to sky; Engine two: tropics to poles; The ocean; Water; Humans). Technical layers are `advanced` and sit under "More layers" in the menu (`pipeline.layers.ADVANCED`; menu order `MENU`). Inputs are ERA5 short names, or the converted names `olr`, `le`, `h` and `lw_up` for the four sign-flipped fields. **Range** is the *display* range. The *encode* range is separate and fixed (see **Encoding**). "auto" means the display range is the day's 2nd–98th percentile, symmetric about zero for diverging scales; the encode range is still fixed.
 
 | ID | Layer | Group | Inputs | Units | Colour scale | Range |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -171,11 +173,14 @@ pip install -e "./pipeline[tools]" && python pipeline/scripts/export_colormaps.p
 | `p_lift` | Power lifting water (indicative) | 4 Water | derived (`tp`) | W m⁻² | deep, log | 0.01–10 |
 | `div_e` | Heat exported by the air, energy flux divergence (smoothed) | 2 Engine two | derived (`p86.162`) | W m⁻² | balance | auto |
 | `flux_e` | Divergent energy transport (arrows) | 2 Engine two | derived (`div_e`) | W m⁻¹ | cividis | auto |
-| `human_q` | Human energy use density | 5 Humans | anthropogenic heat dataset | W m⁻² | magma, log | 0.001–100 |
-| `human_ratio` | Human ÷ natural dissipation | 5 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
+| `human_q` | Human primary power, P | 5 Humans | technosphere grids (`pipeline.human`), ERA5 `skt` | W m⁻² | magma, log | 0.001–100 |
+| `human_ratio` | Human power against friction near the ground, r_H | 5 Humans | `human_q`, `bld` | ratio | balance, log, centred on 1 | 1e-4–10 |
 | `net_sfc` | Net heat into the surface | 3 Ocean | `ssr` − `lw_up` − `le` − `h` | W m⁻² | balance | −200 to 200 |
+| `human_work` | Useful work from human energy use, W_u | 5 Humans | technosphere grids, ERA5 `skt` | W m⁻² | inferno, log | 0.001–100 |
+| `human_heat` | Waste heat from human energy use | 5 Humans | technosphere grids, ERA5 `skt` | W m⁻² | amp, log | 0.001–100 |
 
 - Every natural layer has an anomaly variant (`{layer}_anom`; `net_sfc` once the `str` climatology is in), **except the four vector layers** (`wind10`, `wind100`, `jet250`, `flux_e`): monthly means only give the speed of the mean vector, far below the mean of daily speeds (+1.8 m/s bias at 10 m, August 2026), so there is no honest climatology for them (decided 2026-10-19). Human layers have none either. That leaves 19 layers with anomalies (`pipeline.layers.ANOMALY`).
+- The four human layers (milestone 25) have `kind` (`flow` or `ratio`) in the manifest and modes Climate and Today (default Today), no anomaly. Their Climate frames are present-day typical months of the latest energy year (`climate_label`, e.g. "2024 energy use"), not 1991–2020 means; the legend says so. They exist for dates from 2026-07-28 (`human.HUMAN_START`).
 - `p_lift` must be labelled "indicative" in the UI.
 - Colour scales must be perceptually uniform and colour-blind safe (matplotlib / cmocean equivalents).
 
@@ -229,14 +234,20 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 - Fixtures: 8 766 TWh/yr → 1 TW; 330 TWh of nuclear electricity → 1 000 TWh of heat; the 2024 world mix gives P ≈ 18.7 TW and a useful fraction of 15–30 %.
 - National totals are conserved through placement (tested); countries without a polygon are reported as unplaced.
 
+**The technosphere through the year** (milestone 25).
+
+- **Monthly factors:** EDGAR's monthly sector gridmaps summed over the factor years (2016–2019, 2022–2023: recent, without COVID), per country and sector; `derived.monthly_factors` scales them so their day-weighted mean (`DAYS_IN_MONTH`, February 28.25, a 365.25-day year) is exactly 1. Components follow their sector (`human.COMPONENT_SECTOR`: plant losses and electricity the power sector, fuel its own sector, bunkers transport over the open ocean, nuclear and bioenergy stations flat). The static file holds each month's P and useful work split into the buildings' part and the rest (`p_base`, `p_bldg`, `w_base`, `w_bldg`). Tested: the day-weighted mean of the 12 frames equals the annual grid in every cell.
+- **A day:** its month's frame, the buildings' part times the weather factor w = (B + HDD + c CDD) / (B + E[HDD] + c E[CDD]) on the day's ERA5 skin temperature, with HDD below 15 °C, CDD above 22 °C, c = 0.5, B = 5 K (weather-independent use), and the expectations over the calendar month's 1991–2020 normal with a daily spread of 3 K (`derived.weather_factor`). Tested: w averages to 1 over a sample of normal days. A day exactly at its normal is slightly below its frame, because degree-days are convex.
+- **Checks:** a day's world primary power must be 12–25 TW (`human.P_RANGE_TW`), else its human layers are left out and the date publishes without them.
+
 ## Pipeline: daily run order
 
 `pipeline.cli daily` (`pipeline.daily.run_daily`), on a runner that is gone afterwards, so everything it needs comes from the object store:
 
 1. Check the CDS credentials (`check_authentication`: collection metadata is public, so a bad key would otherwise only fail at the first request, and not at all on a day with nothing to request), then ask which date is newest. A failure here changes nothing.
-2. Download the state: `manifest.json`, `logs/global_means.csv`, `state/pending.json`, the climatology maps (`clim/clim.json`, `clim/MM/*.png`) and the scalar maps of the published dates (the series are rebuilt from them): about 425 MB in 1 957 files.
+2. Download the state: `manifest.json`, `logs/global_means.csv`, `state/pending.json`, the climatology maps (`clim/clim.json`, `clim/MM/*.png`), the scalar maps of the published dates (the series are rebuilt from them; about 425 MB in 1 957 files before the human layers) and the technosphere grids (`state/human/` → `work/human/`).
 3. One backfill pass over the last 10 dates, never waiting on the queue: collect finished requests, submit missing ones (one request per dataset per date, at most two queued per dataset) and build every date whose three archives are all there. A request stays in the state until its dates are published, because the downloaded archives vanish with the runner (`fetch_dates(keep_collected=True)`, `settle_state`); a result CDS has expired is forgotten and requested again.
-4. Per date: convert units, flip signs, regrid; derive the layers; anomalies against the climatology; encode maps, point chunks and anomaly maps; **validate**. A date that fails is skipped, logged and not published, and the run fails at the end; other dates still publish. Then rebuild the series.
+4. Per date: convert units, flip signs, regrid; derive the layers; the human layers from the technosphere grids, the date's `skt` and `bld` (from 2026-07-28, if the grids are there; a failure leaves them out, never the date); anomalies against the climatology; encode maps, point chunks and anomaly maps; **validate**. A date that fails is skipped, logged and not published, and the run fails at the end; other dates still publish. Then rebuild the series.
 5. Upload (`pipeline.deploy.upload`): maps, points and climatology, then the series, then the log, then the **manifest last**; unchanged objects (same size and MD5) are skipped; only after the manifest are the files of dates beyond the 90-day window deleted. Then save `state/pending.json`.
 6. A failure before step 5's manifest leaves the published site exactly as it was. If the run crashes after submitting requests, their IDs are still saved.
 
@@ -280,7 +291,9 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 /ocean/{YYYY-MM-DD}/{limb}_30d_ov[_uv].png   the mean's overturning part: each limb's transport minus H_limb × the whole column's mean velocity (`derived.overturning_part`), so the depth-uniform gyre flow is gone and the limbs cancel, then smoothed over each limb's water (`derived.masked_smooth`, Gaussian σ 2.5°, `ocean.OV_SIGMA_DEG`); the entry's `ov` is a version (`ocean.OV_VERSION`) and an older one is rebuilt
 /ocean/{YYYY-MM-DD}/section[_30d].json    the Atlantic's overturning streamfunction on a latitude-depth section: `{"psi": [level][lat], "upper_sv": [lat], "deep_sv": [lat]}`: ψ in tenths of a Sv at each level's bottom edge, and the two limbs' net northward transport per latitude in Sv (`derived.limb_transports_by_latitude`: ψ at 1,100 m, and the rest of the column), null where the basin has no water; grid in the manifest's `ocean.section_grid` (40° S–80° N in 0.5° bins, the model's depth edges)
 /state/ocean/{YYYY-MM-DD}.npz             the day's 0.5° limb integrals, 26.5° N figures and latitude-depth ψ (pipeline-only), kept for the window; a save without ψ is fetched again
-/static/human_q.png
+/clim/{MM|year}/human_*.png         the human layers' Climate frames: the latest energy year's typical months (`clim.json` lists them and has a `human` block: year, label)
+/state/human/human_{year}.nc        the technosphere grids (pipeline-only): annual components and the 12 monthly frames, ~5 MB
+/state/human/t_normal.nc            1991–2020 monthly skin temperature from the climate point chunks (pipeline-only), for the weather factor
 /logs/global_means.csv              daily validation log
 /state/pending.json                 in-flight CDS request IDs (pipeline-only, not read by the front end)
 ```
@@ -288,7 +301,7 @@ All inputs are daily means in W m⁻² and K, taken from the converted fields, w
 Point and series chunks are little-endian uint16 and use the same per-layer packing and reserved codes as the PNGs (`pipeline.points`).
 
 - Tiles: 36 × 18; tile (tx, ty) covers grid columns 20·tx … 20·tx + 19 and rows 20·ty … 20·ty + 19 (row 0 is the north). Within a tile, cells are row-major.
-- Point chunk: the fields in the manifest's `points.fields` order (the 24 layers, then the extras `t_skin` = T_s and `j_opt` = J_opt, which the readout needs but which aren't map layers), field-major. Layers not built yet are code 0. Extras are computed in `pipeline.derived` and their encodings are in the manifest's `points.extras`.
+- Point chunk: the fields in the manifest's `points.fields` order (the 25 original layers, then the extras `t_skin` = T_s and `j_opt` = J_opt, which the readout needs but which aren't map layers, then the layers added later, `human_work` and `human_heat`), field-major. Layers not built yet are code 0. Extras are computed in `pipeline.derived` and their encodings are in the manifest's `points.extras`. A chunk written before milestone 25 is a prefix of the current layout (`points.LEGACY_POINT_FIELDS`, 27 fields): the front end reads its missing fields as no data, and `human` upgrades the chunks of the dates it fills.
 - Series chunk: `EHS1`, uint32 n, n uint32 dates as YYYYMMDD, then n × 400 codes, date-major. The dates are in the file because published dates can have gaps, and so a series file is self-consistent whatever the manifest says at that moment. Each file is replaced atomically.
 - Series are rebuilt from the published PNGs after each backfill pass that published something, after `build`, and by `rebuild` / `series`.
 
@@ -523,7 +536,7 @@ Phone layout under 700 px:
 23. Ocean overlay (docs/PROPOSALS-v2.md F14): (**Code and tests done** 2026-10-31, see `docs/DECISIONS.md`: `pipeline.ocean`, the AMOC formulas in `pipeline.derived`, `ocean` CLI command and daily job, the coloured and density-weighted particle layer, controls, legend, URL state, fixtures. **Open:** never run against Copernicus Marine (unreachable from the sandbox it was written in); needs the two secrets and a first run, then the checks listed in the decision entry.)
 
 24. Technosphere foundations: (**Code and tests done** 2026-11-01, see `docs/DECISIONS.md`. Cascade formulas in `pipeline.derived` (test-first), `pipeline.human` (OWID parser with world-total conservation, country raster, EDGAR and plant loaders, allocation with fallbacks and bunkers) and the `human-static` command. Real 2024 run without EDGAR: P 18.65 TW, useful work 3.86 TW (21 %), waste heat 14.79 TW. **Open:** EDGAR is unreachable from the sandbox it was written in, so the loader is tested on synthetic files only; needs a first run with `--fetch`.)
-25. Technosphere daily and monthly layers (planned): `human_q`, `human_work`, `human_heat`, `human_ratio` for every date from 2026-07-28; daily job; manifest `kind` flow/stock.
+25. Technosphere daily and monthly layers: (**Code and tests done** 2026-11-06, see `docs/DECISIONS.md`. Monthly factors and the weather factor in `pipeline.derived` (test-first); monthly frames in the static file; `human_work` and `human_heat` added, `human_q` and `human_ratio` built; the daily build makes them for new dates, `human` adds them to published dates and the climate frames; point chunks extended with old ones still readable; `state/human/` in the store; the Technosphere grids workflow; the front end reads short chunks and labels the human Climate frames. **Open:** needs the grids workflow (EDGAR) and then `human --store` and `upload` on the laptop; nothing has been run against EDGAR or the real data root.) Plan as decided:
     - **Monthly factors** (decided 2026-11-03): EDGAR's monthly sector gridmaps, kept per month instead of summed, give each sector and cell 12 factors, averaged over 2016–2023 without 2020–2021 (COVID), and normalised so their day-weighted mean (365.25 days, as the climatology's Year frame) is exactly 1, so national annual totals are unchanged (tested).
     - **Climate mode** for the human layers: 12 monthly frames and a Year frame of present-day flows (the latest energy year, e.g. "2024 energy use, typical July"), not a 1991–2020 mean: world use grew from 10.6 TW (1991) to 18.7 TW (2024), and its 1991–2020 mean of 14.0 TW would understate today by a quarter. The Year frame equals the annual grid exactly. `human_ratio` per frame = that frame's P ÷ that frame's 1991–2020 `bld` (formula on the frame's mean inputs, as for the other derived climatologies); the legend and info panel say the two periods differ.
     - **Today:** the date's month frame times an ERA5 temperature factor (heating and cooling degree-days on the building and electricity components), normalised so a month's days average to its frame. No "Today vs normal" for the human layers: it would show only the temperature model.
