@@ -123,6 +123,12 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--start", default=None, help="first date (default 2026-07-28)")
     apply.add_argument("--force", action="store_true", help="redo dates that have them")
     apply.add_argument("--store", help="then put the grids and normals in state/human/")
+    apply.add_argument(
+        "--sync",
+        action="store_true",
+        help="with --store: first fetch what is needed from the published data root (no local "
+        "--out required), and publish the result afterwards, manifest last",
+    )
     return parser
 
 
@@ -325,18 +331,28 @@ def _human(args: argparse.Namespace) -> int:
 
     from . import human
 
+    if args.sync and not args.store:
+        print("::error::--sync needs --store", file=sys.stderr)
+        return 2
     start = date.fromisoformat(args.start) if args.start else human.HUMAN_START
+    store = None
     if args.store:  # grids built elsewhere (the Technosphere grids workflow): fetch them first
         from .store import open_store
 
-        human.download_static(open_store(args.store), args.work)
+        store = open_store(args.store)
+        human.download_static(store, args.work)
+    if args.sync:
+        human.download_published(store, args.out, start, log=lambda m: print(m, flush=True))
     counts = human.apply_to_out(
         args.out, args.work, start, force=args.force, log=lambda m: print(m, flush=True)
     )
-    if args.store:
-        from .store import open_store
+    if args.sync:
+        from .deploy import upload
 
-        human.upload_static(open_store(args.store), args.work)
+        result = upload(store, args.out, log=lambda m: print(m, flush=True))
+        print(f"{result.uploaded} uploaded, {result.skipped} unchanged, {result.deleted} deleted")
+    if store:
+        human.upload_static(store, args.work)
     return 1 if counts["skipped"] else 0
 
 

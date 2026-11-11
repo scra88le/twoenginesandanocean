@@ -1,0 +1,70 @@
+name: Technosphere layers
+
+# Adds the human layers (human_q, human_ratio, human_work, human_heat) to the published data:
+# every date from the start date and the climate frames. Run it by hand after the "Technosphere
+# grids" workflow has put the grids in the store, and again whenever the grids are rebuilt
+# (`force`). It needs no data root on anyone's computer and no secrets outside GitHub: the
+# runner pulls what it needs from the store (the manifest, each date's diss_bl map and point
+# chunks, the climate index and frames), adds the layers, and publishes only what changed,
+# manifest last (`pipeline.cli human --sync`). The daily job gives later dates their human
+# layers itself, so this is a one-off per grid build.
+#
+# It shares the daily build's concurrency group: both write the manifest, so they never run at
+# the same time (one waits for the other).
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: First date to give human layers (empty for 2026-07-28)
+        default: ""
+      force:
+        description: Redo dates that already have them (after the grids were rebuilt)
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-build
+  cancel-in-progress: false # never stop a run that is part-way through publishing
+
+permissions:
+  contents: read
+
+jobs:
+  layers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      STORE_URL: ${{ vars.STORE_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
+      AWS_DEFAULT_REGION: auto
+      START: ${{ inputs.start }}
+      FORCE: ${{ inputs.force }}
+    steps:
+      - name: Check the configuration
+        run: |
+          missing=""
+          for name in STORE_URL AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Not set:$missing. See docs/DEPLOY.md."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+      - run: pip install -e "./pipeline[deploy]"
+      - name: Add the human layers and publish them
+        run: |
+          df -h .
+          args=()
+          [ -n "$START" ] && args+=(--start "$START")
+          [ "$FORCE" = "true" ] && args+=(--force)
+          python -m pipeline.cli human --sync --out out --work work --store "$STORE_URL" "${args[@]}"
+          df -h .

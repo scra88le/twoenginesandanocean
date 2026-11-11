@@ -1049,6 +1049,46 @@ def download_static(store, work: Path, log: Callable[[str], None] = print) -> li
     return got
 
 
+def download_published(
+    store,
+    out: Path,
+    start: date = HUMAN_START,
+    log: Callable[[str], None] = print,
+    workers: int = 16,
+) -> int:
+    """Fetch from the store the part of the published data root that `apply_to_out` reads and
+    patches, into `out`: the manifest, each date's `diss_bl` map, human maps and point chunks
+    (dates from `start`), and the climate index, `diss_bl` frames and climate point chunks.
+    That is enough to add the human layers on a runner that has no data root; `deploy.upload`
+    then puts back only what changed. Returns the number of files fetched."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    if not store.get("manifest.json", out / "manifest.json"):
+        raise FileNotFoundError("the store has no manifest.json: nothing is published")
+    dates = {
+        d for d in json.loads((out / "manifest.json").read_text())["dates"]
+        if date.fromisoformat(d) >= start
+    }  # fmt: skip
+    keys = []
+    for key in store.list("fields/"):
+        _, day, name = key.split("/", 2)
+        if day in dates and (name == "diss_bl.png" or re.fullmatch(r"human_\w+\.png", name)):
+            keys.append(key)
+    keys += [k for k in store.list("points/") if k.split("/")[1] in dates]
+    for key in store.list("clim/"):
+        parts = key.split("/")
+        if (
+            key == "clim/clim.json"
+            or (len(parts) == 3 and parts[1] in CLIM_FRAMES and parts[2] == "diss_bl.png")
+            or (len(parts) == 4 and parts[1] == "points" and parts[2] in CLIM_FRAMES)
+        ):
+            keys.append(key)
+    with ThreadPoolExecutor(workers) as pool:
+        got = sum(pool.map(lambda k: store.get(k, out / k), keys))
+    log(f"downloaded {got} of {len(keys)} published files for {len(dates)} dates and the climate")
+    return got
+
+
 def upload_static(store, work: Path, log: Callable[[str], None] = print) -> list[str]:
     """Put the newest technosphere grids and the normals in the store (`state/human/`),
     where the daily job finds them."""

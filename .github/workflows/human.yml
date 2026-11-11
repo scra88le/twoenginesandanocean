@@ -10,9 +10,8 @@ name: Technosphere grids
 #
 # Run it by hand once a year, after the Energy Institute's Statistical Review (June) reaches
 # Our World in Data, or when EDGAR publishes a new release. Then, on the machine with the data
-# root: `python -m pipeline.cli human --out ./out --store s3://BUCKET` (adds the layers to the
-# published dates and the climate frames) and `python -m pipeline.cli upload --store ...`.
-# See docs/DEPLOY.md.
+# the "Technosphere layers" workflow (human-publish.yml) adds the layers to the published dates
+# and the climate frames. See docs/DEPLOY.md.
 
 on:
   workflow_dispatch:
@@ -62,6 +61,9 @@ jobs:
           df -h .
           python -m pipeline.cli human-static --fetch --store "$STORE_URL" ${YEAR:+--year "$YEAR"}
           df -h .
+      - name: Show the summary (EDGAR year, factor years, fallbacks, TW by source)
+        if: always()
+        run: cat work/human/summary_*.json || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -439,3 +439,65 @@ def test_human_with_a_store_takes_grids_built_elsewhere(tmp_path, capsys):
     assert (out / "fields" / "2026-08-01" / "human_heat.png").is_file()
     # ... and the normals it made go back up for the daily job.
     assert "state/human/t_normal.nc" in store.list("state/human/")
+
+
+def test_human_sync_works_from_the_store_alone_and_publishes_back(tmp_path, capsys):
+    """The Technosphere layers workflow: a runner with no data root pulls what it needs,
+    adds the human layers and publishes them, leaving everything else as it was."""
+    from pipeline import deploy
+    from pipeline.cli import main
+    from pipeline.store import LocalStore
+
+    store = LocalStore(tmp_path / "bucket")
+    built = tmp_path / "grids-work"
+    write_static(built, t_normal=280.0)
+    h.upload_static(store, built, log=lambda m: None)
+    published = _published_out(tmp_path, ["2026-07-27", "2026-07-28", "2026-08-01"])
+    (published / "fields" / "2026-08-01" / "wind10.png").write_bytes(b"untouched")
+    (published / "series").mkdir()
+    deploy.upload(store, published)
+    before = store.list("")
+
+    runner = tmp_path / "runner"
+    url = f"file://{tmp_path / 'bucket'}"
+    argv = ["human", "--sync", "--out", str(runner / "out"), "--work", str(runner / "work"),
+            "--store", url]  # fmt: skip
+    assert main(argv) == 0
+    assert "2 dates, 13 climate frames" in capsys.readouterr().out
+    # Only what the layers need came down: not dates before the start, nor other layers.
+    assert not (runner / "out" / "fields" / "2026-07-27").exists()
+    assert not (runner / "out" / "fields" / "2026-08-01" / "wind10.png").exists()
+
+    after = store.list("")
+    for lid in HUMAN:
+        for day in ("2026-07-28", "2026-08-01"):
+            assert f"fields/{day}/{lid}.png" in after
+        assert f"clim/07/{lid}.png" in after and f"series/{lid}/0_0.bin" in after
+    assert "fields/2026-07-27/human_q.png" not in after
+    for key, info in before.items():  # nothing that was published has changed or gone
+        assert key in after
+        if key not in ("manifest.json", "clim/clim.json") and "/points/" not in f"/{key}":
+            assert after[key].size == info.size, key
+    m = json.loads((tmp_path / "bucket" / "manifest.json").read_text())
+    assert set(HUMAN) <= set(m["built_layers"]) and m["dates"] == [
+        "2026-07-27", "2026-07-28", "2026-08-01"
+    ]  # fmt: skip
+    tile = pts.read_tile((tmp_path / "bucket" / "points" / "2026-08-01" / "3_4.bin").read_bytes())
+    assert np.all(tile["human_q"] >= 2)
+
+    assert main(argv) == 0  # a second run finds nothing to do
+    assert "0 dates" in capsys.readouterr().out
+
+
+def test_sync_needs_a_store(tmp_path):
+    from pipeline.cli import main
+
+    assert main(["human", "--sync", "--out", str(tmp_path)]) == 2
+
+
+def test_download_published_needs_a_manifest(tmp_path):
+    from pipeline.store import LocalStore
+
+    (tmp_path / "bucket").mkdir()
+    with pytest.raises(FileNotFoundError, match="manifest"):
+        h.download_published(LocalStore(tmp_path / "bucket"), tmp_path / "out")
