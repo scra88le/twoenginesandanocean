@@ -158,11 +158,15 @@ or run **Actions → Daily build** with `ocean_days` set to 60 twice.
      as they arrive), builds the grids and puts them in the store. Its summary JSON is attached
      to the run: check `edgar_year`, `factor_years`, `default_shares` (should be empty for the
      ~80 countries with a fuel breakdown) and `primary_tw` (about 18–19 TW).
-  2. On the laptop with the data root: `python -m pipeline.cli human --out ./out --store
-     s3://BUCKET` takes the grids from the store, adds the human layers to every published date
-     from 2026-07-28 that lacks them (`--force` redoes them all) and to the 13 climate frames,
-     and writes `t_normal.nc` from the climate point chunks and puts it in the store.
-  3. `python -m pipeline.cli upload --store s3://BUCKET` publishes the result, manifest last.
+  2. Actions → Technosphere layers → Run workflow (`force` redoes dates that already have the
+     layers, after the grids were rebuilt). The runner pulls what it needs from the store (the
+     manifest, each date's `diss_bl` map and point chunks from 2026-07-28, the climate index
+     and frames; about 1.3 GB), adds the human layers to every date that lacks them and to the
+     13 climate frames, writes `t_normal.nc` from the climate point chunks into the store, and
+     publishes only the files that changed, manifest last. It shares the daily build's
+     concurrency group, so the two never write the manifest together. No secrets leave GitHub.
+     The same on a computer with the data root: `python -m pipeline.cli human --out ./out
+     --store s3://BUCKET`, then `upload`; or `human --sync` with no data root at all.
   `human-static --fetch` on the laptop does step 1 locally instead (it needs about 5 GB free
   while a zip is being read).
 - **Change what a date contains** (a new layer, a different encoding): `rebuild` re-runs every

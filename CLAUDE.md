@@ -45,6 +45,7 @@ Audience: informed non-specialists (energy professionals, students, climate-lite
 /.github/workflows/daily.yml    scheduled build, validate and upload; keep-alive; smoke test
 /.github/workflows/site.yml     build the front end and publish it to GitHub Pages; smoke test
 /.github/workflows/human.yml    by hand, yearly: build the technosphere grids (EDGAR etc.) into the store
+/.github/workflows/human-publish.yml  by hand, after the grids: add the human layers to the published data (`human --sync`, no local data root)
 /docs/DEPLOY.md                 setting up the bucket, secrets and workflows; running it day to day
 /README.md                      what this is and where things are
 ```
@@ -72,7 +73,7 @@ python -m pipeline.cli daily --store s3://BUCKET [--days 10]         # the daily
 pip install -e "./pipeline[ocean]"                                   # the ocean overlay needs the copernicusmarine toolbox
 python -m pipeline.cli ocean [--store s3://BUCKET] [--max-fetch 15]  # AMOC overlay for the published dates (Copernicus Marine GLO12)
 python -m pipeline.cli human-static [--fetch] [--inputs raw/human] [--year YYYY] [--store s3://BUCKET]  # technosphere grids (components + monthly frames) -> work/human/human_YEAR.nc + summary_YEAR.json [-> state/human/]
-python -m pipeline.cli human --out ./out [--store s3://BUCKET] [--start 2026-07-28] [--force]  # add the human layers to published dates and the climate frames; then `upload`
+python -m pipeline.cli human --out ./out [--store s3://BUCKET [--sync]] [--start 2026-07-28] [--force]  # add the human layers to published dates and the climate frames; then `upload`. --sync: pull what is needed from the store and publish the result (the Technosphere layers workflow)
 
 # Front end
 cd web && npm install

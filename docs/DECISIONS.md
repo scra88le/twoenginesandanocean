@@ -510,3 +510,16 @@ Until this is decided the `div_e` and `flux_e` encode ranges are not set. Displa
 - **Rebuild.** The manifest's `ov` is now a version (`ocean.OV_VERSION` = 2); entries with another value are rebuilt from the saved days on the next ocean run, with no download.
 - **Open.** σ was chosen without seeing real data. If it is still too busy or too washed out, change `OV_SIGMA_DEG`. Smoothing lowers transport magnitudes (eddy cancellation), so particle density in this view may need a lower `density_ref`.
 
+
+## 2026-11-11: the human layers are published from GitHub Actions
+
+Anthony does not want to keep the R2 keys on his laptop, so the last step of milestone 25 (add the
+layers to the published data) runs as a workflow, `human-publish.yml`, with the repository's
+existing secrets. `human --sync` (`human.download_published`, then `deploy.upload`) pulls only
+what `apply_to_out` reads or patches (the manifest; each date's `diss_bl.png`, human maps and
+point chunks from the start date; the climate index, `diss_bl` frames and climate point chunks;
+about 1.3 GB), adds the layers, and uploads what changed, manifest last. Unchanged files are
+skipped by size and MD5, and the expiry rule only removes files of dates outside the manifest, so
+files the runner never downloaded are left alone (tested with a bucket whose other layers must be
+byte-identical afterwards). The workflow shares the daily build's concurrency group because both
+write the manifest. The grids workflow now also prints its summary JSON into the log.
